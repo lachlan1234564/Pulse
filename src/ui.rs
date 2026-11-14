@@ -1487,7 +1487,7 @@ fn search_top_card(app: &mut App, ui: &mut Ui, artist: Option<&ArtistInfo>, trac
     // Play: in the corner, a little bigger when you point at the card.
     let grow = ui.ctx().animate_bool(response.id.with("grow"), hot);
     let button = Rect::from_center_size(pos2(rect.right() - 44.0, rect.bottom() - 44.0), Vec2::splat(48.0));
-    let play = ui.interact(button, response.id.with("play"), Sense::click());
+    let play = ui.interact(button, response.id.with("play"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
     ui.painter().add(egui::Shadow { offset: [0, 4], blur: 12, spread: 0, color: Color32::from_black_alpha(80) }.as_shape(button, CornerRadius::same(24)));
     ui.painter().circle_filled(button.center(), 24.0 + 2.0 * grow, parts().play_button.fill.unwrap_or(pal().accent));
     paint_icon(ui.painter(), button.center(), icon::PLAY, filled_icon(20.0), parts().play_button.color.unwrap_or(Color32::WHITE));

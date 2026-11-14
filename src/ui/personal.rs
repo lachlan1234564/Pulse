@@ -217,7 +217,7 @@ fn quick_tile(ui: &mut Ui, w: f32, art: Option<&str>, glyph: &str, title: &str, 
     let t = ui.ctx().animate_bool(id.with("hover"), hovered);
     if t > 0.0 {
         let c = pos2(rect.right() - 26.0, rect.center().y);
-        let b = ui.interact(Rect::from_center_size(c, Vec2::splat(36.0)), id.with("play"), Sense::click());
+        let b = ui.interact(Rect::from_center_size(c, Vec2::splat(36.0)), id.with("play"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
         a11y(ui, &b, egui::WidgetType::Button, || format!("Play {title}"));
         let pb = &parts().play_button;
         ui.painter().circle_filled(c, 17.0, pb.fill.unwrap_or(pal().accent).gamma_multiply(t));

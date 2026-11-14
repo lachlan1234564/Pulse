@@ -516,12 +516,19 @@ pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
     if t > 0.0 && !info.round {
         let c = pos2(art_rect.right() - 26.0, art_rect.bottom() - 26.0 + (1.0 - t) * 8.0);
         let btn = Rect::from_center_size(c, Vec2::splat(42.0));
-        let b = ui.interact(btn, info.id.with("play"), Sense::click());
+        let b = ui.interact(btn, info.id.with("play"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
         a11y(ui, &b, WidgetType::Button, || format!("Play {}", info.title));
-        let grow = if b.hovered() { 1.06 } else { 1.0 };
-        ui.painter().circle_filled(c + vec2(0.0, 3.0), 22.0, Color32::from_black_alpha((90.0 * t) as u8));
+        // Pointing at it: it grows a little and its glow gets stronger.
+        let over = ui.ctx().animate_bool_with_time(info.id.with("play_hover"), b.hovered(), crate::theme::motion(0.12));
+        let r = 21.0 * (1.0 + 0.06 * over);
         let pb = &parts().play_button;
-        ui.painter().circle_filled(c, 21.0 * grow, pb.fill.unwrap_or(pal().accent).gamma_multiply(t));
+        let fill = pb.fill.unwrap_or(pal().accent);
+        let disc = Rect::from_center_size(c, Vec2::splat(r * 2.0));
+        let round = CornerRadius::same(r.round() as u8);
+        // A soft shadow under it, then a small glow in its own colour around it.
+        ui.painter().add(egui::Shadow { offset: [0, 4], blur: 12, spread: 0, color: Color32::from_black_alpha((110.0 * t) as u8) }.as_shape(disc, round));
+        ui.painter().add(egui::Shadow { offset: [0, 0], blur: 14, spread: (2.0 * over).round() as u8, color: fill.gamma_multiply((0.22 + 0.28 * over) * t) }.as_shape(disc, round));
+        ui.painter().circle_filled(c, r, fill.gamma_multiply(t));
         paint_icon(ui.painter(), c, icon::PLAY, filled_icon(17.0), pb.color.unwrap_or(Color32::WHITE).gamma_multiply(t));
         if b.clicked() {
             out = CardClick::Play;
