@@ -23,9 +23,9 @@
 </p>
 
 <p align="center">
-  <a href="https://mercy123xz.github.io/Pulse/download/"><b>⬇ Download for Windows</b></a>
-  &nbsp;·&nbsp; <a href="https://mercy123xz.github.io/Pulse/"><b>Website</b></a>
-  &nbsp;·&nbsp; <a href="https://mercy123xz.github.io/Pulse/docs/">Docs</a>
+  <a href="https://listen2pulse.github.io/download/"><b>⬇ Download for Windows</b></a>
+  &nbsp;·&nbsp; <a href="https://listen2pulse.github.io/"><b>Website</b></a>
+  &nbsp;·&nbsp; <a href="https://listen2pulse.github.io/docs/">Docs</a>
   &nbsp;·&nbsp; <a href="#features">Features</a>
   &nbsp;·&nbsp; <a href="#keyboard-shortcuts">Shortcuts</a>
   &nbsp;·&nbsp; <a href="#building-from-source">Build from source</a>
@@ -35,7 +35,7 @@
 <p align="center"><img src="assets/screenshot.png" alt="Pulse showing an album page, with its songs listed and one playing" width="900"></p>
 
 <p align="center"><img src="assets/intro.gif" alt="Pulse's intro: five bars bounce to a beat, then one sweeps across the screen" width="426"><br>
-<sub>The intro Pulse plays when it opens. See it search and play on the <a href="https://mercy123xz.github.io/Pulse/#features">website</a>, with sound.</sub></p>
+<sub>The intro Pulse plays when it opens. See it search and play on the <a href="https://listen2pulse.github.io/#features">website</a>, with sound.</sub></p>
 
 ## Why Pulse
 
@@ -117,18 +117,18 @@ An account is free and optional: it's for making playlists public and having a p
 - **Settings → Account** changes your email or password, signs you out, or deletes your account
   along with everything you made public. Your library stays on your PC either way.
 - Accounts made before emails were needed are asked to add one the next time Pulse opens.
-- **On the website**, sign in under [Your account](https://mercy123xz.github.io/Pulse/account/) to change
+- **On the website**, sign in under [Your account](https://listen2pulse.github.io/account/) to change
   your email or password, edit your profile, make playlists private, reset a forgotten password or
   delete your account. New accounts are made in the app.
 
 The server keeps your username, email, profile text, public playlists and a salted hash of your
 password, never the password. It's a Cloudflare Worker; its code and setup are in [`server/`](server/).
-More in the [docs](https://mercy123xz.github.io/Pulse/docs/#accounts) and the
-[Privacy Policy](https://mercy123xz.github.io/Pulse/privacy/).
+More in the [docs](https://listen2pulse.github.io/docs/#accounts) and the
+[Privacy Policy](https://listen2pulse.github.io/privacy/).
 
 ## Download
 
-1. [**Download the latest installer**](https://mercy123xz.github.io/Pulse/download/) (it starts right away), or grab
+1. [**Download the latest installer**](https://listen2pulse.github.io/download/) (it starts right away), or grab
    **`PulseSetup-x.y.z.exe`** from the [latest release](https://github.com/mercy123xz/Pulse/releases/latest).
 2. Run it. It installs Pulse for your user account (no administrator password), adds it to the
    Start menu, and can add a desktop shortcut. Uninstall it from Windows Settings → Apps.
@@ -226,12 +226,12 @@ Run the tests with `cargo test`, and the accounts server's with `node server/tes
 - **Discord:** [discord.gg/yMy3PSyhGM](https://discord.gg/yMy3PSyhGM) for help, feedback, and showing off your themes
 - **X:** [@ListenToPulse](https://x.com/ListenToPulse) for news, releases and clips
 - **Mastodon:** [@mercy123xz@mastodon.social](https://mastodon.social/@mercy123xz) for news and releases
-- **Problems and ideas:** [open an issue](https://github.com/mercy123xz/Pulse/issues), or use *Ask about Pulse* on the [website](https://mercy123xz.github.io/Pulse/)
+- **Problems and ideas:** [open an issue](https://github.com/mercy123xz/Pulse/issues), or use *Ask about Pulse* on the [website](https://listen2pulse.github.io/)
 
 ## Contributors
 
 - **[MERCY](https://github.com/mercy123xz)**: made Pulse, and reviews and merges every change.
-- **[Lachlan](https://github.com/lachlan1234564)**: autoplay that follows the song you picked, queue fixes, speed-ups and design work, including the Geist font.
+- **[Lachlan](https://github.com/lachlan1234564)**: autoplay that follows the song you picked, speed-ups, memory savings and design work, including the Geist font.
 
 Want to help? Ideas and problem reports are welcome on [Discord](https://discord.gg/yMy3PSyhGM) or in [issues](https://github.com/mercy123xz/Pulse/issues).
 
