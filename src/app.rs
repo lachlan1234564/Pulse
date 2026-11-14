@@ -3679,18 +3679,35 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
+    /// Everything that isn't drawing: moving on to the next song, autoplay, downloads,
+    /// update checks, Discord, saving. eframe calls this before every `ui`, and also while
+    /// the window is minimized or hidden behind a full-screen game, when it doesn't call
+    /// `ui` at all. Keeping this work in `ui` stopped the music at the end of the song.
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if self.trim_memory_at.is_some_and(|t| Instant::now() >= t) {
             self.trim_memory_at = None;
             crate::perf::give_back_memory();
         }
+        self.updates(ctx);
+        self.discord_status(ctx);
+        self.tick(ctx);
+        if let Some(note) = self.startup_note.take() {
+            self.toast(crate::i18n::tr(&note), ctx);
+        }
+        if std::mem::take(&mut self.save_now)
+            && let Some(storage) = frame.storage_mut()
+        {
+            App::save(self, storage);
+            storage.flush();
+        }
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         if self.diag.gpu.is_none() {
             self.diag.gpu = Some(crate::diag::gpu(frame));
             crate::perf::set_software(crate::diag::software(frame));
         }
-        self.updates(&ctx);
-        self.discord_status(&ctx);
         // The title bar in the theme's colours (Windows draws it white otherwise).
         crate::titlebar::match_theme(frame, &ctx);
         // Developer check: PULSE_DEBUG_REPAINT=1 prints what asked for each redraw.
@@ -3698,15 +3715,12 @@ impl eframe::App for App {
         if *DEBUG_REPAINT.get_or_init(|| std::env::var_os("PULSE_DEBUG_REPAINT").is_some()) {
             eprintln!("frame {} causes {:?}", ctx.cumulative_frame_nr(), ctx.repaint_causes());
         }
-        self.tick(&ctx);
-        if let Some(note) = self.startup_note.take() {
-            self.toast(crate::i18n::tr(&note), &ctx);
-        }
         // Minimized: nothing to draw (the music and the mini player carry on).
         if !ctx.input(|i| i.viewport().minimized.unwrap_or(false)) {
             crate::ui::draw(self, ui);
         }
         crate::ui::mini::show(self, &ctx);
+        // Clicking in the window can ask for a save too.
         if std::mem::take(&mut self.save_now)
             && let Some(storage) = frame.storage_mut()
         {
