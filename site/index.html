@@ -186,12 +186,14 @@ html[data-theme="light"] #browse::before { background: radial-gradient(55% 60% a
 .tabs button { position: relative; z-index: 1; padding: .65rem 1.2rem; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 600 .92rem/1 var(--body); cursor: pointer; transition: color .25s; }
 .tabs button[aria-selected="true"] { color: var(--text); }
 .tabs .tab-pill { position: absolute; z-index: 0; top: .3rem; bottom: .3rem; left: 0; width: 0; border-radius: 999px; background: var(--surface-2); box-shadow: 0 1px 2px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .05); transition: transform .5s var(--ease-out), width .5s var(--ease-out); }
-.panels { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); max-width: 920px; }
+.panels { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); max-width: 920px; margin-inline: auto; }
 .panels > [role="tabpanel"] { min-width: 0; grid-area: 1 / 1; transition: opacity .5s var(--ease), transform .7s var(--ease-out); }
 .panels > [role="tabpanel"][hidden] { display: block; visibility: hidden; opacity: 0; transform: translateY(14px) scale(.985); pointer-events: none; }
 .panels .shot { mask-image: linear-gradient(90deg, #000 80%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 80%, transparent); }
 .panels .shot img { width: 100%; }
-.panels p { margin: .9rem 0 0; color: var(--muted); font-size: .95rem; max-width: 40rem; }
+.browse-body { text-align: center; }
+.browse-body .panels { text-align: left; }
+.panels p { text-align: center; text-wrap: balance; margin: .9rem auto 0; color: var(--muted); font-size: .95rem; max-width: 40rem; }
 @media (max-width: 700px) { .panels .shot { overflow-x: auto; mask-image: none; -webkit-mask-image: none; } .panels .shot img { width: 760px; max-width: none; } }
 
 /* ---------- 05 Made for you: Orbits ---------- */
@@ -438,7 +440,7 @@ html[data-intro="intro"] .hero-ed > * { opacity: 0; transform: translateY(18px);
         </div>
         <p class="lede-x" data-reveal>Cover art everywhere, round artist portraits, and playlists for every mood. Click a song's title to jump to its album, or right-click it to like it, share it, or see who made it.</p>
       </div>
-      <div data-reveal>
+      <div class="browse-body" data-reveal>
         <div class="tabs" role="tablist" aria-label="What to look at">
           <span class="tab-pill" aria-hidden="true"></span>
           <button role="tab" id="tab-albums" aria-controls="panel-albums" aria-selected="true">Albums</button>
