@@ -876,6 +876,8 @@ pub struct App {
     cache_used: HashMap<String, Instant>,
     /// Size of the cache folders, measured when Settings opens.
     pub cache_size: Option<u64>,
+    /// When to hand unused memory back to Windows, after a mode that saves memory went on.
+    trim_memory_at: Option<Instant>,
     /// The song last given to the audio engine as "next" (None = not told yet).
     told_next: Option<Option<String>>,
 
@@ -1007,6 +1009,7 @@ impl App {
             credits: None,
             credits_rx: None,
             cache_size: None,
+            trim_memory_at: None,
             highlight: None,
             backdrop: Default::default(),
             swept_at: 0.0,
@@ -2160,12 +2163,27 @@ impl App {
         self.apply_settings(&before, ctx);
     }
 
+    /// Gaming Mode or Ultra-low went on: let go of memory Pulse can do without. Loaded
+    /// pictures are dropped (they load again, from the disk cache, when shown) and old pages
+    /// are trimmed; then Windows gets the unused memory back. The music isn't touched: the
+    /// song playing, its buffer and the next songs' audio stay as they are.
+    fn free_memory(&mut self, ctx: &egui::Context) {
+        ctx.forget_all_images();
+        self.trim_page_cache();
+        // A moment later, once the pictures' graphics memory has gone too.
+        self.trim_memory_at = Some(Instant::now() + Duration::from_millis(1500));
+        ctx.request_repaint_after(Duration::from_millis(1600));
+    }
+
     /// Puts changed settings into effect. `before` is how they were.
     pub fn apply_settings(&mut self, before: &crate::settings::Settings, ctx: &egui::Context) {
         let s = self.saved.settings.clone();
         crate::i18n::set_language(s.language);
         crate::deezer::set_prefer_explicit(s.explicit);
         self.apply_perf(ctx);
+        if s.perf_mode.level() > before.perf_mode.level() {
+            self.free_memory(ctx);
+        }
         if s.perf_mode != before.perf_mode {
             let msg = match s.perf_mode {
                 crate::perf::Mode::Normal => "Gaming Mode off",
@@ -3660,6 +3678,10 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if self.trim_memory_at.is_some_and(|t| Instant::now() >= t) {
+            self.trim_memory_at = None;
+            crate::perf::give_back_memory();
+        }
         if self.diag.gpu.is_none() {
             self.diag.gpu = Some(crate::diag::gpu(frame));
             crate::perf::set_software(crate::diag::software(frame));
