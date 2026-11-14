@@ -255,6 +255,8 @@ struct DzAlbum {
     /// Only in an artist's release list: how many fans the release has, and its genre.
     fans: u64,
     genre_id: i64,
+    /// Every credited artist (only in a release's full details).
+    contributors: Vec<DzArtist>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -1026,8 +1028,14 @@ pub fn artist_page(id: &str) -> Result<ArtistPage, String> {
     let me = artist_ref(&artist);
     let top: List<DzTrack> = get(&format!("/artist/{id}/top"), &[("limit", "50")]).unwrap_or_default();
     let albums: List<DzAlbum> = get(&format!("/artist/{id}/albums"), &[("limit", "100")]).unwrap_or_default();
-    let related = related_artists(id, 12);
-    let songs_like = songs_like_artist(id, &artist.name);
+    // Pulse's server, at the same time as the rest: what Deezer filed under a namesake.
+    let titles: Vec<String> = top.data.iter().map(|t| t.title.clone()).chain(albums.data.iter().map(|a| a.title.clone())).collect();
+    let (related, songs_like, extra) = std::thread::scope(|s| {
+        let extra = s.spawn(|| crate::account::artist_extra(id, &artist.name, &titles));
+        let related = related_artists(id, 12);
+        let songs_like = songs_like_artist(id, &artist.name);
+        (related, songs_like, extra.join().ok().and_then(Result::ok).unwrap_or_default())
+    });
     let top_albums: std::collections::HashSet<u64> = top.data.iter().filter_map(|t| t.album.as_ref().map(|a| a.id)).collect();
     let (own, others) = split_namesakes(albums.data, &top_albums);
     let mut releases: Vec<AlbumInfo> = own.into_iter().map(|a| album_info(a, Some(&me))).collect();
@@ -1036,6 +1044,7 @@ pub fn artist_page(id: &str) -> Result<ArtistPage, String> {
     sort_newest_first(&mut namesakes);
     // The 10 most popular songs, most popular first (by Deezer's popularity score).
     let mut top = tracks(top);
+    fix_artist_page(&me, &extra, &mut top, &mut releases, &mut namesakes);
     top.sort_by_key(|t| std::cmp::Reverse(t.rank));
     top.truncate(10);
     // The artist list doesn't say how many songs a release has; ask for the newest one,
@@ -1047,6 +1056,79 @@ pub fn artist_page(id: &str) -> Result<ArtistPage, String> {
         latest.nb_tracks = full.nb_tracks;
     }
     Ok(ArtistPage { artist: artist.into(), top, releases, namesakes, related, songs_like })
+}
+
+/// Puts back on an artist's page what Deezer filed under another artist with the same
+/// name, and applies the fixes made by hand on Pulse's server (`extra`).
+///
+/// The songs and releases the server found on TIDAL are only added to a page that's one
+/// artist: on a pile of namesakes (`namesakes` not empty) that would add to the mix-up.
+/// Each one must also credit someone with this artist's name on Deezer. Fixes made by
+/// hand are always applied.
+fn fix_artist_page(me: &ArtistRef, extra: &crate::account::ArtistExtra, top: &mut Vec<Track>, releases: &mut Vec<AlbumInfo>, namesakes: &mut Vec<AlbumInfo>) {
+    use crate::youtube::{core_title, norm};
+    let key = |title: &str| norm(&core_title(title));
+    let numbers = |prefix: &str, list: &[String]| -> Vec<String> { list.iter().filter_map(|x| x.strip_prefix(prefix)).map(str::to_string).collect() };
+
+    let (hide_tracks, hide_albums) = (numbers("track:", &extra.hide), numbers("album:", &extra.hide));
+    top.retain(|t| !hide_tracks.iter().any(|n| t.id == format!("dz:{n}")));
+    releases.retain(|a| !hide_albums.contains(&a.id));
+    namesakes.retain(|a| !hide_albums.contains(&a.id));
+
+    let shown: std::collections::HashSet<String> = top.iter().map(|t| key(&t.title)).chain(releases.iter().map(|a| key(&a.title))).collect();
+    let mut track_paths: Vec<String> = numbers("track:", &extra.add).into_iter().filter(|n| !top.iter().any(|t| t.id == format!("dz:{n}"))).map(|n| format!("/track/{n}")).collect();
+    let mut album_paths: Vec<String> = numbers("album:", &extra.add).into_iter().filter(|n| !releases.iter().any(|a| a.id == *n)).map(|n| format!("/album/{n}")).collect();
+    let (by_hand_tracks, by_hand_albums) = (track_paths.len(), album_paths.len());
+    if namesakes.is_empty() {
+        let isrc_ok = |s: &str| s.len() == 12 && s.chars().all(|c| c.is_ascii_alphanumeric());
+        let upc_ok = |s: &str| (8..=14).contains(&s.len()) && s.chars().all(|c| c.is_ascii_digit());
+        track_paths.extend(extra.tracks.iter().filter(|t| isrc_ok(&t.isrc) && !shown.contains(&key(&t.title))).take(10).map(|t| format!("/track/isrc:{}", t.isrc)));
+        album_paths.extend(extra.albums.iter().filter(|a| upc_ok(&a.upc) && !shown.contains(&key(&a.title))).take(10).map(|a| format!("/album/upc:{}", a.upc)));
+    }
+    if track_paths.is_empty() && album_paths.is_empty() {
+        return;
+    }
+    let (found_tracks, found_albums) = std::thread::scope(|s| {
+        let t: Vec<_> = track_paths.iter().map(|p| s.spawn(move || get::<DzTrack>(p, &[]).ok())).collect();
+        let a: Vec<_> = album_paths.iter().map(|p| s.spawn(move || get::<DzAlbum>(p, &[]).ok())).collect();
+        let t: Vec<Option<DzTrack>> = t.into_iter().map(|h| h.join().ok().flatten()).collect();
+        let a: Vec<Option<DzAlbum>> = a.into_iter().map(|h| h.join().ok().flatten()).collect();
+        (t, a)
+    });
+    let my_name = norm(&me.name);
+    let credits_me = |people: Vec<&DzArtist>| people.iter().any(|p| p.id.to_string() == me.id || norm(&p.name) == my_name);
+
+    let mut added = Vec::new();
+    for (i, t) in found_tracks.into_iter().enumerate() {
+        let Some(t) = t else { continue };
+        let by_hand = i < by_hand_tracks;
+        if !by_hand && !credits_me(std::iter::once(&t.artist).chain(&t.contributors).collect()) {
+            continue;
+        }
+        let t = track(t, None);
+        let k = key(&t.title);
+        if top.iter().chain(&added).any(|x: &Track| x.id == t.id || (!by_hand && key(&x.title) == k)) {
+            continue;
+        }
+        added.push(t);
+    }
+    crate::fixes::apply(&mut added);
+    top.extend(added);
+
+    for (i, a) in found_albums.into_iter().enumerate() {
+        let Some(a) = a else { continue };
+        let by_hand = i < by_hand_albums;
+        if !by_hand && !credits_me(a.artist.iter().chain(&a.contributors).collect()) {
+            continue;
+        }
+        let a = album_info(a, Some(me));
+        if releases.iter().any(|x| x.id == a.id || (!by_hand && key(&x.title) == key(&a.title))) {
+            continue;
+        }
+        namesakes.retain(|x| x.id != a.id);
+        releases.push(a);
+    }
+    sort_newest_first(releases);
 }
 
 /// Deezer sometimes files many different artists who share a name (there are dozens
@@ -1624,5 +1706,45 @@ mod matching_tests {
         let ids: Vec<&str> = out.iter().map(|t| t.id.as_str()).collect();
         assert_eq!(ids[0], "dz:3");
         assert!(!ids.contains(&"dz:1") && !ids.contains(&"dz:2"));
+    }
+}
+
+#[cfg(test)]
+mod artist_fix_tests {
+    use super::*;
+    use crate::account::{ArtistExtra, ExtraTrack};
+
+    fn song(id: &str, title: &str) -> Track {
+        Track { id: id.into(), title: title.into(), ..Default::default() }
+    }
+    fn release(id: &str, title: &str) -> AlbumInfo {
+        AlbumInfo { id: id.into(), title: title.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn hidden_by_hand_goes() {
+        let me = ArtistRef { id: "1".into(), name: "che".into(), picture: None };
+        let extra = ArtistExtra { hide: vec!["track:5".into(), "album:6".into()], ..Default::default() };
+        let (mut top, mut rel, mut other) = (vec![song("dz:5", "Matches"), song("dz:7", "Gourmet")], vec![release("6", "RichPhonks"), release("8", "KickAss")], vec![release("6", "RichPhonks")]);
+        fix_artist_page(&me, &extra, &mut top, &mut rel, &mut other);
+        assert_eq!(top.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["dz:7"]);
+        assert_eq!(rel.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["8"]);
+        assert!(other.is_empty());
+    }
+
+    #[test]
+    fn tidal_songs_skip_a_pile_of_namesakes_and_songs_already_shown() {
+        let me = ArtistRef { id: "1".into(), name: "Che".into(), picture: None };
+        // Already on the page (the title matches, feat. or not): nothing to look up, so no
+        // network call is made here.
+        let extra = ArtistExtra { tracks: vec![ExtraTrack { isrc: "USAAA2600001".into(), title: "Matches (feat. Tezzus)".into() }], ..Default::default() };
+        let (mut top, mut rel, mut other) = (vec![song("dz:5", "Matches")], vec![], vec![]);
+        fix_artist_page(&me, &extra, &mut top, &mut rel, &mut other);
+        assert_eq!(top.len(), 1);
+        // A pile of namesakes: TIDAL's songs aren't added, so nothing is looked up either.
+        let extra = ArtistExtra { tracks: vec![ExtraTrack { isrc: "USAAA2600002".into(), title: "Gourmet".into() }], ..Default::default() };
+        let (mut top, mut rel, mut other) = (vec![song("dz:5", "Matches")], vec![], vec![release("9", "Polka")]);
+        fix_artist_page(&me, &extra, &mut top, &mut rel, &mut other);
+        assert_eq!(top.len(), 1);
     }
 }

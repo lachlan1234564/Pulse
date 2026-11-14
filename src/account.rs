@@ -210,6 +210,52 @@ pub fn song_fixes(ids: &[String]) -> Result<std::collections::HashMap<String, cr
     parse(v.get("fixes").cloned().unwrap_or(Value::Null))
 }
 
+/// What Pulse's server knows about an artist page Deezer gets wrong: songs and releases
+/// added or hidden by hand ("track:<Deezer number>", "album:<Deezer number>"), and the same
+/// artist's songs (ISRC) and releases (UPC) on TIDAL. See server/README.md.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct ArtistExtra {
+    pub add: Vec<String>,
+    pub hide: Vec<String>,
+    pub tracks: Vec<ExtraTrack>,
+    pub albums: Vec<ExtraAlbum>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct ExtraTrack {
+    pub isrc: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct ExtraAlbum {
+    pub upc: String,
+    pub title: String,
+}
+
+/// `titles`: the songs and releases Deezer shows on the page, so the server can tell which
+/// artist of that name on TIDAL is this one.
+pub fn artist_extra(artist_id: &str, name: &str, titles: &[String]) -> Result<ArtistExtra, String> {
+    if cfg!(test) {
+        return Ok(ArtistExtra::default());
+    }
+    let mut t = String::new();
+    for title in titles.iter().map(|s| s.replace('|', " ")) {
+        if t.len() + title.len() > 1500 {
+            break;
+        }
+        if !t.is_empty() {
+            t.push('|');
+        }
+        t.push_str(&title);
+    }
+    let path = format!("/artist-extra?artist={}&name={}&t={}", crate::net::encode(artist_id), crate::net::encode(name), crate::net::encode(&t));
+    parse(call("GET", &path, None, false)?)
+}
+
 fn parse<T: for<'de> Deserialize<'de>>(v: Value) -> Result<T, String> {
     serde_json::from_value(v).map_err(|_| "The accounts server sent something Pulse couldn't read.".to_string())
 }
