@@ -418,6 +418,8 @@ pub struct Saved {
     pub artists_picked: bool,
     /// The first-launch intro played; later launches say "Welcome back".
     pub intro_seen: bool,
+    /// First-time setup was finished (or wasn't needed: Pulse was in use before it existed).
+    pub setup_done: bool,
     /// Artist pages found by name for songs that didn't know them (name → Deezer artist id).
     pub artist_ids: HashMap<String, String>,
     /// What you searched for lately, newest first.
@@ -471,6 +473,7 @@ impl Default for Saved {
             followed_artists: vec![],
             artists_picked: false,
             intro_seen: false,
+            setup_done: false,
             artist_ids: HashMap::new(),
             recent_searches: vec![],
             last_queue: vec![],
@@ -906,6 +909,8 @@ pub struct App {
     pub intro: Option<crate::ui::intro::Intro>,
     /// "Pick artists you like", while it's open.
     pub picker: Option<crate::ui::pick_artists::Picker>,
+    /// First-time setup, while it's open (the first time Pulse opens on a computer).
+    pub setup: Option<crate::ui::setup::Setup>,
 
     // YouTube view counts
     views_queue: std::collections::VecDeque<Track>,
@@ -1065,6 +1070,7 @@ impl App {
             genre_rx: None,
             intro: None,
             picker: None,
+            setup: None,
             genre_failed: HashSet::new(),
             startup_note: None,
             genre_pending: HashSet::new(),
@@ -1112,8 +1118,20 @@ impl App {
         }
         app.apply_theme(&cc.egui_ctx);
         app.startup_note = load_note;
+        // The first time Pulse opens on a computer: first-time setup, then the intro.
+        // Anyone who used Pulse before setup existed doesn't get it.
+        let fresh = !app.saved.intro_seen && app.saved.profile.created == 0 && app.saved.followed_artists.is_empty();
+        if !app.saved.setup_done && fresh {
+            app.setup = Some(crate::ui::setup::Setup::new());
+            // Setup covers the account and "Pick artists you like" windows.
+            app.saved.account_asked = true;
+            app.saved.artists_picked = true;
+            app.saved.profile.skipped = true;
+        } else {
+            app.saved.setup_done = true;
+        }
         // The intro every time Pulse opens, followed by "Welcome back" after the first time.
-        {
+        if app.setup.is_none() {
             let name = match crate::account::session() {
                 Some(s) => format!("@{}", s.username),
                 None => app.saved.profile.name.trim().to_string(),
@@ -1127,7 +1145,9 @@ impl App {
         }
         // The first time Pulse opens (and once after updating): offer an account. The local
         // profile window comes after, if you choose "Not now".
-        if crate::account::available() && crate::account::session().is_none() && !app.saved.account_asked {
+        if app.setup.is_some() {
+            // First-time setup asks about the account itself.
+        } else if crate::account::available() && crate::account::session().is_none() && !app.saved.account_asked {
             app.saved.account_asked = true;
             let mut d = AccountDialog::new(AccountMode::SignUp);
             d.welcome = true;
@@ -2606,7 +2626,10 @@ impl App {
                     }
                 })
             };
-            let r = crate::import::run(&url, &p, &c);
+            // A failure inside the import ends it with a message instead of leaving it
+            // stuck partway forever.
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::import::run(&url, &p, &c)))
+                .unwrap_or_else(|_| Err("The import hit a problem partway through. Please try again; if it keeps happening, send a bug report.".into()));
             let _ = tx.send(r);
             c.store(true, std::sync::atomic::Ordering::Relaxed);
             let _ = ticker.join();
@@ -2626,8 +2649,10 @@ impl App {
         let Some(job) = &self.import_running else {
             return;
         };
-        let Ok(result) = job.rx.try_recv() else {
-            return;
+        let result = match job.rx.try_recv() {
+            Ok(r) => r,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Err("The import stopped unexpectedly. Please try again.".into()),
         };
         self.import_running = None;
         match result {
@@ -2836,7 +2861,7 @@ impl App {
         }
     }
 
-    fn account_done(&mut self, done: AccountDone, ctx: &egui::Context) {
+    pub(crate) fn account_done(&mut self, done: AccountDone, ctx: &egui::Context) {
         use crate::i18n::tr;
         match done {
             AccountDone::Checked(s) => {
