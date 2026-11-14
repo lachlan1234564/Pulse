@@ -188,7 +188,11 @@ html[data-theme="light"] #browse::before { background: radial-gradient(55% 60% a
 /* ---------- 05 Made for you: Orbits ---------- */
 .orbit { position: relative; aspect-ratio: 1; width: min(100%, 500px); margin-inline: auto; }
 .orbit svg { width: 100%; height: 100%; overflow: visible; }
-.orbit .ring { fill: none; stroke: var(--border); stroke-width: 1; }
+.orbit svg { shape-rendering: geometricPrecision; }
+/* Strokes stay exactly 1 screen pixel at any size, so the rings and dots stay sharp
+   (a 1-unit line in a 500-unit drawing shown at 400px would be a fuzzy 0.8px). */
+.orbit .ring, .orbit .dot, .orbit .core { vector-effect: non-scaling-stroke; }
+.orbit .ring { fill: none; stroke: color-mix(in srgb, var(--text) 16%, transparent); stroke-width: 1; }
 .orbit .spin { transform-origin: 250px 250px; transform-box: view-box; }
 /* Like real orbits: everything goes the same way, and the closer in, the faster. They run
    even with reduced motion turned on (slow, small and not a flash), just at half speed. */
@@ -198,7 +202,8 @@ html[data-theme="light"] #browse::before { background: radial-gradient(55% 60% a
 .orbit.on .spin { animation-play-state: running; }
 @keyframes orbit { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .orbit .spin { animation-duration: 52s; } .orbit .spin.b { animation-duration: 96s; } .orbit .spin.c { animation-duration: 164s; } }
-.orbit .dot { fill: var(--surface-2); stroke: var(--border); }
+.orbit .dot { fill: #3a3a45; stroke: none; }
+html[data-theme="light"] .orbit .dot { fill: #d4d4dc; }
 .orbit .dot.hot { fill: var(--text); stroke: none; }
 .orbit .core { fill: var(--surface-2); stroke: var(--border); }
 .orbit .core-bars { fill: var(--text); }
