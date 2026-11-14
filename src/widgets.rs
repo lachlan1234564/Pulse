@@ -468,6 +468,10 @@ pub fn artist_monogram(ui: &Ui, rect: Rect, name: &str, radius: CornerRadius) {
 pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
     let h = w + 66.0;
     let (rect, resp) = ui.allocate_exact_size(vec2(w, h), Sense::click());
+    // The same album can be on screen twice (Jump back in and Recents, say). Mixing in
+    // where this card sits keeps each copy's hover and play button its own: with one id
+    // the second copy, not hovered, cancelled the first one's hover every frame.
+    let id = ui.id().with(info.id);
     a11y(ui, &resp, WidgetType::Button, || format!("{}, {}", info.title, info.subtitle));
     // Also counts as hovered while the pointer is on the play button: that button sits on
     // top of the card, so egui gives it the hover and `resp.hovered()` turns false. Going by
@@ -507,19 +511,19 @@ pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
     // Floating play button appears on hover.
     let mut out = if resp.clicked() {
         CardClick::Open
-    } else if hover_intent(ui, info.id, hovered) {
+    } else if hover_intent(ui, id, hovered) {
         CardClick::Preview
     } else {
         CardClick::None
     };
-    let t = ui.ctx().animate_bool(info.id.with("hover"), hovered);
+    let t = ui.ctx().animate_bool(id.with("hover"), hovered);
     if t > 0.0 && !info.round {
         let c = pos2(art_rect.right() - 26.0, art_rect.bottom() - 26.0 + (1.0 - t) * 8.0);
         let btn = Rect::from_center_size(c, Vec2::splat(42.0));
-        let b = ui.interact(btn, info.id.with("play"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+        let b = ui.interact(btn, id.with("play"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
         a11y(ui, &b, WidgetType::Button, || format!("Play {}", info.title));
         // Pointing at it: it grows a little and its glow gets stronger.
-        let over = ui.ctx().animate_bool_with_time(info.id.with("play_hover"), b.hovered(), crate::theme::motion(0.12));
+        let over = ui.ctx().animate_bool_with_time(id.with("play_hover"), b.hovered(), crate::theme::motion(0.12));
         let r = 21.0 * (1.0 + 0.06 * over);
         let pb = &parts().play_button;
         let fill = pb.fill.unwrap_or(pal().accent);
