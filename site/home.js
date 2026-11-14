@@ -1,4 +1,4 @@
-// The home page's moving parts: the hero light that follows the cursor, magnetic buttons,
+// The home page's moving parts: magnetic buttons,
 // the screenshot that settles as you scroll, the Browse tabs, the Orbits picture, and the
 // player and equalizer demos (which really play and shape the demo track, in the browser).
 // Nothing here is needed to read the page or download Pulse.
@@ -8,25 +8,6 @@
   var fine = matchMedia("(hover: hover) and (pointer: fine)").matches;
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
-
-  // ------------------------------------------------------------------ hero light
-  var hero = $(".hero");
-  if (hero && fine && !still) {
-    var hx = 0.7, hy = 0.4, tx = hx, ty = hy, raf = 0;
-    var step = function () {
-      hx += (tx - hx) * 0.08;
-      hy += (ty - hy) * 0.08;
-      hero.style.setProperty("--mx", hx.toFixed(4));
-      hero.style.setProperty("--my", hy.toFixed(4));
-      raf = Math.abs(tx - hx) + Math.abs(ty - hy) > 0.001 ? requestAnimationFrame(step) : 0;
-    };
-    hero.addEventListener("pointermove", function (e) {
-      var r = hero.getBoundingClientRect();
-      tx = (e.clientX - r.left) / r.width;
-      ty = (e.clientY - r.top) / r.height;
-      if (!raf) raf = requestAnimationFrame(step);
-    }, { passive: true });
-  }
 
   // ------------------------------------------------------------------ magnetic buttons
   if (fine && !still) {

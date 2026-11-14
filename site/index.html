@@ -25,7 +25,6 @@
 <meta name="twitter:image" content="https://listen2pulse.github.io/img/social-2.png">
 <meta property="og:image:alt" content="Pulse: Your music, without the weight. A fast, native music player for Windows, written in Rust.">
 <link rel="preload" href="fonts/bricolage.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" as="image" type="image/webp" href="img/headphones.webp" fetchpriority="high">
 <style>
 @font-face { font-family: "Bricolage"; src: url("fonts/bricolage.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
 @font-face { font-family: "Inter"; src: url("fonts/inter.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
@@ -67,7 +66,7 @@ a:focus-visible, .btn:focus-visible, button:focus-visible, input:focus-visible, 
 /* ---------- Type ---------- */
 h1, h2, h3 { font-family: var(--display); font-weight: 650; }
 h2 { font-size: clamp(2.3rem, 4.8vw, 4.1rem); line-height: 1; letter-spacing: -.04em; margin: 0 0 1.2rem; text-wrap: balance; }
-h2 em { font-style: normal; color: var(--accent-soft); }
+h2 em { font-style: normal; }
 .label { display: flex; align-items: center; gap: .75rem; margin: 0 0 1.4rem; color: var(--muted); font-size: .78rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
 .label b { color: var(--accent-soft); font-weight: 700; font-variant-numeric: tabular-nums; }
 .label::after { content: ""; flex: 0 1 4rem; height: 1px; background: var(--border); }
@@ -79,8 +78,8 @@ h2 em { font-style: normal; color: var(--accent-soft); }
   transition: transform .5s var(--ease-out), box-shadow .35s var(--ease), background-color .25s ease, border-color .25s ease, color .25s ease; }
 .btn svg { transition: transform .35s var(--ease); }
 .btn:active { transform: scale(.97); transition-duration: .08s; }
-.btn-primary { background: var(--accent); border-color: rgba(255, 255, 255, .16); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 12px 34px -10px rgba(124, 58, 237, .7); }
-.btn-primary:hover { background: #8b5cf6; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 18px 44px -12px rgba(124, 58, 237, .9); }
+.btn-primary { background: var(--accent); border-color: rgba(255, 255, 255, .16); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 1px 2px rgba(0, 0, 0, .25); }
+.btn-primary:hover { background: #8b5cf6; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 6px rgba(0, 0, 0, .25); }
 .btn-primary:hover svg { transform: translateY(2px); }
 .btn-primary::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .28) 50%, transparent 65%); transform: translateX(-120%); transition: transform .8s var(--ease); }
 .btn-primary:hover::after { transform: translateX(120%); }
@@ -90,51 +89,37 @@ h2 em { font-style: normal; color: var(--accent-soft); }
 @media (prefers-reduced-motion: reduce) { .btn, .btn svg, .btn-primary::after { transition: none; } }
 
 /* ---------- Hero ---------- */
-.hero { --mx: .7; --my: .4; position: relative; display: grid; align-items: center; min-height: min(100svh, 1000px); padding: 7.5rem 0 3rem; overflow: clip; }
-/* Light that drifts with the cursor (home.js sets --mx and --my). */
-.hero::before { content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(42rem 34rem at calc(var(--mx) * 100%) calc(var(--my) * 100%), var(--glow), transparent 70%),
-              radial-gradient(60rem 30rem at 50% 120%, rgba(124, 58, 237, .12), transparent 70%); transition: background-position .2s; }
-.hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: linear-gradient(transparent, var(--bg)); pointer-events: none; }
-.hero-grid { position: relative; z-index: 1; display: grid; gap: 1rem; }
+.hero { position: relative; padding: 9rem 0 3rem; overflow: clip; }
 .hero-copy { position: relative; z-index: 2; max-width: 42rem; }
 .eyebrow { display: inline-flex; align-items: center; gap: .6rem; margin: 0 0 1.6rem; padding: .4rem .85rem .4rem .5rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: .85rem; font-weight: 500; background: color-mix(in srgb, var(--bg) 70%, transparent); }
 .eyebrow i { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; padding: 0 .35rem; }
 .eyebrow i b { width: 2.5px; border-radius: 2px; background: var(--accent-soft); height: 50%; }
 .eyebrow i b:nth-child(2) { height: 100%; } .eyebrow i b:nth-child(3) { height: 70%; } .eyebrow i b:nth-child(4) { height: 35%; }
 h1 { font-size: clamp(3.2rem, 8.2vw, 7.4rem); line-height: .92; letter-spacing: -.055em; margin: 0 0 1.6rem; font-weight: 700; }
-h1 .h-line { display: block; overflow: hidden; padding: .04em 0 .2em; margin: -.04em 0 -.2em; }
-h1 .h-line > span { display: inline-block; }
-h1 .h-line:last-child > span { color: transparent; background: linear-gradient(95deg, #ddd6fe, var(--accent-soft) 45%, #8b5cf6); -webkit-background-clip: text; background-clip: text; }
 .hero .lede-x { font-size: clamp(1.08rem, 1.5vw, 1.28rem); max-width: 31rem; color: var(--muted); }
 .cta { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; }
 .meta { margin: 1.4rem 0 0; color: var(--faint); font-size: .88rem; }
 .meta span + span::before { content: "·"; margin: 0 .55rem; }
 @media (prefers-reduced-motion: no-preference) {
-  h1 .h-line > span, .hero .rise { animation: rise 1.1s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 90ms + 120ms); }
-  html[data-intro="intro"] h1 .h-line > span, html[data-intro="intro"] .hero .rise { animation-play-state: paused; }
-  @keyframes rise { from { transform: translateY(105%); opacity: 0; } }
+  .hero .rise { animation: rise 1.1s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 90ms + 120ms); }
+  html[data-intro="intro"] .hero .rise { animation-play-state: paused; }
   .hero .rise { animation-name: fade-up; }
   @keyframes fade-up { from { transform: translateY(16px); opacity: 0; } }
 }
 
-/* The headphones: a still picture first, then the 3D ones fade in over it. */
-.stage { position: relative; width: min(100%, 560px); aspect-ratio: 1; margin: -1rem auto 0; }
-.stage::before { content: ""; position: absolute; inset: 14% 10% 16%; border-radius: 50%; background: radial-gradient(closest-side, rgba(139, 92, 246, .3), rgba(99, 102, 241, .08) 60%, transparent); filter: blur(10px); pointer-events: none; }
-.stage img, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity 1s ease; }
-.stage img { object-fit: contain; pointer-events: none; }
-.stage canvas { opacity: 0; touch-action: pan-y; cursor: grab; }
-.stage canvas.grabbing { cursor: grabbing; }
-.stage canvas.ready { opacity: 1; }
-.stage canvas.ready ~ img { opacity: 0; }
-.stage-hint { position: absolute; z-index: 2; left: 0; right: 0; bottom: 7%; margin: 0; text-align: center; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); opacity: 0; transition: opacity 1s ease .8s; pointer-events: none; }
-.stage canvas.ready ~ .stage-hint { opacity: 1; }
-@media (min-width: 1000px) {
-  .hero-grid { min-height: 34rem; align-items: center; }
-  .stage { position: absolute; z-index: 1; top: 0; bottom: 0; right: max(-6vw, calc((100vw - var(--wrap)) / -2 - 4vw)); width: min(52vw, 760px, 86svh); height: min(52vw, 760px, 86svh); margin: auto 0; aspect-ratio: auto; }
+/* Hero: a short tagline on the left, the pitch on the right, the real app underneath. */
+.hero-ed { display: grid; gap: 1.5rem; }
+.hero-tag { margin: 0; color: var(--muted); font-size: .95rem; line-height: 1.6; }
+.hero h1 { font-size: clamp(2.5rem, 5.4vw, 4.6rem); line-height: 1.02; letter-spacing: -.035em; margin: 0 0 1.4rem; text-wrap: balance; }
+.hero-link { color: var(--text); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--border); }
+.hero-link:hover { text-decoration-color: currentColor; }
+.hero .cta { align-items: center; gap: 1.6rem; }
+.hero-shot { margin-top: clamp(3rem, 6vw, 5rem); }
+.hero-shot .screen { transform: none; border-radius: 14px; overflow: hidden; }
+@media (min-width: 960px) {
+  .hero-ed { grid-template-columns: 1fr 2fr; gap: 3rem; align-items: end; }
+  .hero-tag { padding-bottom: .4rem; }
 }
-@media (prefers-reduced-motion: reduce) { .stage img, .stage canvas, .stage-hint { transition: none; } }
-
 /* At a glance: one quiet line of facts under the hero */
 .facts { position: relative; z-index: 1; margin-top: clamp(2rem, 5vw, 4rem); border-top: 1px solid var(--line); }
 .facts ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); list-style: none; margin: 0; padding: 0; }
@@ -222,7 +207,6 @@ html[data-theme="light"] .pd-app { --bg: #fafafc; --side: #f3f3f7; --player: #f3
 /* ---------- 03 Discover: a big screenshot that settles as you scroll ---------- */
 .discover-head { display: grid; gap: 2rem; margin-bottom: clamp(3rem, 6vw, 5rem); }
 @media (min-width: 980px) { .discover-head { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); align-items: end; } }
-.showcase { --p: 1; perspective: 1600px; }
 .screen { transform: rotateX(calc((1 - var(--p)) * 16deg)) scale(calc(.92 + var(--p) * .08)); transform-origin: 50% 0; box-shadow: 0 60px 140px -40px rgba(0, 0, 0, .85), 0 0 0 1px rgba(255, 255, 255, .03); will-change: transform; }
 .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255, 255, 255, calc((1 - var(--p)) * .06)), transparent 40%); }
 .screen { position: relative; }
@@ -349,8 +333,6 @@ footer a:hover { text-decoration: underline; }
 /* ---------- Light theme ---------- */
 html[data-theme="light"] .pd, html[data-theme="light"] .eq { box-shadow: 0 40px 100px -40px rgba(30, 20, 60, .25); }
 html[data-theme="light"] .screen { box-shadow: 0 50px 120px -40px rgba(30, 20, 60, .3); }
-html[data-theme="light"] h1 .h-line, html[data-theme="light"] h1 .h-line > span { background: none; }
-html[data-theme="light"] h1 .h-line:last-child > span { background-image: linear-gradient(95deg, #5b21b6, #7c3aed 50%, #9333ea); -webkit-background-clip: text; background-clip: text; color: transparent; }
 html[data-theme="light"] .download .box { background: radial-gradient(80% 120% at 100% 0%, rgba(124, 58, 237, .14), transparent 60%), var(--surface); }
 html[data-theme="light"] .tabs .tab-pill { box-shadow: 0 1px 3px rgba(20, 20, 40, .12); background: var(--surface); }
 html[data-theme="light"] .vs-line.them i { background: #c2c2cc; }
@@ -590,9 +572,9 @@ html[data-intro="intro"] body { overflow: hidden; }
 #intro.playing .intro-enter, #intro.playing .intro-skip, #intro.playing .intro-name { opacity: 0; transition: opacity .25s; pointer-events: none; }
 .intro-wall { position: fixed; z-index: 1001; background: linear-gradient(135deg, #a78bfa, #7c3aed 55%, #5b21b6); pointer-events: none; }
 /* The top of the page eases in once the intro is done. */
-.hero-grid > * { transition: opacity .8s ease, transform 1s cubic-bezier(.2, .8, .2, 1); }
-.hero-grid > :nth-child(2) { transition-delay: .15s; }
-html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px); }
+.hero-ed > * { transition: opacity .8s ease, transform 1s cubic-bezier(.2, .8, .2, 1); }
+.hero-ed > :nth-child(2) { transition-delay: .15s; }
+html[data-intro="intro"] .hero-ed > * { opacity: 0; transform: translateY(18px); }
 .welcome { position: fixed; left: 50%; top: 50%; z-index: 1000; display: flex; align-items: center; gap: .8rem; padding: 1rem 1.6rem; border-radius: 16px; border: 1px solid rgba(255, 255, 255, .1); background: rgba(22, 22, 27, .62); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: #fff; font-size: 1.2rem; font-weight: 700; box-shadow: 0 20px 60px rgba(0, 0, 0, .4); opacity: 0; transform: translate(-50%, -50%) scale(.96); transition: opacity .35s ease, transform .45s cubic-bezier(.2, .8, .2, 1); cursor: pointer; }
 .welcome.shown { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 .welcome-bars { display: flex; align-items: center; gap: 3px; height: 22px; }
@@ -635,26 +617,33 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
 <main id="main">
   <section class="hero" id="top" aria-labelledby="hero-title">
     <div class="wrap">
-      <div class="hero-grid">
+      <div class="hero-ed">
+        <p class="hero-tag rise" style="--i:0">Free and open source.<br>Windows 10 and 11.<br>Written in Rust.</p>
         <div class="hero-copy">
-          <p class="eyebrow rise" style="--i:0"><i aria-hidden="true"><b></b><b></b><b></b><b></b></i>Made for gaming PCs · Free and open source · Windows 10 and 11</p>
-          <h1 id="hero-title"><span class="h-line"><span style="--i:1">Your music,</span></span><span class="h-line"><span style="--i:2">without the</span></span><span class="h-line"><span style="--i:3">weight.</span></span></h1>
-          <p class="lede-x rise" style="--i:5">A native music player made to run next to your games. Full songs, no ads, no account needed.</p>
-          <div class="cta rise" style="--i:6">
-            <a class="btn btn-primary btn-lg js-download" href="download/" data-magnetic>
+          <h1 id="hero-title" class="rise" style="--i:1">A music player that leaves your games alone.</h1>
+          <p class="lede-x rise" style="--i:2">Full songs, no ads, and you don't need an account. Pulse uses around 150 MB of memory while it plays, and about 90 MB with Gaming mode on.</p>
+          <div class="cta rise" style="--i:3">
+            <a class="btn btn-primary btn-lg js-download" href="download/">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
               Download for Windows
             </a>
-            <a class="btn btn-ghost btn-lg" href="#listen" data-magnetic>See it play</a>
+            <a class="hero-link" href="#listen">Try it in your browser</a>
           </div>
-          <p class="meta rise" style="--i:7"><span>Version <span class="js-version">1.2.0</span></span><span>about 10 MB</span><span>no administrator password</span></p>
-        </div>
-        <div class="stage">
-          <canvas id="phones" aria-hidden="true"></canvas>
-          <img src="img/headphones.webp" width="900" height="900" fetchpriority="high" decoding="async" alt="A pair of black over-ear headphones lit in purple.">
-          <p class="stage-hint" aria-hidden="true">Move your cursor · drag to turn</p>
+          <p class="meta rise" style="--i:4"><span>Version <span class="js-version">1.2.0</span></span><span>about 10 MB</span><span>no administrator password</span></p>
         </div>
       </div>
+    </div>
+    <div class="wrap-wide hero-shot rise" style="--i:5">
+      <figure class="shot screen demo-video">
+        <video id="search-demo" src="media/search-demo.mp4" poster="media/search-demo.jpg" width="1280" height="688" muted loop playsinline preload="metadata" aria-label="Screen recording: searching for an artist in Pulse, opening their page and playing a song"></video>
+        <button class="launch-sound" id="search-sound" type="button" aria-pressed="false" aria-label="Turn sound on">
+          <svg class="i-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6"/></svg>
+          <svg class="i-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+        </button>
+      </figure>
+      <p class="caption"><span>Pulse on Windows: searching for an artist and playing a song.</span><span>Music: "back2back" (prod. jissa). Press the speaker for sound.</span></p>
+    </div>
+    <div class="wrap">
       <div class="facts" aria-label="At a glance">
         <ul>
           <li><strong>~10 MB</strong><span>installer</span></li>
@@ -671,10 +660,9 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
   <section id="listen" aria-labelledby="listen-title">
     <div class="wrap split wide">
       <div>
-        <p class="label" data-reveal><b>01</b>Listen</p>
-        <h2 id="listen-title" data-reveal>Press play. Hear the <em>whole</em> song.</h2>
+        <h2 id="listen-title" data-reveal>Every song plays all the way through.</h2>
         <p class="lede-x" data-reveal>Search any artist and every song plays from start to finish: no previews, no ads between tracks. When your queue runs out, Autoplay keeps going with music like it.</p>
-        <p class="note" data-reveal>The player here is a copy of Pulse's look, built into this website so you can try it. It really plays: the beat from Pulse's launch video, in your browser. The real Pulse is a Windows app.</p>
+        <p class="note" data-reveal>This is a working copy of Pulse built into the page, so you can try it here.</p>
       </div>
       <figure class="pd" id="pd" aria-label="Website demo of a music player" data-reveal>
         <figcaption class="pd-tag"><span>Website demo · a copy of Pulse's look</span><span>Plays in your browser</span></figcaption>
@@ -730,10 +718,9 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
   <section id="performance" class="rule" aria-labelledby="perf-title">
     <div class="wrap perf-grid">
       <div>
-        <p class="label" data-reveal><b>02</b>Performance</p>
-        <h2 id="perf-title" data-reveal>Built to run <em>next to your game</em>.</h2>
-        <p class="lede-x" data-reveal>Most music apps are a web browser in disguise, and they take memory and CPU your game could use. Pulse is native, and Gaming mode switches off its extras while you play: the music stays the same, your frames stay yours.</p>
-        <p class="note" data-reveal>Rough estimates from the developer's PC while playing music. Your numbers will depend on your PC.</p>
+        <h2 id="perf-title" data-reveal>Light enough to leave open while you play.</h2>
+        <p class="lede-x" data-reveal>Most music apps are a web browser in disguise, and they take memory and CPU your game could use. Pulse is a native app, and Gaming mode turns off its extras while you play. The music sounds the same.</p>
+        <p class="note" data-reveal>Rough numbers from my own PC while playing music. Yours will differ.</p>
       </div>
       <div class="vs" data-reveal>
         <div class="vs-row">
@@ -758,8 +745,7 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
   <section id="features" class="rule" aria-labelledby="discover-title">
     <div class="wrap discover-head">
       <div>
-        <p class="label" data-reveal><b>03</b>Discover</p>
-        <h2 id="discover-title" data-reveal>Any song.<br>Any artist.</h2>
+        <h2 id="discover-title" data-reveal>Search for any artist.</h2>
       </div>
       <div>
         <p class="lede-x" data-reveal>Search as you type, browse the charts in 27 genres, and open any artist or album. Artist pages show their latest release, their most-played songs, and who their fans also listen to.</p>
@@ -770,24 +756,13 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
         </ul>
       </div>
     </div>
-    <div class="wrap-wide showcase" id="showcase">
-      <figure class="shot screen demo-video">
-        <video id="search-demo" src="media/search-demo.mp4" poster="media/search-demo.jpg" width="1280" height="688" muted loop playsinline preload="metadata" aria-label="Screen recording: searching for an artist in Pulse, opening their page and playing a song"></video>
-        <button class="launch-sound" id="search-sound" type="button" aria-pressed="false" aria-label="Turn sound on">
-          <svg class="i-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6"/></svg>
-          <svg class="i-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-        </button>
-      </figure>
-      <p class="caption"><span>Searching for an artist in Pulse, recorded on Windows.</span><span>Music: "back2back" (prod. jissa). Press the speaker for sound.</span></p>
-    </div>
   </section>
 
   <section id="browse" class="rule" aria-labelledby="browse-title">
     <div class="wrap">
       <div class="discover-head" style="margin-bottom: 2.4rem">
         <div>
-          <p class="label" data-reveal><b>04</b>Browse</p>
-          <h2 id="browse-title" data-reveal>Albums, artists and playlists, all in one place.</h2>
+          <h2 id="browse-title" data-reveal>Albums, artists and playlists.</h2>
         </div>
         <p class="lede-x" data-reveal>Cover art everywhere, round artist portraits, and playlists for every mood. Click a song's title to jump to its album, or right-click it to like it, share it, or see who made it.</p>
       </div>
@@ -819,8 +794,7 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
   <section id="orbits" class="rule" aria-labelledby="orbits-title">
     <div class="wrap split flip">
       <div>
-        <p class="label" data-reveal><b>05</b>Made for you</p>
-        <h2 id="orbits-title" data-reveal>Your music, <em>in orbit</em>.</h2>
+        <h2 id="orbits-title" data-reveal>A home page built from what you play.</h2>
         <p class="lede-x" data-reveal>Your home page fills with what you play: quick shortcuts, the albums you keep coming back to, and Orbits, a daily mix built around each of your favorite artists.</p>
         <div class="trio" data-reveal>
           <article>
@@ -858,8 +832,7 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
   <section id="sound" class="rule" aria-labelledby="sound-title">
     <div class="wrap split">
       <div>
-        <p class="label" data-reveal><b>06</b>Sound</p>
-        <h2 id="sound-title" data-reveal>Shape the sound.</h2>
+        <h2 id="sound-title" data-reveal>An equalizer, if you want one.</h2>
         <p class="lede-x" data-reveal>A six-band equalizer with eight presets. Try it here: these sliders shape the demo track on this page with the same bands and presets as Pulse's equalizer.</p>
         <div class="extras" data-reveal>
           <div><b>Crossfade</b><span>Up to 10 seconds between songs</span></div>
@@ -892,13 +865,11 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
   <section id="everywhere" class="rule" aria-labelledby="offline-title">
     <div class="wrap twin">
       <div>
-        <p class="label" data-reveal><b>07</b>Offline and local</p>
         <ul class="formats" aria-label="File types Pulse plays" data-reveal><li>MP3</li><li>FLAC</li><li>WAV</li><li>M4A</li><li>OGG</li></ul>
-        <h2 id="offline-title" data-reveal>No signal? Keep listening.</h2>
+        <h2 id="offline-title" data-reveal>Keeps playing when you're offline.</h2>
         <p class="lede-x" data-reveal>Save songs for when you're offline, and play the music files already in your Music folder, right next to everything you stream.</p>
       </div>
       <div>
-        <p class="label" data-reveal><b>08</b>Made for everyone</p>
         <ul class="a11y" data-reveal>
           <li><b>01</b><span><strong>Full keyboard control</strong>Every button and list works without a mouse.</span></li>
           <li><b>02</b><span><strong>Screen readers</strong>Buttons and songs are named for screen readers.</span></li>
@@ -914,8 +885,7 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
     <div class="wrap">
       <div class="themes-head">
         <div>
-          <p class="label" data-reveal><b>09</b>Themes</p>
-          <h2 id="themes-title" data-reveal>Make it look like yours.</h2>
+          <h2 id="themes-title" data-reveal>Five themes, or make your own.</h2>
         </div>
         <p class="lede-x" data-reveal>Five themes come built in, each with a dark and a light version. Some glow softly in the colors of the song that's playing. Try them below, or make your own with a color file, a little CSS and a layout file. Spicetify color schemes work as they are.</p>
       </div>
@@ -970,8 +940,7 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
     <div class="wrap">
       <div class="box" data-reveal>
         <div>
-          <p class="label"><b>10</b>Download</p>
-          <h2 id="download-title">Ready when you are.</h2>
+          <h2 id="download-title">Get Pulse for Windows.</h2>
         </div>
         <div>
           <p>Download the installer, run it, and press play. It installs just for you, adds Pulse to the Start menu, and uninstalls cleanly from Windows Settings.</p>
@@ -1192,20 +1161,6 @@ html[data-intro="intro"] .hero-grid > * { opacity: 0; transform: translateY(18px
 <script src="ask.js" defer></script>
 <script src="site.js" defer></script>
 <script src="home.js" defer></script>
-<script>
-// 3D headphones: loaded after the page itself; the still picture stays if they can't run.
-(function () {
-  var c = document.getElementById("phones");
-  if (!c || !window.WebGLRenderingContext) return;
-  function go() {
-    import("./headphones.js").then(function (m) {
-      if (m.mount(c)) requestAnimationFrame(function () { requestAnimationFrame(function () { c.classList.add("ready"); }); });
-    }).catch(function () {});
-  }
-  function soon() { (window.requestIdleCallback || setTimeout)(go, { timeout: 1500 }); }
-  if (document.readyState === "complete") soon(); else addEventListener("load", soon);
-})();
-</script>
 <script>
 // The launch video and the search recording: each plays muted when it scrolls into view
 // (not for reduced motion); its button turns sound on.
