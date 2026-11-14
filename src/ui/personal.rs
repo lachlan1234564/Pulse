@@ -192,7 +192,8 @@ fn quick_tile(ui: &mut Ui, w: f32, art: Option<&str>, glyph: &str, title: &str, 
     let (rect, resp) = ui.allocate_exact_size(vec2(w, 56.0), Sense::click());
     a11y(ui, &resp, egui::WidgetType::Button, || title.to_owned());
     focus_ring(ui, &resp);
-    let hovered = resp.hovered();
+    // Pointing at the play button on top still counts (see `widgets::card`).
+    let hovered = resp.hovered() || ui.rect_contains_pointer(rect);
     let fill = if hovered { pal().surface_active } else { pal().surface_hover };
     ui.painter().rect_filled(rect, r_md(), fill);
     let art_rect = Rect::from_min_size(rect.min, Vec2::splat(56.0));

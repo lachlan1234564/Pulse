@@ -469,7 +469,10 @@ pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
     let h = w + 66.0;
     let (rect, resp) = ui.allocate_exact_size(vec2(w, h), Sense::click());
     a11y(ui, &resp, WidgetType::Button, || format!("{}, {}", info.title, info.subtitle));
-    let hovered = resp.hovered();
+    // Also counts as hovered while the pointer is on the play button: that button sits on
+    // top of the card, so egui gives it the hover and `resp.hovered()` turns false. Going by
+    // that alone, the button hid itself as soon as it was pointed at, then came back.
+    let hovered = resp.hovered() || ui.rect_contains_pointer(rect);
     let style = &parts().card;
     let radius = style.radius.map(CornerRadius::same).unwrap_or(r_lg());
     if hovered {
