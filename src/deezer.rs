@@ -257,6 +257,8 @@ struct DzAlbum {
     genre_id: i64,
     /// Every credited artist (only in a release's full details).
     contributors: Vec<DzArtist>,
+    /// Its songs (only in a release's full details).
+    tracks: List<DzTrack>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -1116,14 +1118,23 @@ fn fix_artist_page(me: &ArtistRef, extra: &crate::account::ArtistExtra, top: &mu
     top.extend(added);
 
     for (i, a) in found_albums.into_iter().enumerate() {
-        let Some(a) = a else { continue };
+        let Some(mut a) = a else { continue };
         let by_hand = i < by_hand_albums;
         if !by_hand && !credits_me(a.artist.iter().chain(&a.contributors).collect()) {
             continue;
         }
+        let songs = std::mem::take(&mut a.tracks.data);
+        let compilation = a.record_type.as_deref() == Some("compile");
         let a = album_info(a, Some(me));
         if releases.iter().any(|x| x.id == a.id || (!by_hand && key(&x.title) == key(&a.title))) {
             continue;
+        }
+        // Its songs can be among the most popular ("Matches" on "RichPhønks"): they compete
+        // for the Popular list by Deezer's popularity score. Not a compilation's.
+        if !compilation {
+            let mut new: Vec<Track> = songs.into_iter().map(|t| track(t, Some(&a))).filter(|t| !top.iter().any(|x| x.id == t.id || key(&x.title) == key(&t.title))).collect();
+            crate::fixes::apply(&mut new);
+            top.extend(new);
         }
         namesakes.retain(|x| x.id != a.id);
         releases.push(a);
