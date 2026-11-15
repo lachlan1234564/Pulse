@@ -50,6 +50,13 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
+# Test builds on GitHub (any branch but main): the work is split across all CPU cores and
+# the whole-program pass is skipped, so it builds much faster. Not for releases.
+[profile.fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+
 # Make debug builds play audio smoothly (decoding is slow without optimizations)
 [profile.dev.package."*"]
 opt-level = 2

@@ -2,6 +2,14 @@ name: Build Windows app
 
 on:
   push:
+    # Website, docs, Android and server changes don't change the Windows app.
+    paths-ignore:
+      - "site/**"
+      - "docs/**"
+      - "android/**"
+      - "server/**"
+      - "worker/**"
+      - "*.md"
   workflow_dispatch:
     inputs:
       refresh:
@@ -28,8 +36,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
+      # main and releases get the full release build. Other branches (features, tests)
+      # get the "fast" build (see Cargo.toml): about the same app, built in far less time.
+      # It's copied to target\release so the steps below don't need to know.
       - name: Build
-        run: cargo build --release
+        shell: pwsh
+        run: |
+          $full = "${{ github.ref }}" -eq "refs/heads/main" -or "${{ github.event_name }}" -eq "release" -or "${{ inputs.refresh }}" -eq "true"
+          if ($full) {
+            cargo build --release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            Write-Host "Test build: using the fast profile"
+            cargo build --profile fast
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            New-Item -ItemType Directory -Force -Path target\release | Out-Null
+            Copy-Item target\fast\pulse.exe target\release\pulse.exe -Force
+          }
 
       # Makes sure the .exe runs on a fresh PC: it must not need the
       # Visual C++ Redistributable (vcruntime140.dll / msvcp140.dll).
