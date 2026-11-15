@@ -51,23 +51,32 @@ jobs:
           $default = [System.Drawing.SystemIcons]::Application
           if ($icon.ToBitmap().GetPixel(16, 16) -eq $default.ToBitmap().GetPixel(16, 16)) { Write-Warning "pulse.exe may be missing its icon" }
 
-      # Authenticode signature on pulse.exe, with installer/sign-apollo.ps1.
+      # Authenticode signature on pulse.exe, with installer/Sign-Pulse.ps1 and the
+      # CODESIGN_PFX_BASE64 / CODESIGN_PFX_PASSWORD secrets.
       - name: Code-sign pulse.exe
         shell: pwsh
         env:
           CODESIGN_PFX_BASE64: ${{ secrets.CODESIGN_PFX_BASE64 }}
+          CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
         run: |
-          $dir = "$env:RUNNER_TEMP\codesign"
-          New-Item -ItemType Directory -Force -Path $dir | Out-Null
-          # Same certificate every build when the CODESIGN_PFX_BASE64 secret is set
-          # (the apollo-codesign.pfx made by sign-apollo.ps1, as base64).
-          if ($env:CODESIGN_PFX_BASE64) {
-            [IO.File]::WriteAllBytes("$dir\apollo-codesign.pfx", [Convert]::FromBase64String($env:CODESIGN_PFX_BASE64))
-          } else {
-            Write-Host "::warning::CODESIGN_PFX_BASE64 isn't set: a new certificate is made for this build."
+          if (-not $env:CODESIGN_PFX_BASE64 -or -not $env:CODESIGN_PFX_PASSWORD) {
+            Write-Host "::warning::CODESIGN_PFX_BASE64 / CODESIGN_PFX_PASSWORD aren't set: not code-signed."
+            exit 0
           }
-          New-Item -ItemType Directory -Force -Path target\codesign | Out-Null
-          & installer\sign-apollo.ps1 -ExePath target\release\pulse.exe -CertDir $dir -PublicCerOut target\codesign\pulse-codesign.cer
+          $dir = "$env:RUNNER_TEMP\codesign"
+          New-Item -ItemType Directory -Force -Path $dir, target\codesign | Out-Null
+          [IO.File]::WriteAllBytes("$dir\pulse-codesign.pfx", [Convert]::FromBase64String($env:CODESIGN_PFX_BASE64))
+          $pw = ConvertTo-SecureString $env:CODESIGN_PFX_PASSWORD -AsPlainText -Force
+          # Sign-Pulse.ps1 only accepts a signature this machine trusts, and the certificate
+          # is self-made, so trust it on this build machine (not on users' PCs).
+          $cert = (Get-PfxData -FilePath "$dir\pulse-codesign.pfx" -Password $pw).EndEntityCertificates[0]
+          foreach ($store in "Root", "TrustedPublisher") {
+            $s = [Security.Cryptography.X509Certificates.X509Store]::new($store, "LocalMachine")
+            $s.Open("ReadWrite"); $s.Add($cert); $s.Close()
+          }
+          $exe = "target\\release\\pulse.exe"
+          & installer\Sign-Pulse.ps1 -ExePath $exe -CertDir $dir -PublicCerOut target\codesign\pulse-public.cer -Password $pw
+          if ($LASTEXITCODE) { throw "Code signing failed" }
 
       # Installer (PulseSetup-x.y.z.exe) made with Inno Setup.
       - name: Build installer
@@ -88,18 +97,26 @@ jobs:
         shell: pwsh
         env:
           CODESIGN_PFX_BASE64: ${{ secrets.CODESIGN_PFX_BASE64 }}
+          CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
         run: |
-          $dir = "$env:RUNNER_TEMP\codesign"
-          New-Item -ItemType Directory -Force -Path $dir | Out-Null
-          # Same certificate every build when the CODESIGN_PFX_BASE64 secret is set
-          # (the apollo-codesign.pfx made by sign-apollo.ps1, as base64).
-          if ($env:CODESIGN_PFX_BASE64) {
-            [IO.File]::WriteAllBytes("$dir\apollo-codesign.pfx", [Convert]::FromBase64String($env:CODESIGN_PFX_BASE64))
-          } else {
-            Write-Host "::warning::CODESIGN_PFX_BASE64 isn't set: a new certificate is made for this build."
+          if (-not $env:CODESIGN_PFX_BASE64 -or -not $env:CODESIGN_PFX_PASSWORD) {
+            Write-Host "::warning::CODESIGN_PFX_BASE64 / CODESIGN_PFX_PASSWORD aren't set: not code-signed."
+            exit 0
           }
-          $setup = Get-ChildItem target\installer\PulseSetup-*.exe | Select-Object -First 1
-          & installer\sign-apollo.ps1 -ExePath $setup.FullName -CertDir $dir -PublicCerOut target\codesign\pulse-codesign.cer
+          $dir = "$env:RUNNER_TEMP\codesign"
+          New-Item -ItemType Directory -Force -Path $dir, target\codesign | Out-Null
+          [IO.File]::WriteAllBytes("$dir\pulse-codesign.pfx", [Convert]::FromBase64String($env:CODESIGN_PFX_BASE64))
+          $pw = ConvertTo-SecureString $env:CODESIGN_PFX_PASSWORD -AsPlainText -Force
+          # Sign-Pulse.ps1 only accepts a signature this machine trusts, and the certificate
+          # is self-made, so trust it on this build machine (not on users' PCs).
+          $cert = (Get-PfxData -FilePath "$dir\pulse-codesign.pfx" -Password $pw).EndEntityCertificates[0]
+          foreach ($store in "Root", "TrustedPublisher") {
+            $s = [Security.Cryptography.X509Certificates.X509Store]::new($store, "LocalMachine")
+            $s.Open("ReadWrite"); $s.Add($cert); $s.Close()
+          }
+          $exe = (Get-ChildItem target\\installer\\PulseSetup-*.exe | Select-Object -First 1).FullName
+          & installer\Sign-Pulse.ps1 -ExePath $exe -CertDir $dir -PublicCerOut target\codesign\pulse-public.cer -Password $pw
+          if ($LASTEXITCODE) { throw "Code signing failed" }
 
       # Signs the installer with Pulse's release key, so Pulse can check an update
       # before running it. The key is the PULSE_SIGNING_KEY secret (an Ed25519 key in
@@ -147,7 +164,7 @@ jobs:
           path: |
             target/release/pulse.exe
             target/installer/PulseSetup-*.exe
-            target/codesign/pulse-codesign.cer
+            target/codesign/pulse-public.cer
 
       # When main is built and the version in Cargo.toml (e.g. 0.1.0) has no release yet,
       # publish one (tag v0.1.0) with the installer attached. To ship a new version later,
