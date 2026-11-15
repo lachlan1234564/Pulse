@@ -14,9 +14,12 @@ use std::path::PathBuf;
 const API: &str = "https://lrclib.net/api";
 /// "Not found" is asked again after a week (LRCLIB keeps adding songs).
 const RETRY_MISSING_AFTER: u64 = 7 * 24 * 3600;
-/// Which lookups a saved answer went through. 2 = LRCLIB, then AZLyrics. A "not found"
-/// saved by an older Pulse (LRCLIB only) is looked up again straight away.
-const CACHE_VERSION: u32 = 2;
+/// Which lookups a saved answer went through. A "not found" saved with a lower number
+/// is looked up again straight away.
+/// - none/0: LRCLIB only (1.3.0 and older)
+/// - 2: LRCLIB, then Genius (the 12 Nov Genius builds; Genius was later removed)
+/// - 3: LRCLIB, then AZLyrics
+const CACHE_VERSION: u32 = 3;
 
 /// TEMPORARY: a step-by-step log of each lyrics lookup, to find why the AZLyrics
 /// fallback doesn't show. Written to `<data folder>\logs\lyrics-debug.log`.
@@ -192,15 +195,25 @@ fn plain(text: String) -> Lyrics {
 }
 
 /// The saved answer, unless it's due to be asked again (a "none found" or a
-/// fallback answer older than a week).
+/// fallback answer older than a week, or a "none found" from before AZLyrics).
 fn load(path: &std::path::Path, now: u64) -> Option<Option<Lyrics>> {
-    let saved: Saved = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
-    // A "not found" from before AZLyrics was added never asked AZLyrics: look again.
-    if saved.lyrics.is_none() && saved.v < CACHE_VERSION {
+    let text = std::fs::read_to_string(path).ok()?;
+    let Ok(saved) = serde_json::from_str::<Saved>(&text) else {
+        debug("cache: saved file unreadable, looking up again");
         return None;
-    }
-    let fresh = now.saturating_sub(saved.at) < RETRY_MISSING_AFTER;
-    (fresh || (saved.lyrics.is_some() && !saved.fallback)).then_some(saved.lyrics)
+    };
+    let age = now.saturating_sub(saved.at);
+    let fresh = age < RETRY_MISSING_AFTER;
+    let (keep, why) = match (&saved.lyrics, saved.fallback) {
+        (None, _) if saved.v < CACHE_VERSION => (false, format!("ignored: \"not found\" saved before AZLyrics (version {} < {CACHE_VERSION})", saved.v)),
+        (None, _) if !fresh => (false, "ignored: \"not found\" is over a week old".into()),
+        (None, _) => (true, "accepted: \"not found\" from LRCLIB and AZLyrics, under a week old".into()),
+        (Some(_), true) if !fresh => (false, "ignored: AZLyrics answer over a week old, checking LRCLIB for synced lyrics".into()),
+        (Some(_), true) => (true, "accepted: AZLyrics answer under a week old".into()),
+        (Some(_), false) => (true, "accepted: LRCLIB answer".into()),
+    };
+    debug(&format!("cache: {why} (saved {} h ago)", age / 3600));
+    keep.then_some(saved.lyrics)
 }
 
 fn store(path: &std::path::Path, lyrics: &Option<Lyrics>, fallback: bool) {
@@ -360,6 +373,24 @@ mod tests {
         // A new "not found" (both providers asked) is kept for a week.
         store(&old_miss, &None, false);
         assert_eq!(load(&old_miss, now()), Some(None));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The exact file the 12 Nov Genius build left for "The Lady In Red": version 2,
+    /// meaning LRCLIB and Genius were asked, never AZLyrics. It must be looked up again.
+    #[test]
+    fn a_not_found_from_the_genius_build_is_looked_up_again() {
+        let dir = std::env::temp_dir().join(format!("pulse-lyrics-genius-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let f = dir.join("aaa10478294096de.json");
+        std::fs::write(&f, format!(r#"{{"at":{},"v":2,"lyrics":null}}"#, now() - 2 * 24 * 3600)).unwrap();
+        assert_eq!(load(&f, now()), None);
+        // Once AZLyrics has been asked too, a "not found" is trusted for a week.
+        store(&f, &None, false);
+        assert_eq!(load(&f, now()), Some(None));
+        // And AZLyrics' lyrics, once found, are used.
+        store(&f, &Some(plain("words".into())), true);
+        assert_eq!(load(&f, now()), Some(Some(plain("words".into()))));
         let _ = std::fs::remove_dir_all(dir);
     }
 
