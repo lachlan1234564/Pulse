@@ -202,7 +202,8 @@ On Linux you'll also need the ALSA development headers (`sudo apt install libaso
 | `src/audiocache.rs` | Songs you played, kept on disk so they start instantly next time |
 | `src/artcache.rs` | Covers, kept on disk and let go of in memory when off screen |
 | `src/backup.rs` | Daily backups, the spare copy of your library, and recovering a damaged one |
-| `src/lyrics.rs` | Synced lyrics from LRCLIB |
+| `src/lyrics.rs` | Synced lyrics from LRCLIB, with AZLyrics as a fallback |
+| `src/azlyrics.rs` | Plain lyrics from AZLyrics when LRCLIB has none |
 | `src/discord.rs` | Discord status, through the Discord app on your PC |
 | `src/update.rs` | Update checks; installers are only run if their signature checks out |
 | `src/perf.rs` | Gaming Mode and Ultra-low mode |
@@ -243,6 +244,7 @@ Want to help? Ideas and problem reports are welcome on [Discord](https://discord
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [Deno](https://deno.com): finding and streaming songs from YouTube (downloaded on first use)
 - [Deezer API](https://developers.deezer.com/api): song info, artwork and charts
 - [LRCLIB](https://lrclib.net): synced lyrics
+- [AZLyrics](https://www.azlyrics.com): plain lyrics when LRCLIB has none
 - [Cloudflare Workers](https://workers.cloudflare.com) and D1: the optional accounts server
 - [ureq](https://github.com/algesten/ureq) with [rustls](https://github.com/rustls/rustls): networking
 - [Inno Setup](https://jrsoftware.org/isinfo.php): the installer
@@ -251,7 +253,7 @@ Want to help? Ideas and problem reports are welcome on [Discord](https://discord
 ## About the music
 
 Song info, artwork and charts come from the free [Deezer API](https://developers.deezer.com/api),
-and lyrics from [LRCLIB](https://lrclib.net).
+and lyrics from [LRCLIB](https://lrclib.net) (or [AZLyrics](https://www.azlyrics.com) when LRCLIB has none).
 The audio is streamed from YouTube using yt-dlp. Streaming YouTube outside its own apps may go
 against YouTube's Terms of Service; use Pulse for personal listening and support the artists you
 enjoy. Pulse only plays full songs: if YouTube can't play one, Pulse says so and you can skip to the next.

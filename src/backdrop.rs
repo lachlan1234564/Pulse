@@ -46,7 +46,14 @@ impl Backdrop {
 
     /// Paints the glows over `rect`. `outside` is the color around a rounded panel (its
     /// corners are painted back over), `moving` says whether to animate.
-    pub fn paint(&mut self, ui: &Ui, rect: Rect, radius: CornerRadius, outside: Option<Color32>, moving: bool) {
+    pub fn paint(
+        &mut self,
+        ui: &Ui,
+        rect: Rect,
+        radius: CornerRadius,
+        outside: Option<Color32>,
+        moving: bool,
+    ) {
         if let Some(rx) = &self.rx
             && let Ok((url, c)) = rx.try_recv()
         {
@@ -85,14 +92,19 @@ impl Backdrop {
         let painter = ui.painter().with_clip_rect(rect);
         for (i, (color, home, (sx, sy), r)) in glows.into_iter().enumerate() {
             let phase = i as f32 * 2.1;
-            let c = rect.center() + vec2((home.x + 0.12 * (t * sx + phase).sin()) * w, (home.y + 0.10 * (t * sy + phase).cos()) * h);
+            let c = rect.center()
+                + vec2(
+                    (home.x + 0.12 * (t * sx + phase).sin()) * w,
+                    (home.y + 0.10 * (t * sy + phase).cos()) * h,
+                );
             glow(&painter, c, size * r, color.gamma_multiply(strength));
         }
         if let Some(out) = outside {
             mask_corners(&painter, rect, radius, out);
         }
         if moving && ui.input(|i| i.focused) {
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(200));
         } else if settling {
             ui.ctx().request_repaint();
         }
@@ -108,7 +120,10 @@ fn glow(p: &egui::Painter, center: Pos2, radius: f32, color: Color32) {
     for (f, a) in [(0.45, 0.55), (1.0, 0.0)] {
         for k in 0..N {
             let ang = k as f32 / N as f32 * std::f32::consts::TAU;
-            mesh.colored_vertex(center + vec2(ang.cos(), ang.sin()) * radius * f, color.gamma_multiply(a));
+            mesh.colored_vertex(
+                center + vec2(ang.cos(), ang.sin()) * radius * f,
+                color.gamma_multiply(a),
+            );
         }
     }
     let n = N as u32;
@@ -158,7 +173,10 @@ fn shift_hue(c: Color32, degrees: f32) -> Color32 {
 }
 
 fn read_picture(url: &str) -> Option<Vec<u8>> {
-    if let Some(path) = url.strip_prefix("file:///").or_else(|| url.strip_prefix("file://")) {
+    if let Some(path) = url
+        .strip_prefix("file:///")
+        .or_else(|| url.strip_prefix("file://"))
+    {
         return std::fs::read(path).ok();
     }
     if url.starts_with("http") {
@@ -170,7 +188,10 @@ fn read_picture(url: &str) -> Option<Vec<u8>> {
 /// The picture's main color: colorful, mid-bright pixels count most, so a cover that's
 /// mostly black with a red title comes out red rather than grey.
 pub fn dominant(bytes: &[u8]) -> Option<Color32> {
-    let img = image::load_from_memory(bytes).ok()?.thumbnail(24, 24).to_rgb8();
+    let img = image::load_from_memory(bytes)
+        .ok()?
+        .thumbnail(24, 24)
+        .to_rgb8();
     let (mut r, mut g, mut b, mut weight) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
     let (mut ar, mut ag, mut ab, mut n) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
     for p in img.pixels() {
@@ -192,7 +213,11 @@ pub fn dominant(bytes: &[u8]) -> Option<Color32> {
     if n == 0.0 {
         return None;
     }
-    let (r, g, b) = if weight > n * 0.02 { (r / weight, g / weight, b / weight) } else { (ar / n, ag / n, ab / n) };
+    let (r, g, b) = if weight > n * 0.02 {
+        (r / weight, g / weight, b / weight)
+    } else {
+        (ar / n, ag / n, ab / n)
+    };
     // Same color, at a brightness that tints without glaring.
     let max = r.max(g).max(b).max(0.05);
     let scale = 0.85 / max;
@@ -226,6 +251,9 @@ mod tests {
     #[test]
     fn a_grey_cover_stays_grey() {
         let c = dominant(&png(&[[120, 120, 120]], 8, 8)).unwrap();
-        assert!(c.r().abs_diff(c.g()) < 5 && c.g().abs_diff(c.b()) < 5, "{c:?}");
+        assert!(
+            c.r().abs_diff(c.g()) < 5 && c.g().abs_diff(c.b()) < 5,
+            "{c:?}"
+        );
     }
 }

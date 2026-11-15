@@ -26,7 +26,10 @@ pub struct Effects {
 impl Effects {
     pub fn from_settings(s: &Settings) -> Self {
         Self {
-            eq: s.eq_enabled.then_some(s.eq_gains).filter(|g| g.iter().any(|v| v.abs() > 0.01)),
+            eq: s
+                .eq_enabled
+                .then_some(s.eq_gains)
+                .filter(|g| g.iter().any(|v| v.abs() > 0.01)),
             mono: s.mono,
             crossfade: s.crossfade_secs.clamp(0.0, 10.0),
             gapless: s.gapless,
@@ -36,7 +39,11 @@ impl Effects {
 
     /// Length of the overlap between songs, in seconds.
     pub fn transition_secs(&self) -> f32 {
-        if self.automix { self.crossfade.max(6.0) } else { self.crossfade }
+        if self.automix {
+            self.crossfade.max(6.0)
+        } else {
+            self.crossfade
+        }
     }
 }
 
@@ -121,7 +128,15 @@ impl Biquad {
         let alpha = sin / (2.0 * 1.0); // Q = 1
         let (b0, b1, b2) = (1.0 + alpha * a, -2.0 * cos, 1.0 - alpha * a);
         let (a0, a1, a2) = (1.0 + alpha / a, -2.0 * cos, 1.0 - alpha / a);
-        Self { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0, z1: 0.0, z2: 0.0 }
+        Self {
+            b0: b0 / a0,
+            b1: b1 / a0,
+            b2: b2 / a0,
+            a1: a1 / a0,
+            a2: a2 / a0,
+            z1: 0.0,
+            z2: 0.0,
+        }
     }
 
     /// Changes the filter's settings but keeps its state, so there's no click.
@@ -184,7 +199,13 @@ pub struct Processor<S: Source> {
 
 impl<S: Source> Processor<S> {
     /// `start_gain` is the starting volume (0 for a song that fades in).
-    pub fn new(inner: S, shared: Arc<SharedEffects>, ctl: Arc<TrackCtl>, start_gain: f32, skip_leading_silence: bool) -> Self {
+    pub fn new(
+        inner: S,
+        shared: Arc<SharedEffects>,
+        ctl: Arc<TrackCtl>,
+        start_gain: f32,
+        skip_leading_silence: bool,
+    ) -> Self {
         let channels = inner.channels();
         let rate = inner.sample_rate();
         let mut p = Self {
@@ -252,7 +273,10 @@ impl<S: Source> Processor<S> {
                 self.gain_step = (to - self.gain) / frames as f32;
             }
         }
-        self.ctl.silent_ms.store(self.silent_frames * 1000 / self.rate.get() as u64, Ordering::Release);
+        self.ctl.silent_ms.store(
+            self.silent_frames * 1000 / self.rate.get() as u64,
+            Ordering::Release,
+        );
     }
 
     /// Reads and processes the next frame (one sample per channel). False at the end.
@@ -378,7 +402,9 @@ mod tests {
     fn run(freq: f32, effects: Effects) -> Vec<f32> {
         let shared = Arc::new(SharedEffects::default());
         shared.set(effects);
-        let src = SineWave::new(freq).amplify(0.3).take_duration(Duration::from_millis(500));
+        let src = SineWave::new(freq)
+            .amplify(0.3)
+            .take_duration(Duration::from_millis(500));
         let p = Processor::new(src, shared, Arc::new(TrackCtl::default()), 1.0, false);
         p.skip(4000).collect()
     }
@@ -392,14 +418,20 @@ mod tests {
     #[test]
     fn eq_boosts_and_cuts_the_right_band() {
         let flat = rms(&run(60.0, Effects::default()));
-        let boost = Effects { eq: Some([12.0, 0.0, 0.0, 0.0, 0.0, 0.0]), ..Default::default() };
+        let boost = Effects {
+            eq: Some([12.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            ..Default::default()
+        };
         // Preamp lowers everything by half the boost (6 dB); the 60 Hz band still ends up clearly louder.
         assert!(rms(&run(60.0, boost.clone())) > flat * 1.5);
         // A 5 kHz tone is barely touched by the bass band (only the preamp applies).
         let hi_flat = rms(&run(5000.0, Effects::default()));
         let hi = rms(&run(5000.0, boost));
         assert!(hi < hi_flat && hi > hi_flat * 0.3);
-        let cut = Effects { eq: Some([0.0, 0.0, 0.0, -12.0, 0.0, 0.0]), ..Default::default() };
+        let cut = Effects {
+            eq: Some([0.0, 0.0, 0.0, -12.0, 0.0, 0.0]),
+            ..Default::default()
+        };
         assert!(rms(&run(1000.0, cut)) < rms(&run(1000.0, Effects::default())) * 0.5);
     }
 
@@ -419,7 +451,9 @@ mod tests {
     fn notices_silence() {
         let shared = Arc::new(SharedEffects::default());
         let ctl = Arc::new(TrackCtl::default());
-        let src = SineWave::new(440.0).amplify(0.0).take_duration(Duration::from_secs(2));
+        let src = SineWave::new(440.0)
+            .amplify(0.0)
+            .take_duration(Duration::from_secs(2));
         let p = Processor::new(src, shared, ctl.clone(), 1.0, false);
         let _ = p.take(48000).count();
         assert!(ctl.silent_for() >= Duration::from_millis(900));
@@ -428,10 +462,14 @@ mod tests {
     #[test]
     fn mono_makes_both_sides_equal() {
         let shared = Arc::new(SharedEffects::default());
-        shared.set(Effects { mono: true, ..Default::default() });
+        shared.set(Effects {
+            mono: true,
+            ..Default::default()
+        });
         let left = SineWave::new(440.0).take_duration(Duration::from_millis(100));
         let stereo = rodio::source::ChannelVolume::new(left, vec![1.0, 0.0]);
-        let out: Vec<f32> = Processor::new(stereo, shared, Arc::new(TrackCtl::default()), 1.0, false).collect();
+        let out: Vec<f32> =
+            Processor::new(stereo, shared, Arc::new(TrackCtl::default()), 1.0, false).collect();
         assert!(out.chunks(2).all(|f| (f[0] - f[1]).abs() < 1e-6));
         assert!(rms(&out) > 0.1);
     }
@@ -441,11 +479,14 @@ mod tests {
         let shared = Arc::new(SharedEffects::default());
         // One second of silence, then a tone.
         let mut samples = vec![0.0f32; 48000];
-        samples.extend((0..48000).map(|i| (i as f32 * 440.0 * std::f32::consts::TAU / 48000.0).sin()));
+        samples
+            .extend((0..48000).map(|i| (i as f32 * 440.0 * std::f32::consts::TAU / 48000.0).sin()));
         let one = std::num::NonZero::new(1u16).unwrap();
         let rate = std::num::NonZero::new(48000u32).unwrap();
         let src = rodio::buffer::SamplesBuffer::new(one, rate, samples);
-        let out: Vec<f32> = Processor::new(src, shared, Arc::new(TrackCtl::default()), 1.0, true).take(4800).collect();
+        let out: Vec<f32> = Processor::new(src, shared, Arc::new(TrackCtl::default()), 1.0, true)
+            .take(4800)
+            .collect();
         assert!(rms(&out) > 0.5, "starts straight with the music");
     }
 }

@@ -36,7 +36,11 @@ pub fn is_clip(t: &Track) -> bool {
 pub fn lookup(ids: &[String]) {
     let missing: Vec<String> = {
         let known = KNOWN.lock().unwrap();
-        let mut m: Vec<String> = ids.iter().filter(|id| !known.contains_key(*id)).cloned().collect();
+        let mut m: Vec<String> = ids
+            .iter()
+            .filter(|id| !known.contains_key(*id))
+            .cloned()
+            .collect();
         m.sort();
         m.dedup();
         m
@@ -57,7 +61,11 @@ pub fn lookup(ids: &[String]) {
 /// Fixes the lengths of songs Deezer lists as a clip (fetched songs, before they're shown).
 /// Without a fix the length is left blank (0) rather than a wrong 0:30.
 pub fn apply(tracks: &mut [Track]) {
-    let ids: Vec<String> = tracks.iter().filter(|t| is_clip(t)).map(|t| t.id.clone()).collect();
+    let ids: Vec<String> = tracks
+        .iter()
+        .filter(|t| is_clip(t))
+        .map(|t| t.id.clone())
+        .collect();
     if ids.is_empty() {
         return;
     }
@@ -71,13 +79,24 @@ fn known_length(id: &str) -> Option<u32> {
     if let Some(&s) = PLAYED.lock().unwrap().get(id) {
         return Some(s);
     }
-    KNOWN.lock().unwrap().get(id).cloned().flatten().map(|f| f.duration).filter(|&d| d > 0)
+    KNOWN
+        .lock()
+        .unwrap()
+        .get(id)
+        .cloned()
+        .flatten()
+        .map(|f| f.duration)
+        .filter(|&d| d > 0)
 }
 
 /// The length to show for a song: its own, or for a clip-length song the real one if it's
 /// known (else 0: shown blank). Never asks the server, so it's fine to call while drawing.
 pub fn shown_length(t: &Track) -> u32 {
-    if is_clip(t) { known_length(&t.id).unwrap_or(0) } else { t.duration }
+    if is_clip(t) {
+        known_length(&t.id).unwrap_or(0)
+    } else {
+        t.duration
+    }
 }
 
 /// Remembers a song's real length once its audio is open.
@@ -88,7 +107,14 @@ pub fn played(id: &str, secs: u32) {
 /// The video a fix names for this song, if any.
 pub fn video(id: &str) -> Option<String> {
     lookup(&[id.to_string()]);
-    KNOWN.lock().unwrap().get(id).cloned().flatten().and_then(|f| f.video).filter(|v| !v.trim().is_empty())
+    KNOWN
+        .lock()
+        .unwrap()
+        .get(id)
+        .cloned()
+        .flatten()
+        .and_then(|f| f.video)
+        .filter(|v| !v.trim().is_empty())
 }
 
 #[cfg(test)]
@@ -97,12 +123,33 @@ mod tests {
 
     #[test]
     fn clip_lengths_are_blank_until_known() {
-        let mut t = vec![Track { id: "dz:1".into(), duration: 30, ..Default::default() }, Track { id: "dz:2".into(), duration: 227, ..Default::default() }];
+        let mut t = vec![
+            Track {
+                id: "dz:1".into(),
+                duration: 30,
+                ..Default::default()
+            },
+            Track {
+                id: "dz:2".into(),
+                duration: 227,
+                ..Default::default()
+            },
+        ];
         assert_eq!(shown_length(&t[0]), 0);
-        KNOWN.lock().unwrap().insert("dz:1".into(), Some(Fix { duration: 227, video: None }));
+        KNOWN.lock().unwrap().insert(
+            "dz:1".into(),
+            Some(Fix {
+                duration: 227,
+                video: None,
+            }),
+        );
         apply(&mut t);
         assert_eq!((t[0].duration, t[1].duration), (227, 227));
-        let clip = Track { id: "dz:3".into(), duration: 30, ..Default::default() };
+        let clip = Track {
+            id: "dz:3".into(),
+            duration: 30,
+            ..Default::default()
+        };
         played("dz:3", 240);
         assert_eq!(shown_length(&clip), 240);
     }

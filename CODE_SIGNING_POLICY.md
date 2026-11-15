@@ -26,4 +26,4 @@ Contributors send changes as pull requests. Every pull request is reviewed and m
 
 ## Privacy
 
-Pulse connects to the internet only to do what it's for: searching and streaming music (Deezer for song information, YouTube for audio), lyrics (LRCLIB), and, if you choose to make one, your Pulse account. It has no ads and no tracking. What an account stores, and how to delete it, is described in the [privacy policy](https://listen2pulse.github.io/privacy/).
+Pulse connects to the internet only to do what it's for: searching and streaming music (Deezer for song information, YouTube for audio), lyrics (LRCLIB, and AZLyrics when LRCLIB has none), and, if you choose to make one, your Pulse account. It has no ads and no tracking. What an account stores, and how to delete it, is described in the [privacy policy](https://listen2pulse.github.io/privacy/).

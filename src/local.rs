@@ -21,7 +21,13 @@ pub fn scan(dir: &Path) -> Vec<Track> {
     files.sort();
     let covers = crate::settings::data_dir().join("cache").join("covers");
     let mut tracks: Vec<Track> = files.iter().map(|f| read(f, &covers)).collect();
-    tracks.sort_by_key(|t| (t.artist.name.to_lowercase(), t.album.as_ref().map(|a| a.title.to_lowercase()), t.title.to_lowercase()));
+    tracks.sort_by_key(|t| {
+        (
+            t.artist.name.to_lowercase(),
+            t.album.as_ref().map(|a| a.title.to_lowercase()),
+            t.title.to_lowercase(),
+        )
+    });
     tracks
 }
 
@@ -29,13 +35,20 @@ fn collect(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     if depth > 6 {
         return;
     }
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let path = e.path();
         let Ok(kind) = e.file_type() else { continue };
         if kind.is_dir() {
             collect(&path, depth + 1, out);
-        } else if path.extension().and_then(|x| x.to_str()).and_then(Codec::from_extension).is_some() {
+        } else if path
+            .extension()
+            .and_then(|x| x.to_str())
+            .and_then(Codec::from_extension)
+            .is_some()
+        {
             out.push(path);
         }
     }
@@ -43,11 +56,19 @@ fn collect(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 
 /// Builds a song from a file's tags; falls back to the file name.
 fn read(path: &Path, covers: &Path) -> Track {
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Unknown").to_string();
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
     let mut t = Track {
         id: format!("{PREFIX}{}", path.display()),
         title: stem.clone(),
-        artist: ArtistRef { id: "local".into(), name: "Unknown artist".into(), picture: None },
+        artist: ArtistRef {
+            id: "local".into(),
+            name: "Unknown artist".into(),
+            picture: None,
+        },
         ..Default::default()
     };
     // "Artist - Title.mp3" when there are no tags.
@@ -55,7 +76,9 @@ fn read(path: &Path, covers: &Path) -> Track {
         t.artist.name = a.trim().to_string();
         t.title = b.trim().to_string();
     }
-    let Ok(file) = lofty::read_from_path(path) else { return t };
+    let Ok(file) = lofty::read_from_path(path) else {
+        return t;
+    };
     t.duration = file.properties().duration().as_secs() as u32;
     if let Some(tag) = file.primary_tag().or_else(|| file.first_tag()) {
         if let Some(v) = tag.title().filter(|v| !v.trim().is_empty()) {
@@ -65,7 +88,10 @@ fn read(path: &Path, covers: &Path) -> Track {
             t.artist.name = v.trim().to_string();
         }
         if let Some(v) = tag.album().filter(|v| !v.trim().is_empty()) {
-            t.album = Some(AlbumRef { id: format!("local-album:{}", v.trim()), title: v.trim().to_string() });
+            t.album = Some(AlbumRef {
+                id: format!("local-album:{}", v.trim()),
+                title: v.trim().to_string(),
+            });
         }
         // Save the cover picture next to Pulse's cache so the UI can show it.
         if let Some(pic) = tag.pictures().first() {
@@ -76,7 +102,10 @@ fn read(path: &Path, covers: &Path) -> Track {
                 _ => "jpg",
             };
             let file = covers.join(format!("{:016x}.{ext}", h.finish()));
-            if file.exists() || (std::fs::create_dir_all(covers).is_ok() && std::fs::write(&file, pic.data()).is_ok()) {
+            if file.exists()
+                || (std::fs::create_dir_all(covers).is_ok()
+                    && std::fs::write(&file, pic.data()).is_ok())
+            {
                 let uri = crate::settings::file_uri(&file);
                 t.cover_small = Some(uri.clone());
                 t.cover_big = Some(uri);
@@ -92,9 +121,20 @@ pub fn source(t: &Track) -> Result<StreamSource, String> {
     if !Path::new(path).is_file() {
         return Err("This file was moved or deleted.".into());
     }
-    let ext = Path::new(path).extension().and_then(|x| x.to_str()).unwrap_or("");
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|x| x.to_str())
+        .unwrap_or("");
     let codec = Codec::from_extension(ext).ok_or("Pulse can't play this kind of file.")?;
-    Ok(StreamSource { url: format!("file://{path}"), headers: vec![], codec, content_length: None, notice: None, duration: None, keep_as: None })
+    Ok(StreamSource {
+        url: format!("file://{path}"),
+        headers: vec![],
+        codec,
+        content_length: None,
+        notice: None,
+        duration: None,
+        keep_as: None,
+    })
 }
 
 #[cfg(test)]

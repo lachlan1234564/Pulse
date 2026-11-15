@@ -62,8 +62,14 @@ pub enum Page {
     Home(Chart),
     Tracks(Vec<Track>),
     Search(SearchResults),
-    Playlist { info: PlaylistInfo, tracks: Vec<Track> },
-    Album { info: AlbumInfo, tracks: Vec<Track> },
+    Playlist {
+        info: PlaylistInfo,
+        tracks: Vec<Track>,
+    },
+    Album {
+        info: AlbumInfo,
+        tracks: Vec<Track>,
+    },
     Artist(ArtistPage),
     Song(Box<deezer::SongPage>),
     Public(Box<crate::account::Public>),
@@ -89,7 +95,9 @@ impl Page {
                     t.iter_mut().for_each(&mut f);
                 }
             }
-            Page::Playlist { tracks, .. } | Page::Album { tracks, .. } => tracks.iter_mut().for_each(&mut f),
+            Page::Playlist { tracks, .. } | Page::Album { tracks, .. } => {
+                tracks.iter_mut().for_each(&mut f)
+            }
             Page::Public(p) => p.tracks.iter_mut().for_each(&mut f),
             Page::User(_) => {}
             Page::Artist(p) => {
@@ -234,7 +242,14 @@ pub enum SortBy {
 }
 
 impl SortBy {
-    pub const ALL: [SortBy; 6] = [SortBy::Custom, SortBy::Title, SortBy::Artist, SortBy::Album, SortBy::RecentlyAdded, SortBy::Duration];
+    pub const ALL: [SortBy; 6] = [
+        SortBy::Custom,
+        SortBy::Title,
+        SortBy::Artist,
+        SortBy::Album,
+        SortBy::RecentlyAdded,
+        SortBy::Duration,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -257,7 +272,10 @@ pub struct ImportJob {
 
 /// Seconds since 1970, for "Date added".
 pub fn now_unix() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Every typed word is found in the song's title, artists or album: as part of a word
@@ -270,7 +288,10 @@ pub fn track_matches(t: &Track, words: &[String]) -> bool {
     }
     let hay = fold(&hay);
     let hay_words: Vec<&str> = hay.split_whitespace().collect();
-    words.iter().all(|w| hay.contains(w.as_str()) || (w.chars().count() >= 5 && hay_words.iter().any(|h| one_edit_apart(w, h))))
+    words.iter().all(|w| {
+        hay.contains(w.as_str())
+            || (w.chars().count() >= 5 && hay_words.iter().any(|h| one_edit_apart(w, h)))
+    })
 }
 
 /// Lowercase, without accents, punctuation turned into spaces: "Beyoncé's" → "beyonce s".
@@ -322,8 +343,16 @@ fn one_edit_apart(a: &str, b: &str) -> bool {
 }
 
 /// The songs of a list after search, genre filter and sorting.
-pub fn apply_view(tracks: &[Track], view: &ListView, added: Option<&HashMap<String, u64>>, genres: &HashMap<String, Vec<String>>) -> Vec<Track> {
-    let words: Vec<String> = fold(&view.search).split_whitespace().map(str::to_owned).collect();
+pub fn apply_view(
+    tracks: &[Track],
+    view: &ListView,
+    added: Option<&HashMap<String, u64>>,
+    genres: &HashMap<String, Vec<String>>,
+) -> Vec<Track> {
+    let words: Vec<String> = fold(&view.search)
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
     let mut out: Vec<Track> = tracks
         .iter()
         .filter(|t| words.is_empty() || track_matches(t, &words))
@@ -338,7 +367,9 @@ pub fn apply_view(tracks: &[Track], view: &ListView, added: Option<&HashMap<Stri
         SortBy::Custom => {}
         SortBy::Title => out.sort_by_cached_key(|t| key(&t.title)),
         SortBy::Artist => out.sort_by_cached_key(|t| (key(&t.artist.name), key(&t.title))),
-        SortBy::Album => out.sort_by_cached_key(|t| (t.album.as_ref().map(|a| key(&a.title)), key(&t.title))),
+        SortBy::Album => {
+            out.sort_by_cached_key(|t| (t.album.as_ref().map(|a| key(&a.title)), key(&t.title)))
+        }
         SortBy::Duration => out.sort_by_key(|t| t.duration),
         SortBy::RecentlyAdded => {
             let when = |t: &Track| added.and_then(|a| a.get(&t.id)).copied().unwrap_or(0);
@@ -349,7 +380,12 @@ pub fn apply_view(tracks: &[Track], view: &ListView, added: Option<&HashMap<Stri
 }
 
 /// Borrows the songs when no filtering or sorting changes their original order.
-pub fn view_tracks<'a>(tracks: &'a [Track], view: &ListView, added: Option<&HashMap<String, u64>>, genres: &HashMap<String, Vec<String>>) -> std::borrow::Cow<'a, [Track]> {
+pub fn view_tracks<'a>(
+    tracks: &'a [Track],
+    view: &ListView,
+    added: Option<&HashMap<String, u64>>,
+    genres: &HashMap<String, Vec<String>>,
+) -> std::borrow::Cow<'a, [Track]> {
     if view.search.trim().is_empty() && view.genre.is_none() && view.sort == SortBy::Custom {
         std::borrow::Cow::Borrowed(tracks)
     } else {
@@ -359,7 +395,11 @@ pub fn view_tracks<'a>(tracks: &'a [Track], view: &ListView, added: Option<&Hash
 
 /// A song's genres (from its album), if known.
 pub fn track_genres<'a>(t: &Track, genres: &'a HashMap<String, Vec<String>>) -> &'a [String] {
-    t.album.as_ref().and_then(|a| genres.get(&a.id)).map(Vec::as_slice).unwrap_or(&[])
+    t.album
+        .as_ref()
+        .and_then(|a| genres.get(&a.id))
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
 }
 
 /// The genres in a list, most common first (at most 15).
@@ -486,7 +526,10 @@ impl Default for Saved {
 const STORAGE_KEY: &str = "pulse_state_v1";
 
 /// Local songs and downloaded songs play from a file on this computer.
-fn offline_source(track: &Track, downloaded: Option<&std::path::Path>) -> Option<Result<StreamSource, String>> {
+fn offline_source(
+    track: &Track,
+    downloaded: Option<&std::path::Path>,
+) -> Option<Result<StreamSource, String>> {
     if crate::local::is_local(&track.id) {
         return Some(crate::local::source(track));
     }
@@ -504,8 +547,15 @@ fn offline_source(track: &Track, downloaded: Option<&std::path::Path>) -> Option
 }
 
 /// Ready audio on disk takes priority over waiting for a background YouTube lookup.
-fn offline_or_wait(track: &Track, downloaded: Option<&std::path::Path>, in_flight: &Mutex<HashSet<String>>) -> Option<Result<StreamSource, String>> {
-    let ready = || offline_source(track, downloaded).or_else(|| offline_source(track, crate::audiocache::find(&track.id).as_deref()));
+fn offline_or_wait(
+    track: &Track,
+    downloaded: Option<&std::path::Path>,
+    in_flight: &Mutex<HashSet<String>>,
+) -> Option<Result<StreamSource, String>> {
+    let ready = || {
+        offline_source(track, downloaded)
+            .or_else(|| offline_source(track, crate::audiocache::find(&track.id).as_deref()))
+    };
     // Nothing to wait for: check the disk once, as on an ordinary uncached play.
     if !in_flight.lock().unwrap().contains(&track.id) {
         return ready();
@@ -514,7 +564,9 @@ fn offline_or_wait(track: &Track, downloaded: Option<&std::path::Path>, in_fligh
         return Some(src);
     }
     let started = Instant::now();
-    while in_flight.lock().unwrap().contains(&track.id) && started.elapsed() < Duration::from_secs(12) {
+    while in_flight.lock().unwrap().contains(&track.id)
+        && started.elapsed() < Duration::from_secs(12)
+    {
         std::thread::sleep(Duration::from_millis(40));
     }
     // A download may have finished while its link was being found.
@@ -531,7 +583,12 @@ fn warm_one(
     failed: &Sender<String>,
     linked: &dyn Fn(),
 ) {
-    let fresh = prefetched.lock().unwrap().get(&t.id).filter(|(_, at)| at.elapsed() < LINK_LIFETIME).map(|(s, _)| s.clone());
+    let fresh = prefetched
+        .lock()
+        .unwrap()
+        .get(&t.id)
+        .filter(|(_, at)| at.elapsed() < LINK_LIFETIME)
+        .map(|(s, _)| s.clone());
     let src = match fresh {
         Some(s) => s,
         None => {
@@ -553,10 +610,17 @@ fn warm_one(
     };
     // The link is ready: playing it no longer waits for the rest (the download ahead).
     linked();
-    if !crate::audiocache::enabled() || crate::audiocache::has(&t.id) || src.url.starts_with("file://") {
+    if !crate::audiocache::enabled()
+        || crate::audiocache::has(&t.id)
+        || src.url.starts_with("file://")
+    {
         return;
     }
-    let ext = if src.codec == crate::audio::Codec::Mp3 { "mp3" } else { "m4a" };
+    let ext = if src.codec == crate::audio::Codec::Mp3 {
+        "mp3"
+    } else {
+        "m4a"
+    };
     keep_ahead(&src, &crate::audiocache::path_for(&t.id, ext));
 }
 
@@ -581,7 +645,11 @@ fn keep_ahead(src: &StreamSource, dest: &std::path::Path) -> bool {
 /// Asks for a copy of the song to be kept once it has fully downloaded (see `audiocache`).
 fn kept_for_next_time(mut src: StreamSource, track: &Track) -> StreamSource {
     if crate::audiocache::enabled() && src.keep_as.is_none() {
-        let ext = if src.codec == crate::audio::Codec::Mp3 { "mp3" } else { "m4a" };
+        let ext = if src.codec == crate::audio::Codec::Mp3 {
+            "mp3"
+        } else {
+            "m4a"
+        };
         src.keep_as = Some(crate::audiocache::path_for(&track.id, ext));
     }
     src
@@ -695,7 +763,10 @@ type DownloadResult = (Track, Result<(std::path::PathBuf, String), String>);
 
 /// Folders with files Pulse can always download again.
 pub fn cache_dirs() -> Vec<std::path::PathBuf> {
-    vec![crate::youtube::tools_dir().join("cache"), crate::settings::data_dir().join("cache")]
+    vec![
+        crate::youtube::tools_dir().join("cache"),
+        crate::settings::data_dir().join("cache"),
+    ]
 }
 
 /// How long a message stays up: 3.5 seconds, longer for long ones (time to read them).
@@ -705,7 +776,10 @@ pub fn toast_secs(msg: &str) -> f64 {
 
 /// Total size of the cache folders.
 pub fn cache_size() -> u64 {
-    cache_dirs().iter().map(|d| crate::settings::folder_size(d)).sum()
+    cache_dirs()
+        .iter()
+        .map(|d| crate::settings::folder_size(d))
+        .sum()
 }
 
 /// Builds a share link. Pulse knows the exact YouTube video once a song has played;
@@ -945,12 +1019,17 @@ impl App {
         // A damaged save file (cut off by a crash or power cut) is recovered from the spare
         // copy or the newest backup, rather than starting over with an empty library.
         let main_file = crate::settings::library_file();
-        let (saved, load_note) = crate::backup::load(cc.storage.and_then(|s| s.get_string(STORAGE_KEY)), main_file.as_deref());
+        let (saved, load_note) = crate::backup::load(
+            cc.storage.and_then(|s| s.get_string(STORAGE_KEY)),
+            main_file.as_deref(),
+        );
         let themes = crate::themes::list();
         crate::i18n::set_language(saved.settings.language);
         crate::deezer::set_prefer_explicit(saved.settings.explicit);
         crate::perf::apply(saved.settings.perf_mode, &saved.settings.perf_keep);
-        crate::theme::set_reduce_motion(saved.settings.reduce_motion || !crate::perf::on(crate::perf::Extra::Animations));
+        crate::theme::set_reduce_motion(
+            saved.settings.reduce_motion || !crate::perf::on(crate::perf::Extra::Animations),
+        );
         let (tx, rx) = channel();
         let (views_tx, views_rx) = channel();
         let (download_tx, download_rx) = channel();
@@ -969,11 +1048,22 @@ impl App {
             needs_load: saved.last_track.is_some(),
             // The queue comes back as it was, if it still holds the last song.
             queue: match &saved.last_track {
-                Some(t) if saved.last_queue.get(saved.last_queue_pos).is_some_and(|q| q.id == t.id) => saved.last_queue.clone(),
+                Some(t)
+                    if saved
+                        .last_queue
+                        .get(saved.last_queue_pos)
+                        .is_some_and(|q| q.id == t.id) =>
+                {
+                    saved.last_queue.clone()
+                }
                 Some(t) => vec![t.clone()],
                 None => vec![],
             },
-            resume_at: saved.last_track.as_ref().filter(|_| saved.last_position > 5.0).map(|t| (t.id.clone(), saved.last_position)),
+            resume_at: saved
+                .last_track
+                .as_ref()
+                .filter(|_| saved.last_position > 5.0)
+                .map(|t| (t.id.clone(), saved.last_position)),
             saved,
             route: Route::Home,
             back: vec![],
@@ -1086,7 +1176,10 @@ impl App {
             genre_pending: HashSet::new(),
         };
         // Pulse 0.2 had only a light/dark switch: carry it over to the Default theme.
-        if app.saved.light_mode && app.saved.settings.theme == "Default" && app.saved.settings.scheme.is_empty() {
+        if app.saved.light_mode
+            && app.saved.settings.theme == "Default"
+            && app.saved.settings.scheme.is_empty()
+        {
             app.saved.settings.scheme = "Light".into();
         }
         if app.queue.len() > 1 {
@@ -1099,7 +1192,8 @@ impl App {
         std::thread::spawn(crate::artcache::trim_disk);
         // Signed in with a profile picture your public profile doesn't have yet (made before
         // pictures went online, or on another PC): put it up.
-        if let (Some(s), Some(pic)) = (crate::account::session(), app.saved.profile.picture.clone()) {
+        if let (Some(s), Some(pic)) = (crate::account::session(), app.saved.profile.picture.clone())
+        {
             std::thread::spawn(move || {
                 if let Ok(p) = crate::account::profile(&s.username)
                     && p.user.avatar.is_none()
@@ -1130,7 +1224,9 @@ impl App {
         app.startup_note = load_note;
         // The first time Pulse opens on a computer: first-time setup, then the intro.
         // Anyone who used Pulse before setup existed doesn't get it.
-        let fresh = !app.saved.intro_seen && app.saved.profile.created == 0 && app.saved.followed_artists.is_empty();
+        let fresh = !app.saved.intro_seen
+            && app.saved.profile.created == 0
+            && app.saved.followed_artists.is_empty();
         if !app.saved.setup_done && fresh {
             app.setup = Some(crate::ui::setup::Setup::new());
             // Setup covers the account and "Pick artists you like" windows.
@@ -1148,7 +1244,11 @@ impl App {
             };
             // Only "Reduce motion" skips it; Gaming and Ultra-low modes still play it.
             let still = app.saved.settings.reduce_motion;
-            app.intro = Some(crate::ui::intro::Intro::for_launch(!app.saved.intro_seen, still, name));
+            app.intro = Some(crate::ui::intro::Intro::for_launch(
+                !app.saved.intro_seen,
+                still,
+                name,
+            ));
             if still {
                 app.saved.intro_seen = true;
             }
@@ -1157,20 +1257,29 @@ impl App {
         // profile window comes after, if you choose "Not now".
         if app.setup.is_some() {
             // First-time setup asks about the account itself.
-        } else if crate::account::available() && crate::account::session().is_none() && !app.saved.account_asked {
+        } else if crate::account::available()
+            && crate::account::session().is_none()
+            && !app.saved.account_asked
+        {
             app.saved.account_asked = true;
             let mut d = AccountDialog::new(AccountMode::SignUp);
             d.welcome = true;
             app.account_dialog = Some(d);
         } else if crate::account::available() && crate::account::session().is_some() {
             // Signed in: check who you are, and ask for an email if the account has none.
-            app.account_job(&cc.egui_ctx, || crate::account::refresh().map(AccountDone::Checked));
+            app.account_job(&cc.egui_ctx, || {
+                crate::account::refresh().map(AccountDone::Checked)
+            });
         } else if app.saved.profile.created == 0 && !app.saved.profile.skipped {
-            app.profile_editing = Some(crate::ui::ProfileForm { welcome: true, ..Default::default() });
+            app.profile_editing = Some(crate::ui::ProfileForm {
+                welcome: true,
+                ..Default::default()
+            });
         }
         // Forget downloads whose files were deleted outside Pulse.
         app.saved.downloads.retain(|_, path| path.is_file());
-        app.audio.set_effects(crate::audio::Effects::from_settings(&app.saved.settings));
+        app.audio
+            .set_effects(crate::audio::Effects::from_settings(&app.saved.settings));
         if app.saved.settings.show_local_files {
             app.scan_local_files(&cc.egui_ctx);
         }
@@ -1188,7 +1297,11 @@ impl App {
                 "settings" => Route::Settings,
                 "liked-albums" => Route::LikedAlbums,
                 "intro" | "welcome" => {
-                    app.intro = Some(crate::ui::intro::Intro::for_launch(page == "intro", false, "@mercy".into()));
+                    app.intro = Some(crate::ui::intro::Intro::for_launch(
+                        page == "intro",
+                        false,
+                        "@mercy".into(),
+                    ));
                     Route::Home
                 }
                 "pick-artists" => {
@@ -1226,7 +1339,11 @@ impl App {
                     app.focus_search = true;
                     Route::Search(p[7..].to_string())
                 }
-                p => p.strip_prefix("playlist:").and_then(|n| n.parse().ok()).map(Route::Local).unwrap_or(Route::Home),
+                p => p
+                    .strip_prefix("playlist:")
+                    .and_then(|n| n.parse().ok())
+                    .map(Route::Local)
+                    .unwrap_or(Route::Home),
             };
         }
         app.ensure_loaded(&cc.egui_ctx);
@@ -1292,8 +1409,12 @@ impl App {
     pub fn navigate(&mut self, route: Route, ctx: &egui::Context) {
         // Your own public profile is part of your profile page (one page, not two).
         let route = match route {
-            Route::User(name) if crate::account::session().is_some_and(|s| s.username == name) => Route::Profile,
-            Route::Artist(id) if self.artist_alias.contains_key(&id) => Route::Artist(self.artist_alias[&id].clone()),
+            Route::User(name) if crate::account::session().is_some_and(|s| s.username == name) => {
+                Route::Profile
+            }
+            Route::Artist(id) if self.artist_alias.contains_key(&id) => {
+                Route::Artist(self.artist_alias[&id].clone())
+            }
             r => r,
         };
         if route == self.route {
@@ -1400,16 +1521,28 @@ impl App {
     /// Keeps at most 60 loaded pages in memory: the ones opened longest ago go first
     /// (they load again if you go back to them).
     fn trim_page_cache(&mut self) {
-        let keep = if crate::perf::mode() == crate::perf::Mode::UltraLow { 20 } else { 60 };
+        let keep = if crate::perf::mode() == crate::perf::Mode::UltraLow {
+            20
+        } else {
+            60
+        };
         if self.cache.len() <= keep {
             return;
         }
         let current = self.route_key();
-        let back: HashSet<String> = self.back.iter().rev().take(10).filter_map(|r| self.key_for(r)).collect();
+        let back: HashSet<String> = self
+            .back
+            .iter()
+            .rev()
+            .take(10)
+            .filter_map(|r| self.key_for(r))
+            .collect();
         let mut keys: Vec<(String, Option<Instant>)> = self
             .cache
             .iter()
-            .filter(|(k, v)| !matches!(v, Remote::Loading) && Some(*k) != current.as_ref() && !back.contains(*k))
+            .filter(|(k, v)| {
+                !matches!(v, Remote::Loading) && Some(*k) != current.as_ref() && !back.contains(*k)
+            })
             .map(|(k, _)| (k.clone(), self.cache_used.get(k).copied()))
             .collect();
         // Never-opened (loaded ahead) pages first, then the oldest.
@@ -1431,7 +1564,10 @@ impl App {
         if self.preloading.load(std::sync::atomic::Ordering::Relaxed) >= 2 {
             return;
         }
-        if self.key_for(&route).is_some_and(|k| self.cache.contains_key(&k)) {
+        if self
+            .key_for(&route)
+            .is_some_and(|k| self.cache.contains_key(&k))
+        {
             return;
         }
         self.load_route_with(route, ctx, true);
@@ -1460,7 +1596,9 @@ impl App {
                 let artists: Vec<(String, String)> = top_artists(&self.saved.played_artists, now)
                     .into_iter()
                     .filter_map(|v| match &v.place {
-                        Place::Artist(id) if deezer::is_deezer_id(id) => Some((id.clone(), v.title.clone())),
+                        Place::Artist(id) if deezer::is_deezer_id(id) => {
+                            Some((id.clone(), v.title.clone()))
+                        }
                         _ => None,
                     })
                     .take(2)
@@ -1475,7 +1613,8 @@ impl App {
                         if artists.len() == 2 {
                             break;
                         }
-                        if deezer::is_deezer_id(&a.id) && !artists.iter().any(|(id, _)| *id == a.id) {
+                        if deezer::is_deezer_id(&a.id) && !artists.iter().any(|(id, _)| *id == a.id)
+                        {
                             artists.push((a.id.clone(), a.name.clone()));
                         }
                     }
@@ -1485,7 +1624,10 @@ impl App {
                     if songs.len() == 2 {
                         break;
                     }
-                    if t.has_artist_page() && !songs.iter().any(|s| s.artist.id == t.artist.id) && !artists.iter().any(|(id, _)| *id == t.artist.id) {
+                    if t.has_artist_page()
+                        && !songs.iter().any(|s| s.artist.id == t.artist.id)
+                        && !artists.iter().any(|(id, _)| *id == t.artist.id)
+                    {
                         songs.push(t.clone());
                     }
                 }
@@ -1496,11 +1638,17 @@ impl App {
                 Box::new(move || deezer::chart_tracks(genre).map(Page::Tracks))
             }
             Route::Search(q) => Box::new(move || deezer::search(&q).map(Page::Search)),
-            Route::Playlist(id) => Box::new(move || deezer::playlist(&id).map(|(info, tracks)| Page::Playlist { info, tracks })),
-            Route::Album(id) => Box::new(move || deezer::album(&id).map(|(info, tracks)| Page::Album { info, tracks })),
+            Route::Playlist(id) => Box::new(move || {
+                deezer::playlist(&id).map(|(info, tracks)| Page::Playlist { info, tracks })
+            }),
+            Route::Album(id) => Box::new(move || {
+                deezer::album(&id).map(|(info, tracks)| Page::Album { info, tracks })
+            }),
             Route::Artist(id) => Box::new(move || deezer::artist_page(&id).map(Page::Artist)),
             Route::Mix(id) => Box::new(move || deezer::mix(&id).map(Page::Tracks)),
-            Route::Public(id) => Box::new(move || crate::account::playlist(&id).map(|p| Page::Public(Box::new(p)))),
+            Route::Public(id) => {
+                Box::new(move || crate::account::playlist(&id).map(|p| Page::Public(Box::new(p))))
+            }
             Route::User(name) => Box::new(move || crate::account::profile(&name).map(Page::User)),
             Route::Song(id) => {
                 let Some(n) = id.strip_prefix("dz:").and_then(|n| n.parse::<u64>().ok()) else {
@@ -1635,7 +1783,11 @@ impl App {
             LoadState::Failed(e) if self.current.is_some() && !self.needs_load => {
                 crate::crash::note(&format!("Couldn't play: {e}"));
                 self.failures_in_row += 1;
-                let name = self.current.as_ref().map(|t| t.title.clone()).unwrap_or_default();
+                let name = self
+                    .current
+                    .as_ref()
+                    .map(|t| t.title.clone())
+                    .unwrap_or_default();
                 self.toast(&format!("Couldn't play “{name}”: {e}"), ctx);
                 self.audio.stop();
                 if self.failures_in_row < 3 && self.queue_pos + 1 < self.queue.len() {
@@ -1668,7 +1820,11 @@ impl App {
             // Behind a game or minimized, nobody sees the progress bar: once a second is
             // plenty to move on to the next song.
             let hidden = ctx.input(|i| !i.focused || i.viewport().minimized.unwrap_or(false));
-            let every = if hidden { Duration::from_secs(1) } else { crate::perf::playing_redraw() };
+            let every = if hidden {
+                Duration::from_secs(1)
+            } else {
+                crate::perf::playing_redraw()
+            };
             ctx.request_repaint_after(every);
         }
 
@@ -1693,10 +1849,18 @@ impl App {
     /// show the main page in its place. The copy isn't kept in the history, so Back goes to
     /// where you came from, not to the copy (which would open the main page again).
     fn follow_artist_alias(&mut self, ctx: &egui::Context) {
-        let Route::Artist(id) = &self.route else { return };
-        let Some(Remote::Ready(page)) = self.cache.get(&format!("artist:{id}")) else { return };
-        let Page::Artist(p) = page.as_ref() else { return };
-        let Some(main) = p.same_as.clone().filter(|m| m != id) else { return };
+        let Route::Artist(id) = &self.route else {
+            return;
+        };
+        let Some(Remote::Ready(page)) = self.cache.get(&format!("artist:{id}")) else {
+            return;
+        };
+        let Page::Artist(p) = page.as_ref() else {
+            return;
+        };
+        let Some(main) = p.same_as.clone().filter(|m| m != id) else {
+            return;
+        };
         self.artist_alias.insert(id.clone(), main.clone());
         self.route = Route::Artist(main);
         self.ensure_loaded(ctx);
@@ -1720,7 +1884,9 @@ impl App {
         if q.is_empty() {
             return;
         }
-        self.saved.recent_searches.retain(|r| !r.eq_ignore_ascii_case(q));
+        self.saved
+            .recent_searches
+            .retain(|r| !r.eq_ignore_ascii_case(q));
         self.saved.recent_searches.insert(0, q.to_string());
         self.saved.recent_searches.truncate(10);
     }
@@ -1753,7 +1919,11 @@ impl App {
             self.updater.check(ctx);
             return;
         }
-        if s.check_updates && idle && crate::perf::on(crate::perf::Extra::Lookups) && ctx.input(|i| i.time) > 15.0 {
+        if s.check_updates
+            && idle
+            && crate::perf::on(crate::perf::Extra::Lookups)
+            && ctx.input(|i| i.time) > 15.0
+        {
             let now = crate::crash::now();
             if now.saturating_sub(s.update_checked_at) >= 86_400 {
                 s.update_checked_at = now;
@@ -1779,7 +1949,11 @@ impl App {
         }
         let gone = self.paused_since.is_some_and(|t| now - t > 120.0);
         // A song only restored from last time (not played yet) isn't shown.
-        let want = self.current.as_ref().filter(|_| !self.needs_load && !gone).map(|t| crate::discord::song_status(t, playing, self.audio.position()));
+        let want = self
+            .current
+            .as_ref()
+            .filter(|_| !self.needs_load && !gone)
+            .map(|t| crate::discord::song_status(t, playing, self.audio.position()));
         if want.is_some() && !playing {
             ctx.request_repaint_after(Duration::from_secs(121));
         }
@@ -1790,7 +1964,9 @@ impl App {
     /// by opening the release page (a copy run from elsewhere isn't replaced).
     pub fn start_update(&mut self, ctx: &egui::Context) {
         let release = match &self.updater.status {
-            crate::update::Status::Available(r) | crate::update::Status::InstallFailed(r, _) => r.clone(),
+            crate::update::Status::Available(r) | crate::update::Status::InstallFailed(r, _) => {
+                r.clone()
+            }
             _ => return,
         };
         if crate::update::installed() && release.signed() {
@@ -1839,7 +2015,13 @@ impl App {
     /// Puts a backup in place of your library, after backing up the library as it is.
     pub fn restore_library(&mut self, lib: Saved, ctx: &egui::Context) {
         if let Err(e) = crate::backup::write(&self.saved, crate::backup::Kind::BeforeRestore) {
-            self.toast(&format!("{} ({e})", crate::i18n::tr("Couldn't back up your library first, so nothing was changed")), ctx);
+            self.toast(
+                &format!(
+                    "{} ({e})",
+                    crate::i18n::tr("Couldn't back up your library first, so nothing was changed")
+                ),
+                ctx,
+            );
             return;
         }
         crate::backup::restore_into(&mut self.saved, lib);
@@ -1877,7 +2059,12 @@ impl App {
         }
         let index = index.min(tracks.len() - 1);
         // Clicking the song that's already playing just pauses/resumes it.
-        if self.current.as_ref().is_some_and(|c| c.id == tracks[index].id) && !self.needs_load {
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|c| c.id == tracks[index].id)
+            && !self.needs_load
+        {
             self.toggle_play(ctx);
             return;
         }
@@ -1894,7 +2081,13 @@ impl App {
         let Some(track) = self.queue.get(self.queue_pos).cloned() else {
             return;
         };
-        self.audio.load(&track.id, Duration::from_secs(track.duration as u64), self.resolver(&track), false, ctx.clone());
+        self.audio.load(
+            &track.id,
+            Duration::from_secs(track.duration as u64),
+            self.resolver(&track),
+            false,
+            ctx.clone(),
+        );
         self.audio.set_volume(self.saved.volume);
         self.told_next = None;
         self.needs_load = false;
@@ -1910,8 +2103,13 @@ impl App {
     /// The song that plays after the current one: its queue position and the song.
     fn upcoming(&self) -> Option<(usize, Track)> {
         match self.saved.repeat {
-            Repeat::One => self.queue.get(self.queue_pos).map(|t| (self.queue_pos, t.clone())),
-            _ if self.queue_pos + 1 < self.queue.len() => Some((self.queue_pos + 1, self.queue[self.queue_pos + 1].clone())),
+            Repeat::One => self
+                .queue
+                .get(self.queue_pos)
+                .map(|t| (self.queue_pos, t.clone())),
+            _ if self.queue_pos + 1 < self.queue.len() => {
+                Some((self.queue_pos + 1, self.queue[self.queue_pos + 1].clone()))
+            }
             Repeat::All if !self.queue.is_empty() => Some((0, self.queue[0].clone())),
             _ => None,
         }
@@ -1925,7 +2123,13 @@ impl App {
             return;
         }
         self.told_next = Some(id);
-        let req = next.map(|t| (t.id.clone(), Duration::from_secs(t.duration as u64), self.resolver(&t)));
+        let req = next.map(|t| {
+            (
+                t.id.clone(),
+                Duration::from_secs(t.duration as u64),
+                self.resolver(&t),
+            )
+        });
         self.audio.set_next(req);
     }
 
@@ -1933,7 +2137,12 @@ impl App {
     fn advanced_to(&mut self, id: &str, ctx: &egui::Context) {
         let pos = match self.upcoming() {
             Some((i, t)) if t.id == id => i,
-            _ => match self.queue.iter().skip(self.queue_pos).position(|t| t.id == id) {
+            _ => match self
+                .queue
+                .iter()
+                .skip(self.queue_pos)
+                .position(|t| t.id == id)
+            {
                 Some(i) => self.queue_pos + i,
                 None => return,
             },
@@ -1955,7 +2164,12 @@ impl App {
         if self.current.is_none() {
             return;
         }
-        if self.needs_load || matches!(self.audio.load_state(), LoadState::Idle | LoadState::Failed(_)) {
+        if self.needs_load
+            || matches!(
+                self.audio.load_state(),
+                LoadState::Idle | LoadState::Failed(_)
+            )
+        {
             if self.queue.is_empty() {
                 self.queue = self.current.clone().into_iter().collect();
                 self.queue_pos = 0;
@@ -1973,7 +2187,10 @@ impl App {
             return;
         }
         self.note_skip();
-        if self.queue_pos + 1 >= self.queue.len() && self.saved.repeat == Repeat::Off && self.saved.autoplay {
+        if self.queue_pos + 1 >= self.queue.len()
+            && self.saved.repeat == Repeat::Off
+            && self.saved.autoplay
+        {
             // The last song: like Spotify, Next goes on to songs like it.
             self.maybe_fetch_autoplay(ctx);
             if self.queue_pos + 1 >= self.queue.len() && self.autoplay_rx.is_some() {
@@ -2010,7 +2227,9 @@ impl App {
         self.maybe_fetch_autoplay(ctx);
         match self.saved.repeat {
             Repeat::One => self.start_current(ctx),
-            _ if self.queue_pos + 1 < self.queue.len() || self.saved.repeat == Repeat::All => self.next(ctx),
+            _ if self.queue_pos + 1 < self.queue.len() || self.saved.repeat == Repeat::All => {
+                self.next(ctx)
+            }
             _ if self.saved.autoplay && self.autoplay_rx.is_some() => {
                 // Similar songs are still loading: continue as soon as they arrive.
                 self.advance_when_autoplay_arrives = true;
@@ -2029,7 +2248,11 @@ impl App {
         let Some(t) = &self.current else { return 0 };
         let listed = crate::fixes::shown_length(t);
         match self.audio.length() {
-            Some(real) if !self.needs_load && crate::fixes::is_clip(t) && (60..86_400).contains(&real.as_secs()) => {
+            Some(real)
+                if !self.needs_load
+                    && crate::fixes::is_clip(t)
+                    && (60..86_400).contains(&real.as_secs()) =>
+            {
                 let secs = real.as_secs() as u32;
                 if listed != secs {
                     // Shown in the lists from now on too.
@@ -2046,7 +2269,8 @@ impl App {
             if self.needs_load {
                 return;
             }
-            self.audio.seek(Duration::from_secs_f32(self.current_length() as f32 * frac));
+            self.audio
+                .seek(Duration::from_secs_f32(self.current_length() as f32 * frac));
         }
     }
 
@@ -2073,7 +2297,9 @@ impl App {
         } else if let Some(orig) = self.unshuffled.take() {
             let cur = self.queue.get(self.queue_pos).map(|t| t.id.clone());
             self.queue = orig;
-            self.queue_pos = cur.and_then(|id| self.queue.iter().position(|t| t.id == id)).unwrap_or(0);
+            self.queue_pos = cur
+                .and_then(|id| self.queue.iter().position(|t| t.id == id))
+                .unwrap_or(0);
         }
     }
 
@@ -2105,7 +2331,11 @@ impl App {
         };
         let cur = t.scheme_index(&self.saved.settings.scheme);
         let want_light = !crate::themes::is_light(&t.schemes[cur].palette);
-        if let Some(s) = t.schemes.iter().find(|s| crate::themes::is_light(&s.palette) == want_light) {
+        if let Some(s) = t
+            .schemes
+            .iter()
+            .find(|s| crate::themes::is_light(&s.palette) == want_light)
+        {
             self.saved.settings.scheme = s.name.clone();
             self.saved.light_mode = want_light;
         }
@@ -2114,13 +2344,20 @@ impl App {
 
     pub fn current_theme(&self) -> Option<&crate::themes::Theme> {
         let name = &self.saved.settings.theme;
-        self.themes.iter().find(|t| t.name.eq_ignore_ascii_case(name)).or_else(|| self.themes.first())
+        self.themes
+            .iter()
+            .find(|t| t.name.eq_ignore_ascii_case(name))
+            .or_else(|| self.themes.first())
     }
 
     /// True if the current theme has both a dark and a light scheme.
     pub fn theme_has_light_and_dark(&self) -> bool {
         self.current_theme().is_some_and(|t| {
-            let light = t.schemes.iter().filter(|s| crate::themes::is_light(&s.palette)).count();
+            let light = t
+                .schemes
+                .iter()
+                .filter(|s| crate::themes::is_light(&s.palette))
+                .count();
             light > 0 && light < t.schemes.len()
         })
     }
@@ -2130,7 +2367,10 @@ impl App {
         let Some(t) = self.current_theme() else {
             return;
         };
-        let active = t.active(t.scheme_index(&self.saved.settings.scheme), self.saved.settings.high_contrast);
+        let active = t.active(
+            t.scheme_index(&self.saved.settings.scheme),
+            self.saved.settings.high_contrast,
+        );
         self.saved.light_mode = crate::themes::is_light(&active.palette);
         crate::theme::set_active(ctx, active);
     }
@@ -2167,7 +2407,11 @@ impl App {
         crate::perf::apply(s.perf_mode, &s.perf_keep);
         crate::theme::set_reduce_motion(s.reduce_motion || !on(Extra::Animations));
         // egui's own small animations (hover fades, opening sections).
-        let anim = if on(Extra::Animations) && !s.reduce_motion { 1.0 / 12.0 } else { 0.0 };
+        let anim = if on(Extra::Animations) && !s.reduce_motion {
+            1.0 / 12.0
+        } else {
+            0.0
+        };
         ctx.all_styles_mut(|st| st.animation_time = anim);
         if !on(Extra::Lookups) {
             self.featured_queue.clear();
@@ -2223,7 +2467,10 @@ impl App {
             std::thread::spawn(crate::artcache::trim_disk);
             self.cache_size = None;
         }
-        if s.high_contrast != before.high_contrast || s.theme != before.theme || s.scheme != before.scheme {
+        if s.high_contrast != before.high_contrast
+            || s.theme != before.theme
+            || s.scheme != before.scheme
+        {
             self.apply_theme(ctx);
         }
         if s.hardware_acceleration != before.hardware_acceleration {
@@ -2234,7 +2481,8 @@ impl App {
             // Links found ahead of time were for the old quality.
             self.prefetched.lock().unwrap().clear();
         }
-        self.audio.set_effects(crate::audio::Effects::from_settings(&s));
+        self.audio
+            .set_effects(crate::audio::Effects::from_settings(&s));
         if s.show_local_files && !before.show_local_files {
             self.scan_local_files(ctx);
         }
@@ -2267,7 +2515,11 @@ impl App {
             .iter()
             .filter_map(|t| t.album.as_ref())
             .map(|a| a.id.clone())
-            .filter(|id| deezer::is_deezer_id(id) && !self.saved.album_genres.contains_key(id) && !self.genre_failed.contains(id))
+            .filter(|id| {
+                deezer::is_deezer_id(id)
+                    && !self.saved.album_genres.contains_key(id)
+                    && !self.genre_failed.contains(id)
+            })
             .collect::<HashSet<_>>()
             .into_iter()
             .take(40)
@@ -2296,14 +2548,27 @@ impl App {
 
     /// Copies a picture into Pulse's data folder and makes it the playlist's cover.
     #[cfg_attr(not(windows), allow(dead_code))] // the picture picker is Windows-only
-    pub fn set_playlist_cover(&mut self, i: usize, picture: &std::path::Path) -> Result<(), String> {
+    pub fn set_playlist_cover(
+        &mut self,
+        i: usize,
+        picture: &std::path::Path,
+    ) -> Result<(), String> {
         let dir = crate::settings::data_dir().join("covers");
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let ext = picture.extension().and_then(|x| x.to_str()).unwrap_or("jpg").to_lowercase();
+        let ext = picture
+            .extension()
+            .and_then(|x| x.to_str())
+            .unwrap_or("jpg")
+            .to_lowercase();
         // A new name each time, so the old picture isn't shown from memory.
         let dest = dir.join(format!("playlist-{}-{}.{ext}", i, now_unix()));
         std::fs::copy(picture, &dest).map_err(|e| format!("Couldn't copy the picture ({e})"))?;
-        if let Some(old) = self.saved.playlists.get_mut(i).and_then(|p| p.cover.replace(dest)) {
+        if let Some(old) = self
+            .saved
+            .playlists
+            .get_mut(i)
+            .and_then(|p| p.cover.replace(dest))
+        {
             let _ = std::fs::remove_file(old);
         }
         Ok(())
@@ -2323,7 +2588,11 @@ impl App {
             && !src.starts_with(&dir)
         {
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let ext = src.extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
+            let ext = src
+                .extension()
+                .and_then(|x| x.to_str())
+                .unwrap_or("png")
+                .to_lowercase();
             let dest = dir.join(format!("profile-{}.{ext}", now_unix()));
             std::fs::copy(src, &dest).map_err(|e| format!("Couldn't copy the picture ({e})"))?;
             if let Some(old) = self.saved.profile.picture.take() {
@@ -2369,7 +2638,10 @@ impl App {
         };
         let code = crate::share::encode(&p.name, &self.saved.profile.name, &p.tracks);
         ctx.copy_text(code);
-        self.toast("Share code copied. Friends paste it into Import playlist.", ctx);
+        self.toast(
+            "Share code copied. Friends paste it into Import playlist.",
+            ctx,
+        );
     }
 
     pub fn remove_from_playlist(&mut self, i: usize, id: &str) {
@@ -2383,7 +2655,11 @@ impl App {
     fn record_play(&mut self, t: &Track) {
         let now = now_unix();
         if t.has_artist_page() {
-            let image = t.artist.picture.clone().or_else(|| t.art_big().map(str::to_owned));
+            let image = t
+                .artist
+                .picture
+                .clone()
+                .or_else(|| t.art_big().map(str::to_owned));
             let v = Visit {
                 place: Place::Artist(t.artist.id.clone()),
                 title: t.artist.name.clone(),
@@ -2413,14 +2689,37 @@ impl App {
     /// A playlist's picture: your own cover, else its first song's artwork.
     pub fn playlist_art(&self, i: usize) -> Option<String> {
         let p = self.saved.playlists.get(i)?;
-        p.cover.as_ref().map(|c| crate::settings::file_uri(c)).or_else(|| p.tracks.iter().find_map(|t| t.art_small()).map(str::to_owned))
+        p.cover
+            .as_ref()
+            .map(|c| crate::settings::file_uri(c))
+            .or_else(|| {
+                p.tracks
+                    .iter()
+                    .find_map(|t| t.art_small())
+                    .map(str::to_owned)
+            })
     }
 
-    pub fn note_visit(&mut self, place: Place, title: &str, subtitle: &str, image: Option<&str>, round: bool) {
+    pub fn note_visit(
+        &mut self,
+        place: Place,
+        title: &str,
+        subtitle: &str,
+        image: Option<&str>,
+        round: bool,
+    ) {
         if self.saved.visits.first().is_some_and(|v| v.place == place) {
             return;
         }
-        let v = Visit { place, title: title.to_string(), subtitle: subtitle.to_string(), image: image.map(str::to_owned), round, count: 0, last: now_unix() };
+        let v = Visit {
+            place,
+            title: title.to_string(),
+            subtitle: subtitle.to_string(),
+            image: image.map(str::to_owned),
+            round,
+            count: 0,
+            last: now_unix(),
+        };
         bump(&mut self.saved.visits, v, 20);
     }
 
@@ -2430,7 +2729,9 @@ impl App {
             Place::Album(id) => Route::Album(id.clone()),
             Place::Artist(id) => Route::Artist(id.clone()),
             Place::Playlist(id) => Route::Playlist(id.clone()),
-            Place::Yours(name) => Route::Local(self.saved.playlists.iter().position(|p| p.name == *name)?),
+            Place::Yours(name) => {
+                Route::Local(self.saved.playlists.iter().position(|p| p.name == *name)?)
+            }
             Place::Liked => Route::Liked,
             Place::Mix(id) => Route::Mix(id.clone()),
         })
@@ -2438,8 +2739,18 @@ impl App {
 
     /// Changes every copy of song `id`: playlists, likes, history, queue and loaded pages.
     fn update_track(&mut self, id: &str, mut f: impl FnMut(&mut Track)) {
-        let lists = self.saved.playlists.iter_mut().flat_map(|p| p.tracks.iter_mut());
-        let others = self.saved.liked.iter_mut().chain(self.saved.recent.iter_mut()).chain(self.queue.iter_mut()).chain(self.current.iter_mut());
+        let lists = self
+            .saved
+            .playlists
+            .iter_mut()
+            .flat_map(|p| p.tracks.iter_mut());
+        let others = self
+            .saved
+            .liked
+            .iter_mut()
+            .chain(self.saved.recent.iter_mut())
+            .chain(self.queue.iter_mut())
+            .chain(self.current.iter_mut());
         for t in lists.chain(others).filter(|t| t.id == id) {
             f(t);
         }
@@ -2508,7 +2819,12 @@ impl App {
         if self.rematch_rx.is_some() {
             return;
         }
-        let todo: Vec<Track> = tracks.iter().filter(|t| t.id.starts_with("imp:") && !self.rematch_tried.contains(&t.id)).take(25).cloned().collect();
+        let todo: Vec<Track> = tracks
+            .iter()
+            .filter(|t| t.id.starts_with("imp:") && !self.rematch_tried.contains(&t.id))
+            .take(25)
+            .cloned()
+            .collect();
         if todo.is_empty() {
             return;
         }
@@ -2518,11 +2834,19 @@ impl App {
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             for t in todo {
-                let mut found = deezer::find_track(&t.artist.name, &t.title, t.duration).ok().flatten();
+                let mut found = deezer::find_track(&t.artist.name, &t.title, t.duration)
+                    .ok()
+                    .flatten();
                 if found.is_none() {
-                    found = deezer::find_track(&t.title, &t.artist.name, t.duration).ok().flatten();
+                    found = deezer::find_track(&t.title, &t.artist.name, t.duration)
+                        .ok()
+                        .flatten();
                 }
-                let cover = if found.is_none() { crate::itunes::cover(&t.artist.name, &t.title) } else { None };
+                let cover = if found.is_none() {
+                    crate::itunes::cover(&t.artist.name, &t.title)
+                } else {
+                    None
+                };
                 if tx.send((t.id, found, cover)).is_err() {
                     return;
                 }
@@ -2587,10 +2911,18 @@ impl App {
         const WEEK: u64 = 7 * 86_400;
         let now = now_unix();
         for t in tracks.iter().take(60) {
-            if crate::local::is_local(&t.id) || self.views_pending.contains(&t.id) || self.views_failed.contains(&t.id) {
+            if crate::local::is_local(&t.id)
+                || self.views_pending.contains(&t.id)
+                || self.views_failed.contains(&t.id)
+            {
                 continue;
             }
-            if self.saved.views.get(&t.id).is_some_and(|(_, at)| now.saturating_sub(*at) < WEEK) {
+            if self
+                .saved
+                .views
+                .get(&t.id)
+                .is_some_and(|(_, at)| now.saturating_sub(*at) < WEEK)
+            {
                 continue;
             }
             self.views_pending.insert(t.id.clone());
@@ -2675,7 +3007,11 @@ impl App {
             let _ = ticker.join();
             ctx2.request_repaint();
         });
-        self.import_running = Some(ImportJob { progress, cancel, rx });
+        self.import_running = Some(ImportJob {
+            progress,
+            cancel,
+            rx,
+        });
     }
 
     pub fn cancel_import(&mut self) {
@@ -2692,7 +3028,9 @@ impl App {
         let result = match job.rx.try_recv() {
             Ok(r) => r,
             Err(std::sync::mpsc::TryRecvError::Empty) => return,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => Err("The import stopped unexpectedly. Please try again.".into()),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                Err("The import stopped unexpectedly. Please try again.".into())
+            }
         };
         self.import_running = None;
         match result {
@@ -2715,15 +3053,31 @@ impl App {
                 let total = imp.tracks.len();
                 let tracks: Vec<Track> = imp.tracks.into_iter().map(|(t, _)| t).collect();
                 let added = tracks.iter().map(|t| (t.id.clone(), now)).collect();
-                self.saved.playlists.push(LocalPlaylist { name: name.clone(), tracks, cover: None, added, ..Default::default() });
+                self.saved.playlists.push(LocalPlaylist {
+                    name: name.clone(),
+                    tracks,
+                    cover: None,
+                    added,
+                    ..Default::default()
+                });
                 let i = self.saved.playlists.len() - 1;
                 self.import_open = false;
                 self.import_url.clear();
                 self.navigate(Route::Local(i), ctx);
-                let extra = if imp.matched < total { format!(" ({} not found on Deezer, they'll still play)", total - imp.matched) } else { String::new() };
+                let extra = if imp.matched < total {
+                    format!(
+                        " ({} not found on Deezer, they'll still play)",
+                        total - imp.matched
+                    )
+                } else {
+                    String::new()
+                };
                 let from = imp.owner.map(|o| format!(" from {o}")).unwrap_or_default();
                 let note = imp.note.map(|n| format!("\n{n}")).unwrap_or_default();
-                self.toast(&format!("Imported “{name}”{from}: {total} songs{extra}{note}"), ctx);
+                self.toast(
+                    &format!("Imported “{name}”{from}: {total} songs{extra}{note}"),
+                    ctx,
+                );
             }
             Err(e) => self.toast(&e, ctx),
         }
@@ -2749,14 +3103,22 @@ impl App {
         let mut added = 0;
         for t in tracks {
             let busy = self.downloading.iter().any(|(d, _)| d.id == t.id);
-            if crate::local::is_local(&t.id) || busy || self.saved.downloads.contains_key(&t.id) || self.download_queue.iter().any(|q| q.id == t.id) {
+            if crate::local::is_local(&t.id)
+                || busy
+                || self.saved.downloads.contains_key(&t.id)
+                || self.download_queue.iter().any(|q| q.id == t.id)
+            {
                 continue;
             }
             self.download_queue.push_back(t.clone());
             added += 1;
         }
         if added > 0 {
-            let msg = if added == 1 { "Downloading 1 song".to_string() } else { format!("Downloading {added} songs") };
+            let msg = if added == 1 {
+                "Downloading 1 song".to_string()
+            } else {
+                format!("Downloading {added} songs")
+            };
             self.toast(&msg, ctx);
         }
     }
@@ -2788,7 +3150,11 @@ impl App {
             }
         }
         // Three songs side by side; one at a time in Gaming and Ultra-low resource modes.
-        let at_once = if crate::perf::mode() == crate::perf::Mode::Normal { 3 } else { 1 };
+        let at_once = if crate::perf::mode() == crate::perf::Mode::Normal {
+            3
+        } else {
+            1
+        };
         while self.downloading.len() < at_once {
             let Some(t) = self.download_queue.pop_front() else {
                 break;
@@ -2839,11 +3205,24 @@ impl App {
     }
 
     pub fn create_playlist(&mut self, name: String, first: Vec<Track>, ctx: &egui::Context) {
-        let name = if name.trim().is_empty() { format!("My Playlist #{}", self.saved.playlists.len() + 1) } else { name.trim().to_string() };
+        let name = if name.trim().is_empty() {
+            format!("My Playlist #{}", self.saved.playlists.len() + 1)
+        } else {
+            name.trim().to_string()
+        };
         let added = first.iter().map(|t| (t.id.clone(), now_unix())).collect();
         let mut seen = HashSet::new();
-        let tracks = first.into_iter().filter(|t| seen.insert(t.id.clone())).collect();
-        self.saved.playlists.push(LocalPlaylist { name: name.clone(), tracks, cover: None, added, ..Default::default() });
+        let tracks = first
+            .into_iter()
+            .filter(|t| seen.insert(t.id.clone()))
+            .collect();
+        self.saved.playlists.push(LocalPlaylist {
+            name: name.clone(),
+            tracks,
+            cover: None,
+            added,
+            ..Default::default()
+        });
         self.toast(&format!("Created “{name}”"), ctx);
         self.navigate(Route::Local(self.saved.playlists.len() - 1), ctx);
     }
@@ -2870,13 +3249,21 @@ impl App {
     }
 
     pub fn playlist_names(&self) -> Vec<String> {
-        self.saved.playlists.iter().map(|p| p.name.clone()).collect()
+        self.saved
+            .playlists
+            .iter()
+            .map(|p| p.name.clone())
+            .collect()
     }
 
     // ------------------------------------------------------------ accounts
 
     /// Runs an account call in the background; its result is applied in `receive_account`.
-    pub fn account_job(&mut self, ctx: &egui::Context, job: impl FnOnce() -> Result<AccountDone, String> + Send + 'static) {
+    pub fn account_job(
+        &mut self,
+        ctx: &egui::Context,
+        job: impl FnOnce() -> Result<AccountDone, String> + Send + 'static,
+    ) {
         self.account_busy += 1;
         if let Some(d) = &mut self.account_dialog {
             d.error = None;
@@ -2939,8 +3326,17 @@ impl App {
                 self.account_dialog = None;
                 self.toast(tr("Your account was deleted"), ctx);
             }
-            AccountDone::Published { name, id, fingerprint } => {
-                if let Some(p) = self.saved.playlists.iter_mut().find(|p| p.name == name && p.public_id.is_none()) {
+            AccountDone::Published {
+                name,
+                id,
+                fingerprint,
+            } => {
+                if let Some(p) = self
+                    .saved
+                    .playlists
+                    .iter_mut()
+                    .find(|p| p.name == name && p.public_id.is_none())
+                {
                     p.public_id = Some(id.clone());
                     p.published = fingerprint;
                 }
@@ -2950,13 +3346,23 @@ impl App {
             }
             AccountDone::Synced { id, fingerprint } => {
                 self.syncing.remove(&id);
-                if let Some(p) = self.saved.playlists.iter_mut().find(|p| p.public_id.as_deref() == Some(id.as_str())) {
+                if let Some(p) = self
+                    .saved
+                    .playlists
+                    .iter_mut()
+                    .find(|p| p.public_id.as_deref() == Some(id.as_str()))
+                {
                     p.published = fingerprint;
                 }
                 self.cache.remove(&format!("public:{id}"));
             }
             AccountDone::Unpublished { id } => {
-                if let Some(p) = self.saved.playlists.iter_mut().find(|p| p.public_id.as_deref() == Some(id.as_str())) {
+                if let Some(p) = self
+                    .saved
+                    .playlists
+                    .iter_mut()
+                    .find(|p| p.public_id.as_deref() == Some(id.as_str()))
+                {
                     p.public_id = None;
                     p.published = 0;
                 }
@@ -2982,14 +3388,31 @@ impl App {
             self.account_dialog = Some(AccountDialog::new(AccountMode::SignUp));
             return;
         }
-        let Some(p) = self.saved.playlists.get(i) else { return };
+        let Some(p) = self.saved.playlists.get(i) else {
+            return;
+        };
         let (name, tracks, fingerprint) = (p.name.clone(), p.tracks.clone(), p.fingerprint());
-        self.account_job(ctx, move || crate::account::publish(&name, &tracks).map(|id| AccountDone::Published { name, id, fingerprint }));
+        self.account_job(ctx, move || {
+            crate::account::publish(&name, &tracks).map(|id| AccountDone::Published {
+                name,
+                id,
+                fingerprint,
+            })
+        });
     }
 
     pub fn unpublish_playlist(&mut self, i: usize, ctx: &egui::Context) {
-        let Some(id) = self.saved.playlists.get(i).and_then(|p| p.public_id.clone()) else { return };
-        self.account_job(ctx, move || crate::account::unpublish(&id).map(|_| AccountDone::Unpublished { id }));
+        let Some(id) = self
+            .saved
+            .playlists
+            .get(i)
+            .and_then(|p| p.public_id.clone())
+        else {
+            return;
+        };
+        self.account_job(ctx, move || {
+            crate::account::unpublish(&id).map(|_| AccountDone::Unpublished { id })
+        });
     }
 
     /// Public playlists you changed are sent again (checked every few seconds, so a run of
@@ -3007,7 +3430,8 @@ impl App {
             .filter_map(|p| {
                 let id = p.public_id.clone()?;
                 let f = p.fingerprint();
-                (f != p.published && !self.syncing.contains(&id)).then(|| (id, p.name.clone(), p.tracks.clone(), f))
+                (f != p.published && !self.syncing.contains(&id))
+                    .then(|| (id, p.name.clone(), p.tracks.clone(), f))
             })
             .collect();
         for (id, name, tracks, fingerprint) in changed {
@@ -3047,16 +3471,34 @@ impl App {
             n += 1;
         }
         let added = p.tracks.iter().map(|t| (t.id.clone(), now)).collect();
-        self.saved.playlists.push(LocalPlaylist { name: name.clone(), tracks: p.tracks.clone(), cover: None, added, public_id: None, published: 0 });
+        self.saved.playlists.push(LocalPlaylist {
+            name: name.clone(),
+            tracks: p.tracks.clone(),
+            cover: None,
+            added,
+            public_id: None,
+            published: 0,
+        });
         self.save_now = true;
-        self.toast(&format!("{} “{name}”", crate::i18n::tr("Saved a copy:")), ctx);
+        self.toast(
+            &format!("{} “{name}”", crate::i18n::tr("Saved a copy:")),
+            ctx,
+        );
     }
 
     /// Follows an artist, or stops following them.
     pub fn toggle_follow(&mut self, a: &deezer::ArtistInfo, ctx: &egui::Context) {
-        if let Some(i) = self.saved.followed_artists.iter().position(|x| x.id == a.id) {
+        if let Some(i) = self
+            .saved
+            .followed_artists
+            .iter()
+            .position(|x| x.id == a.id)
+        {
             self.saved.followed_artists.remove(i);
-            self.toast(&format!("{} {}", crate::i18n::tr("Unfollowed"), a.name), ctx);
+            self.toast(
+                &format!("{} {}", crate::i18n::tr("Unfollowed"), a.name),
+                ctx,
+            );
         } else {
             self.saved.followed_artists.insert(0, a.clone());
             self.toast(&format!("{} {}", crate::i18n::tr("Following"), a.name), ctx);
@@ -3071,10 +3513,17 @@ impl App {
     /// One question at a time; the newest wins. Not in Gaming and Ultra-low modes.
     pub fn want_popular_searches(&mut self, typed: &str, ctx: &egui::Context) {
         let q = typed.trim().to_lowercase();
-        if q.chars().count() < 2 || self.popular_searches.contains_key(&q) || crate::perf::mode() != crate::perf::Mode::Normal {
+        if q.chars().count() < 2
+            || self.popular_searches.contains_key(&q)
+            || crate::perf::mode() != crate::perf::Mode::Normal
+        {
             return;
         }
-        if self.popular_rx.as_ref().is_some_and(|(asked, _)| *asked == q) {
+        if self
+            .popular_rx
+            .as_ref()
+            .is_some_and(|(asked, _)| *asked == q)
+        {
             return;
         }
         let (tx, rx) = channel();
@@ -3087,7 +3536,9 @@ impl App {
     }
 
     fn receive_popular_searches(&mut self) {
-        let Some((q, rx)) = &self.popular_rx else { return };
+        let Some((q, rx)) = &self.popular_rx else {
+            return;
+        };
         match rx.try_recv() {
             Ok(list) => {
                 let q = q.clone();
@@ -3166,13 +3617,27 @@ impl App {
             Some(id) => {
                 self.saved.artist_ids.insert(name.clone(), id.clone());
                 // Every saved song by them links straight to the page from now on.
-                let lists = self.saved.playlists.iter_mut().flat_map(|p| p.tracks.iter_mut());
-                let others = self.saved.liked.iter_mut().chain(self.saved.recent.iter_mut()).chain(self.queue.iter_mut()).chain(self.current.iter_mut());
+                let lists = self
+                    .saved
+                    .playlists
+                    .iter_mut()
+                    .flat_map(|p| p.tracks.iter_mut());
+                let others = self
+                    .saved
+                    .liked
+                    .iter_mut()
+                    .chain(self.saved.recent.iter_mut())
+                    .chain(self.queue.iter_mut())
+                    .chain(self.current.iter_mut());
                 for t in lists.chain(others) {
                     if t.artist.name == name && !deezer::is_deezer_id(&t.artist.id) {
                         t.artist.id = id.clone();
                     }
-                    for f in t.featured.iter_mut().filter(|f| f.name == name && !deezer::is_deezer_id(&f.id)) {
+                    for f in t
+                        .featured
+                        .iter_mut()
+                        .filter(|f| f.name == name && !deezer::is_deezer_id(&f.id))
+                    {
                         f.id = id.clone();
                     }
                 }
@@ -3247,7 +3712,13 @@ impl App {
     /// Loads the next two songs in the queue ahead of time, so pressing Next (or the song
     /// ending) starts them right away.
     fn prefetch_next(&mut self) {
-        let upcoming: Vec<Track> = self.queue.iter().skip(self.queue_pos + 1).take(2).cloned().collect();
+        let upcoming: Vec<Track> = self
+            .queue
+            .iter()
+            .skip(self.queue_pos + 1)
+            .take(2)
+            .cloned()
+            .collect();
         self.warm(upcoming, true);
     }
 
@@ -3276,7 +3747,11 @@ impl App {
             return;
         }
         self.prefetching.lock().unwrap().insert(t.id.clone());
-        let (ids, prefetched, in_flight) = (self.youtube_ids.clone(), self.prefetched.clone(), self.prefetching.clone());
+        let (ids, prefetched, in_flight) = (
+            self.youtube_ids.clone(),
+            self.prefetched.clone(),
+            self.prefetching.clone(),
+        );
         let quality = self.saved.settings.stream_quality;
         std::thread::spawn(move || {
             let known = ids.lock().unwrap().get(&t.id).cloned();
@@ -3292,7 +3767,12 @@ impl App {
 
     /// Does a song still need its audio link found?
     fn needs_link(&self, t: &Track) -> bool {
-        let link_ready = self.prefetched.lock().unwrap().get(&t.id).is_some_and(|(_, at)| at.elapsed() < LINK_LIFETIME);
+        let link_ready = self
+            .prefetched
+            .lock()
+            .unwrap()
+            .get(&t.id)
+            .is_some_and(|(_, at)| at.elapsed() < LINK_LIFETIME);
         !link_ready
             && !crate::local::is_local(&t.id)
             && !self.saved.downloads.contains_key(&t.id)
@@ -3303,7 +3783,12 @@ impl App {
 
     /// Does a song still need loading ahead?
     fn needs_warming(&self, t: &Track) -> bool {
-        let link_ready = self.prefetched.lock().unwrap().get(&t.id).is_some_and(|(_, at)| at.elapsed() < LINK_LIFETIME);
+        let link_ready = self
+            .prefetched
+            .lock()
+            .unwrap()
+            .get(&t.id)
+            .is_some_and(|(_, at)| at.elapsed() < LINK_LIFETIME);
         !crate::local::is_local(&t.id)
             && !self.saved.downloads.contains_key(&t.id)
             && !self.prefetch_failed.contains(&t.id)
@@ -3318,7 +3803,10 @@ impl App {
     /// The worker finds each song's audio link, then (when played songs are kept) downloads
     /// the song into that store, one song at a time so it never competes much with playback.
     fn warm(&mut self, tracks: Vec<Track>, first: bool) {
-        let wanted: Vec<Track> = tracks.into_iter().filter(|t| self.needs_warming(t)).collect();
+        let wanted: Vec<Track> = tracks
+            .into_iter()
+            .filter(|t| self.needs_warming(t))
+            .collect();
         if wanted.is_empty() {
             return;
         }
@@ -3334,7 +3822,10 @@ impl App {
             }
             q.truncate(8);
         }
-        if self.warm_busy.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        if self
+            .warm_busy
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
             return; // the worker is running and will get to them
         }
         let queue = self.warm_queue.clone();
@@ -3350,7 +3841,9 @@ impl App {
                 let Some(t) = next else {
                     busy.store(false, std::sync::atomic::Ordering::Release);
                     // Songs added just as it was finishing: carry on, unless another worker took them.
-                    if queue.lock().unwrap().is_empty() || busy.swap(true, std::sync::atomic::Ordering::AcqRel) {
+                    if queue.lock().unwrap().is_empty()
+                        || busy.swap(true, std::sync::atomic::Ordering::AcqRel)
+                    {
                         break;
                     }
                     continue;
@@ -3389,7 +3882,8 @@ impl App {
             return; // nothing to go on
         }
         // Still on the radio of the song you picked: carry on with it.
-        let on_radio = self.autoplay_ids.contains(&cur.id) || self.radio_seed.as_ref().is_some_and(|s| s.id == cur.id);
+        let on_radio = self.autoplay_ids.contains(&cur.id)
+            || self.radio_seed.as_ref().is_some_and(|s| s.id == cur.id);
         if on_radio && !self.radio_pool.is_empty() && self.queue_more_autoplay() > 0 {
             return;
         }
@@ -3426,13 +3920,19 @@ impl App {
 
     fn receive_autoplay(&mut self, ctx: &egui::Context) {
         let Some(rx) = &self.autoplay_rx else { return };
-        let Ok((seed, picks)) = rx.try_recv() else { return };
+        let Ok((seed, picks)) = rx.try_recv() else {
+            return;
+        };
         self.autoplay_rx = None;
         // You picked something else while these were found (or turned autoplay off): they
         // aren't wanted any more. Look again for what's playing now. (`autoplay_for` is the
         // song that asked for them: the one playing then, or still ahead in the queue.)
         let asked_by = self.autoplay_for.clone().unwrap_or_default();
-        let still_wanted = self.queue.iter().skip(self.queue_pos).any(|t| t.id == asked_by);
+        let still_wanted = self
+            .queue
+            .iter()
+            .skip(self.queue_pos)
+            .any(|t| t.id == asked_by);
         if !self.saved.autoplay || !still_wanted {
             self.autoplay_for = None;
             self.advance_when_autoplay_arrives = false;
@@ -3467,11 +3967,19 @@ impl App {
     /// Moves the next few songs of the radio into the queue. Returns how many went in.
     fn queue_more_autoplay(&mut self) -> usize {
         const AT_A_TIME: usize = 8;
-        let recent: HashSet<&str> = self.saved.recent.iter().take(50).map(|t| t.id.as_str()).collect();
+        let recent: HashSet<&str> = self
+            .saved
+            .recent
+            .iter()
+            .take(50)
+            .map(|t| t.id.as_str())
+            .collect();
         let queued: HashSet<&str> = self.queue.iter().map(|t| t.id.as_str()).collect();
         let mut batch = vec![];
         while batch.len() < AT_A_TIME {
-            let Some(t) = self.radio_pool.pop_front() else { break };
+            let Some(t) = self.radio_pool.pop_front() else {
+                break;
+            };
             if !recent.contains(t.id.as_str()) && !queued.contains(t.id.as_str()) {
                 batch.push(t);
             }
@@ -3491,10 +3999,14 @@ impl App {
     /// their other songs leave the radio (any already in the queue stay where you can see them).
     fn note_skip(&mut self) {
         let Some(cur) = &self.current else { return };
-        let early = matches!(self.audio.load_state(), LoadState::Ready) && !self.needs_load && !self.audio.finished() && self.audio.position() < Duration::from_secs(30);
+        let early = matches!(self.audio.load_state(), LoadState::Ready)
+            && !self.needs_load
+            && !self.audio.finished()
+            && self.audio.position() < Duration::from_secs(30);
         if early && self.autoplay_ids.contains(&cur.id) {
             let artist = crate::youtube::norm(&cur.artist.name);
-            self.radio_pool.retain(|t| crate::youtube::norm(&t.artist.name) != artist);
+            self.radio_pool
+                .retain(|t| crate::youtube::norm(&t.artist.name) != artist);
         }
     }
 
@@ -3543,7 +4055,15 @@ impl App {
 
     /// A link to `t` on YouTube, Spotify or Deezer, for the Share menu.
     pub fn share_link(&self, t: &Track, target: ShareTarget) -> String {
-        share_link(t, target, self.youtube_ids.lock().unwrap().get(&t.id).map(String::as_str))
+        share_link(
+            t,
+            target,
+            self.youtube_ids
+                .lock()
+                .unwrap()
+                .get(&t.id)
+                .map(String::as_str),
+        )
     }
 
     pub fn handle_events(&mut self, events: Vec<TrackEvent>, list: &[Track], ctx: &egui::Context) {
@@ -3561,7 +4081,11 @@ impl App {
                 TrackEvent::PlayNext(t) => {
                     // Yours now, even if autoplay once picked it.
                     self.autoplay_ids.remove(&t.id);
-                    let at = if self.queue.is_empty() { 0 } else { self.queue_pos + 1 };
+                    let at = if self.queue.is_empty() {
+                        0
+                    } else {
+                        self.queue_pos + 1
+                    };
                     self.queue.insert(at, t.clone());
                     if let Some(u) = &mut self.unshuffled {
                         u.push(t.clone());
@@ -3575,7 +4099,9 @@ impl App {
                 TrackEvent::AddToQueue(t) => {
                     self.autoplay_ids.remove(&t.id);
                     // Before the songs autoplay added, like Spotify: what you queue plays first.
-                    let at = (self.queue_pos + 1..self.queue.len()).find(|&i| self.autoplay_ids.contains(&self.queue[i].id)).unwrap_or(self.queue.len());
+                    let at = (self.queue_pos + 1..self.queue.len())
+                        .find(|&i| self.autoplay_ids.contains(&self.queue[i].id))
+                        .unwrap_or(self.queue.len());
                     self.queue.insert(at, t.clone());
                     if let Some(u) = &mut self.unshuffled {
                         u.push(t.clone());
@@ -3600,8 +4126,12 @@ impl App {
                         }
                     }
                 }
-                TrackEvent::NewPlaylistWith(t) => self.new_playlist = Some((String::new(), vec![t])),
-                TrackEvent::NewPlaylistWithMany(list) => self.new_playlist = Some((String::new(), list)),
+                TrackEvent::NewPlaylistWith(t) => {
+                    self.new_playlist = Some((String::new(), vec![t]))
+                }
+                TrackEvent::NewPlaylistWithMany(list) => {
+                    self.new_playlist = Some((String::new(), list))
+                }
                 TrackEvent::Like(t) => {
                     if !self.liked_ids.contains(&t.id) {
                         self.liked_ids.insert(t.id.clone());
@@ -3609,7 +4139,12 @@ impl App {
                         self.saved.liked.insert(0, t);
                     }
                 }
-                TrackEvent::Select { list, index, ctrl, shift } => {
+                TrackEvent::Select {
+                    list,
+                    index,
+                    ctrl,
+                    shift,
+                } => {
                     let (cur, rows, anchor) = &mut self.selection;
                     if *cur != list {
                         *cur = list;
@@ -3663,7 +4198,8 @@ impl App {
                 TrackEvent::MoveInQueue(i, by) => {
                     let from = self.queue_pos + 1 + i;
                     let last = self.queue.len().saturating_sub(1);
-                    let to = (from as isize + by).clamp(self.queue_pos as isize + 1, last as isize) as usize;
+                    let to = (from as isize + by).clamp(self.queue_pos as isize + 1, last as isize)
+                        as usize;
                     if from <= last && to != from {
                         let t = self.queue.remove(from);
                         self.queue.insert(to, t);
@@ -3732,7 +4268,11 @@ impl eframe::App for App {
         // Developer check: PULSE_DEBUG_REPAINT=1 prints what asked for each redraw.
         static DEBUG_REPAINT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         if *DEBUG_REPAINT.get_or_init(|| std::env::var_os("PULSE_DEBUG_REPAINT").is_some()) {
-            eprintln!("frame {} causes {:?}", ctx.cumulative_frame_nr(), ctx.repaint_causes());
+            eprintln!(
+                "frame {} causes {:?}",
+                ctx.cumulative_frame_nr(),
+                ctx.repaint_causes()
+            );
         }
         // Minimized: nothing to draw (the music and the mini player carry on).
         if !ctx.input(|i| i.viewport().minimized.unwrap_or(false)) {
@@ -3763,12 +4303,33 @@ mod sorting_tests {
 
     #[test]
     fn text_sorting_keeps_ties_in_their_original_order() {
-        let tracks: Vec<Track> = ["same", "Same", "SAME"].iter().enumerate().map(|(i, title)| Track {
-            id: i.to_string(), title: (*title).into(), artist: deezer::ArtistRef { name: (*title).into(), ..Default::default() },
-            album: Some(deezer::AlbumRef { id: i.to_string(), title: (*title).into() }), ..Default::default()
-        }).collect();
+        let tracks: Vec<Track> = ["same", "Same", "SAME"]
+            .iter()
+            .enumerate()
+            .map(|(i, title)| Track {
+                id: i.to_string(),
+                title: (*title).into(),
+                artist: deezer::ArtistRef {
+                    name: (*title).into(),
+                    ..Default::default()
+                },
+                album: Some(deezer::AlbumRef {
+                    id: i.to_string(),
+                    title: (*title).into(),
+                }),
+                ..Default::default()
+            })
+            .collect();
         for sort in [SortBy::Title, SortBy::Artist, SortBy::Album] {
-            let sorted = apply_view(&tracks, &ListView { sort, ..Default::default() }, None, &HashMap::new());
+            let sorted = apply_view(
+                &tracks,
+                &ListView {
+                    sort,
+                    ..Default::default()
+                },
+                None,
+                &HashMap::new(),
+            );
             assert_eq!(sorted, tracks, "{sort:?} must keep the order of equal keys");
         }
     }
@@ -3779,31 +4340,57 @@ mod sorting_tests {
     fn library_text_sort_timing() {
         use std::hint::black_box;
         const ROUNDS: usize = 12;
-        let tracks: Vec<Track> = (0..10_000).map(|i| {
-            let n = (i * 7919) % 10_000;
-            Track {
-                id: format!("dz:{i}"), title: format!("Song {n:05}"), duration: 200,
-                artist: deezer::ArtistRef { id: format!("{}", n % 100), name: format!("Artist {:03}", n % 100), ..Default::default() },
-                album: Some(deezer::AlbumRef { id: format!("{}", n % 1000), title: format!("Album {:04}", n % 1000) }),
-                cover_small: Some(format!("https://example.invalid/cover/{n}/small.jpg")),
-                cover_big: Some(format!("https://example.invalid/cover/{n}/big.jpg")), ..Default::default()
-            }
-        }).collect();
+        let tracks: Vec<Track> = (0..10_000)
+            .map(|i| {
+                let n = (i * 7919) % 10_000;
+                Track {
+                    id: format!("dz:{i}"),
+                    title: format!("Song {n:05}"),
+                    duration: 200,
+                    artist: deezer::ArtistRef {
+                        id: format!("{}", n % 100),
+                        name: format!("Artist {:03}", n % 100),
+                        ..Default::default()
+                    },
+                    album: Some(deezer::AlbumRef {
+                        id: format!("{}", n % 1000),
+                        title: format!("Album {:04}", n % 1000),
+                    }),
+                    cover_small: Some(format!("https://example.invalid/cover/{n}/small.jpg")),
+                    cover_big: Some(format!("https://example.invalid/cover/{n}/big.jpg")),
+                    ..Default::default()
+                }
+            })
+            .collect();
         let genres = HashMap::new();
         for sort in [SortBy::Title, SortBy::Artist, SortBy::Album] {
-            let view = ListView { sort, ..Default::default() };
+            let view = ListView {
+                sort,
+                ..Default::default()
+            };
             let before = || {
                 let mut out = tracks.clone();
                 match sort {
                     SortBy::Title => out.sort_by_key(|t| t.title.to_lowercase()),
-                    SortBy::Artist => out.sort_by_key(|t| (t.artist.name.to_lowercase(), t.title.to_lowercase())),
-                    SortBy::Album => out.sort_by_key(|t| (t.album.as_ref().map(|a| a.title.to_lowercase()), t.title.to_lowercase())),
+                    SortBy::Artist => {
+                        out.sort_by_key(|t| (t.artist.name.to_lowercase(), t.title.to_lowercase()))
+                    }
+                    SortBy::Album => out.sort_by_key(|t| {
+                        (
+                            t.album.as_ref().map(|a| a.title.to_lowercase()),
+                            t.title.to_lowercase(),
+                        )
+                    }),
                     _ => unreachable!(),
                 }
                 out
             };
             let after = || apply_view(&tracks, &view, None, &genres);
-            assert_eq!(before(), after(), "the optimization must preserve every song and its order");
+            assert_eq!(
+                before(),
+                after(),
+                "the optimization must preserve every song and its order"
+            );
             // Warm both paths, then alternate samples to reduce order bias.
             black_box(before());
             black_box(after());
@@ -3811,13 +4398,28 @@ mod sorting_tests {
             for round in 0..ROUNDS {
                 let mut measure = |cached| {
                     let at = Instant::now();
-                    if cached { black_box(after()); new += at.elapsed(); }
-                    else { black_box(before()); old += at.elapsed(); }
+                    if cached {
+                        black_box(after());
+                        new += at.elapsed();
+                    } else {
+                        black_box(before());
+                        old += at.elapsed();
+                    }
                 };
-                if round % 2 == 0 { measure(false); measure(true); }
-                else { measure(true); measure(false); }
+                if round % 2 == 0 {
+                    measure(false);
+                    measure(true);
+                } else {
+                    measure(true);
+                    measure(false);
+                }
             }
-            println!("{sort:?}: 10000 songs, {ROUNDS} rounds, before {:.2} ms/view, after {:.2} ms/view, {:.2}x faster", old.as_secs_f64() * 1000.0 / ROUNDS as f64, new.as_secs_f64() * 1000.0 / ROUNDS as f64, old.as_secs_f64() / new.as_secs_f64());
+            println!(
+                "{sort:?}: 10000 songs, {ROUNDS} rounds, before {:.2} ms/view, after {:.2} ms/view, {:.2}x faster",
+                old.as_secs_f64() * 1000.0 / ROUNDS as f64,
+                new.as_secs_f64() * 1000.0 / ROUNDS as f64,
+                old.as_secs_f64() / new.as_secs_f64()
+            );
         }
     }
 }
@@ -3827,14 +4429,22 @@ mod search_tests {
     use super::*;
 
     fn song(title: &str, artist: &str) -> Track {
-        let mut t = Track { title: title.into(), ..Default::default() };
+        let mut t = Track {
+            title: title.into(),
+            ..Default::default()
+        };
         t.artist.name = artist.into();
         t
     }
 
     #[test]
     fn local_search_matches_parts_accents_and_small_typos() {
-        let words = |q: &str| fold(q).split_whitespace().map(str::to_owned).collect::<Vec<_>>();
+        let words = |q: &str| {
+            fold(q)
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
         let t = song("Halo", "Beyoncé");
         assert!(track_matches(&t, &words("beyonce")));
         assert!(track_matches(&t, &words("beyonse halo")));
@@ -3851,8 +4461,16 @@ mod borrowed_view_tests {
 
     fn songs() -> Vec<Track> {
         vec![
-            Track { id: "a".into(), title: "Zebra".into(), ..Default::default() },
-            Track { id: "b".into(), title: "Apple".into(), ..Default::default() },
+            Track {
+                id: "a".into(),
+                title: "Zebra".into(),
+                ..Default::default()
+            },
+            Track {
+                id: "b".into(),
+                title: "Apple".into(),
+                ..Default::default()
+            },
         ]
     }
 
@@ -3872,16 +4490,31 @@ mod borrowed_view_tests {
         let tracks = songs();
         let genres = HashMap::new();
         for view in [
-            ListView { search: "apple".into(), ..Default::default() },
-            ListView { sort: SortBy::Title, ..Default::default() },
-            ListView { genre: Some("Pop".into()), ..Default::default() },
+            ListView {
+                search: "apple".into(),
+                ..Default::default()
+            },
+            ListView {
+                sort: SortBy::Title,
+                ..Default::default()
+            },
+            ListView {
+                genre: Some("Pop".into()),
+                ..Default::default()
+            },
         ] {
             let shown = view_tracks(&tracks, &view, None, &genres);
             assert!(matches!(shown, std::borrow::Cow::Owned(_)));
             assert_eq!(shown.as_ref(), apply_view(&tracks, &view, None, &genres));
         }
-        let view = ListView { search: "  \t ".into(), ..Default::default() };
-        assert!(matches!(view_tracks(&tracks, &view, None, &genres), std::borrow::Cow::Borrowed(_)));
+        let view = ListView {
+            search: "  \t ".into(),
+            ..Default::default()
+        };
+        assert!(matches!(
+            view_tracks(&tracks, &view, None, &genres),
+            std::borrow::Cow::Borrowed(_)
+        ));
     }
 
     /// The toolbar and song rows both ask for the view on every frame.
@@ -3890,29 +4523,70 @@ mod borrowed_view_tests {
     fn unchanged_library_view_timing() {
         use std::hint::black_box;
         const ROUNDS: usize = 30;
-        let tracks: Vec<Track> = (0..10_000).map(|i| Track {
-            id: format!("dz:{i}"), title: format!("Song {i}"), duration: 200,
-            artist: deezer::ArtistRef { id: format!("{i}"), name: format!("Artist {i}"), ..Default::default() },
-            album: Some(deezer::AlbumRef { id: format!("{i}"), title: format!("Album {i}") }),
-            cover_small: Some(format!("https://example.invalid/{i}/small.jpg")),
-            cover_big: Some(format!("https://example.invalid/{i}/big.jpg")), ..Default::default()
-        }).collect();
+        let tracks: Vec<Track> = (0..10_000)
+            .map(|i| Track {
+                id: format!("dz:{i}"),
+                title: format!("Song {i}"),
+                duration: 200,
+                artist: deezer::ArtistRef {
+                    id: format!("{i}"),
+                    name: format!("Artist {i}"),
+                    ..Default::default()
+                },
+                album: Some(deezer::AlbumRef {
+                    id: format!("{i}"),
+                    title: format!("Album {i}"),
+                }),
+                cover_small: Some(format!("https://example.invalid/{i}/small.jpg")),
+                cover_big: Some(format!("https://example.invalid/{i}/big.jpg")),
+                ..Default::default()
+            })
+            .collect();
         let (view, genres) = (ListView::default(), HashMap::new());
-        assert_eq!(view_tracks(&tracks, &view, None, &genres).as_ref(), apply_view(&tracks, &view, None, &genres));
+        assert_eq!(
+            view_tracks(&tracks, &view, None, &genres).as_ref(),
+            apply_view(&tracks, &view, None, &genres)
+        );
         let (mut before, mut after) = (Duration::ZERO, Duration::ZERO);
         for round in 0..ROUNDS {
             let mut measure = |borrowed| {
                 let at = Instant::now();
                 for _ in 0..2 {
-                    if borrowed { black_box(view_tracks(black_box(&tracks), black_box(&view), None, &genres)); }
-                    else { black_box(apply_view(black_box(&tracks), black_box(&view), None, &genres)); }
+                    if borrowed {
+                        black_box(view_tracks(
+                            black_box(&tracks),
+                            black_box(&view),
+                            None,
+                            &genres,
+                        ));
+                    } else {
+                        black_box(apply_view(
+                            black_box(&tracks),
+                            black_box(&view),
+                            None,
+                            &genres,
+                        ));
+                    }
                 }
-                if borrowed { after += at.elapsed(); } else { before += at.elapsed(); }
+                if borrowed {
+                    after += at.elapsed();
+                } else {
+                    before += at.elapsed();
+                }
             };
-            if round % 2 == 0 { measure(false); measure(true); }
-            else { measure(true); measure(false); }
+            if round % 2 == 0 {
+                measure(false);
+                measure(true);
+            } else {
+                measure(true);
+                measure(false);
+            }
         }
-        println!("unchanged 10000-song view, two calls/frame, {ROUNDS} rounds: before {:.3} ms/frame, after {:.6} ms/frame", before.as_secs_f64() * 1000.0 / ROUNDS as f64, after.as_secs_f64() * 1000.0 / ROUNDS as f64);
+        println!(
+            "unchanged 10000-song view, two calls/frame, {ROUNDS} rounds: before {:.3} ms/frame, after {:.6} ms/frame",
+            before.as_secs_f64() * 1000.0 / ROUNDS as f64,
+            after.as_secs_f64() * 1000.0 / ROUNDS as f64
+        );
     }
 }
 
@@ -3925,8 +4599,14 @@ mod share_tests {
             id: id.into(),
             title: title.into(),
             duration: secs,
-            artist: deezer::ArtistRef { name: artist.into(), ..Default::default() },
-            album: Some(deezer::AlbumRef { id: album.into(), title: album.into() }),
+            artist: deezer::ArtistRef {
+                name: artist.into(),
+                ..Default::default()
+            },
+            album: Some(deezer::AlbumRef {
+                id: album.into(),
+                title: album.into(),
+            }),
             ..Default::default()
         }
     }
@@ -3963,20 +4643,46 @@ mod share_tests {
 
     #[test]
     fn playlist_search_genre_and_sort() {
-        let list = vec![song("a", "Zebra", "Bee", "1", 200), song("b", "Apple", "Cat", "2", 100), song("c", "Mango", "Ant", "1", 300)];
-        let genres = HashMap::from([("1".to_string(), vec!["Rap".to_string()]), ("2".to_string(), vec!["Pop".to_string()])]);
-        let added = HashMap::from([("a".to_string(), 10), ("b".to_string(), 30), ("c".to_string(), 20)]);
+        let list = vec![
+            song("a", "Zebra", "Bee", "1", 200),
+            song("b", "Apple", "Cat", "2", 100),
+            song("c", "Mango", "Ant", "1", 300),
+        ];
+        let genres = HashMap::from([
+            ("1".to_string(), vec!["Rap".to_string()]),
+            ("2".to_string(), vec!["Pop".to_string()]),
+        ]);
+        let added = HashMap::from([
+            ("a".to_string(), 10),
+            ("b".to_string(), 30),
+            ("c".to_string(), 20),
+        ]);
         let ids = |v: Vec<Track>| v.into_iter().map(|t| t.id).collect::<Vec<_>>();
         let mut view = ListView::default();
-        assert_eq!(ids(apply_view(&list, &view, Some(&added), &genres)), ["a", "b", "c"]);
+        assert_eq!(
+            ids(apply_view(&list, &view, Some(&added), &genres)),
+            ["a", "b", "c"]
+        );
         view.sort = SortBy::Title;
-        assert_eq!(ids(apply_view(&list, &view, Some(&added), &genres)), ["b", "c", "a"]);
+        assert_eq!(
+            ids(apply_view(&list, &view, Some(&added), &genres)),
+            ["b", "c", "a"]
+        );
         view.sort = SortBy::RecentlyAdded;
-        assert_eq!(ids(apply_view(&list, &view, Some(&added), &genres)), ["b", "c", "a"]);
+        assert_eq!(
+            ids(apply_view(&list, &view, Some(&added), &genres)),
+            ["b", "c", "a"]
+        );
         view.sort = SortBy::Artist;
-        assert_eq!(ids(apply_view(&list, &view, Some(&added), &genres)), ["c", "a", "b"]);
+        assert_eq!(
+            ids(apply_view(&list, &view, Some(&added), &genres)),
+            ["c", "a", "b"]
+        );
         view.genre = Some("Rap".into());
-        assert_eq!(ids(apply_view(&list, &view, Some(&added), &genres)), ["c", "a"]);
+        assert_eq!(
+            ids(apply_view(&list, &view, Some(&added), &genres)),
+            ["c", "a"]
+        );
         view.search = "zeb".into();
         assert_eq!(ids(apply_view(&list, &view, Some(&added), &genres)), ["a"]);
         assert_eq!(genre_chips(&list, &genres), ["Rap", "Pop"]);
@@ -3984,11 +4690,24 @@ mod share_tests {
 
     #[test]
     fn share_links_point_to_the_right_place() {
-        let t = Track { id: "dz:123".into(), title: "Song A".into(), ..Default::default() };
-        assert_eq!(share_link(&t, ShareTarget::YouTube, Some("abcdefghijk")), "https://www.youtube.com/watch?v=abcdefghijk");
-        assert!(share_link(&t, ShareTarget::YouTube, None).starts_with("https://www.youtube.com/results?search_query="));
+        let t = Track {
+            id: "dz:123".into(),
+            title: "Song A".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            share_link(&t, ShareTarget::YouTube, Some("abcdefghijk")),
+            "https://www.youtube.com/watch?v=abcdefghijk"
+        );
+        assert!(
+            share_link(&t, ShareTarget::YouTube, None)
+                .starts_with("https://www.youtube.com/results?search_query=")
+        );
         assert!(share_link(&t, ShareTarget::Spotify, None).contains("Song%20A"));
-        assert_eq!(share_link(&t, ShareTarget::Deezer, None), "https://www.deezer.com/track/123");
+        assert_eq!(
+            share_link(&t, ShareTarget::Deezer, None),
+            "https://www.deezer.com/track/123"
+        );
     }
 }
 
@@ -3997,8 +4716,14 @@ mod ready_audio_tests {
     use super::*;
 
     fn fixture(name: &str) -> (Track, std::path::PathBuf) {
-        let path = std::env::temp_dir().join(format!("pulse-ready-audio-{}-{name}.mp3", std::process::id()));
-        let track = Track { id: format!("test-ready-audio-{name}-{}", std::process::id()), ..Default::default() };
+        let path = std::env::temp_dir().join(format!(
+            "pulse-ready-audio-{}-{name}.mp3",
+            std::process::id()
+        ));
+        let track = Track {
+            id: format!("test-ready-audio-{name}-{}", std::process::id()),
+            ..Default::default()
+        };
         (track, path)
     }
 
@@ -4009,11 +4734,16 @@ mod ready_audio_tests {
         let pending = Arc::new(Mutex::new(HashSet::from([track.id.clone()])));
         let (tx, rx) = channel();
         let (t, p, busy) = (track.clone(), path.clone(), pending.clone());
-        let worker = std::thread::spawn(move || { tx.send(offline_or_wait(&t, Some(&p), &busy)).unwrap(); });
+        let worker = std::thread::spawn(move || {
+            tx.send(offline_or_wait(&t, Some(&p), &busy)).unwrap();
+        });
         let early = rx.recv_timeout(Duration::from_secs(1));
         pending.lock().unwrap().clear();
         worker.join().unwrap();
-        let source = early.expect("a ready download must not wait for YouTube").unwrap().unwrap();
+        let source = early
+            .expect("a ready download must not wait for YouTube")
+            .unwrap()
+            .unwrap();
         assert_eq!(source.url, format!("file://{}", path.display()));
         std::fs::remove_file(path).unwrap();
     }
@@ -4028,7 +4758,9 @@ mod ready_audio_tests {
             std::fs::write(&p, b"synthetic audio").unwrap();
             busy.lock().unwrap().clear();
         });
-        let source = offline_or_wait(&track, Some(&path), &pending).unwrap().unwrap();
+        let source = offline_or_wait(&track, Some(&path), &pending)
+            .unwrap()
+            .unwrap();
         worker.join().unwrap();
         assert!(source.url.starts_with("file://"));
         std::fs::remove_file(path).unwrap();
@@ -4057,7 +4789,9 @@ mod ready_audio_tests {
             });
             let at = Instant::now();
             // The previous resolver waited first, then checked for the saved audio.
-            while pending.lock().unwrap().contains(&track.id) && at.elapsed() < Duration::from_secs(12) {
+            while pending.lock().unwrap().contains(&track.id)
+                && at.elapsed() < Duration::from_secs(12)
+            {
                 std::thread::sleep(Duration::from_millis(40));
             }
             let old = offline_source(&track, Some(&path)).unwrap().unwrap();
@@ -4065,12 +4799,21 @@ mod ready_audio_tests {
             worker.join().unwrap();
             pending.lock().unwrap().insert(track.id.clone());
             let at = Instant::now();
-            let new = offline_or_wait(&track, Some(&path), &pending).unwrap().unwrap();
+            let new = offline_or_wait(&track, Some(&path), &pending)
+                .unwrap()
+                .unwrap();
             after += at.elapsed();
             assert_eq!(old.url, new.url);
-            assert!(pending.lock().unwrap().contains(&track.id), "the lookup is still running");
+            assert!(
+                pending.lock().unwrap().contains(&track.id),
+                "the lookup is still running"
+            );
         }
-        println!("ready download with a synthetic 160 ms lookup in flight, 6 rounds: before {:.2} ms, after {:.3} ms", before.as_secs_f64() * 1000.0 / 6.0, after.as_secs_f64() * 1000.0 / 6.0);
+        println!(
+            "ready download with a synthetic 160 ms lookup in flight, 6 rounds: before {:.2} ms, after {:.3} ms",
+            before.as_secs_f64() * 1000.0 / 6.0,
+            after.as_secs_f64() * 1000.0 / 6.0
+        );
         std::fs::remove_file(path).unwrap();
     }
 }
@@ -4098,9 +4841,15 @@ mod ahead_tests {
         let dest = dir.join("dz_1.m4a");
         assert!(keep_ahead(&src, &dest));
         assert_eq!(std::fs::read(&dest).unwrap(), song);
-        assert!(!dest.with_extension("ahead").exists(), "no half file left behind");
+        assert!(
+            !dest.with_extension("ahead").exists(),
+            "no half file left behind"
+        );
         // A server that's gone: nothing kept, nothing left behind.
-        let gone = StreamSource { url: "http://127.0.0.1:9/x".into(), ..src };
+        let gone = StreamSource {
+            url: "http://127.0.0.1:9/x".into(),
+            ..src
+        };
         assert!(!keep_ahead(&gone, &dir.join("dz_2.m4a")));
         assert!(!dir.join("dz_2.m4a").exists() && !dir.join("dz_2.ahead").exists());
         let _ = std::fs::remove_dir_all(&dir);
@@ -4120,9 +4869,14 @@ mod rematch_tests {
             copy_rematched_video(&ids, "missing", "dz:2");
             tx.send(ids.into_inner().unwrap()).unwrap();
         });
-        let ids = rx.recv_timeout(Duration::from_secs(2)).expect("rematching must not deadlock the UI");
+        let ids = rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("rematching must not deadlock the UI");
         assert_eq!(ids.get("dz:1").map(String::as_str), Some("video"));
-        assert_eq!(ids.get("imp:youtube:old").map(String::as_str), Some("video"));
+        assert_eq!(
+            ids.get("imp:youtube:old").map(String::as_str),
+            Some("video")
+        );
         assert!(!ids.contains_key("dz:2"), "an unknown video isn't invented");
     }
 }

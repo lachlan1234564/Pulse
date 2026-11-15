@@ -1,11 +1,11 @@
 //! Reusable, custom-drawn UI pieces (buttons, artwork, sliders, track rows...).
 
-use crate::i18n::tr;
 use crate::deezer::Track;
+use crate::i18n::tr;
 use crate::theme::{self, *};
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Key, Modifiers, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, WidgetInfo, WidgetType, pos2,
-    vec2,
+    Align2, Color32, CornerRadius, FontId, Key, Modifiers, Pos2, Rect, Response, Sense, Stroke, Ui,
+    Vec2, WidgetInfo, WidgetType, pos2, vec2,
 };
 use egui_phosphor::regular as icon;
 use std::collections::{HashMap, HashSet};
@@ -16,14 +16,27 @@ use std::sync::Arc;
 // ---------------------------------------------------------------------------
 
 /// Lays out one line of text, cutting it off with "…" if it is wider than `max_w`.
-pub fn one_line(ui: &Ui, text: &str, font: FontId, color: Color32, max_w: f32) -> Arc<egui::Galley> {
+pub fn one_line(
+    ui: &Ui,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_w: f32,
+) -> Arc<egui::Galley> {
     let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color);
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_w.max(1.0));
     ui.painter().layout_job(job)
 }
 
 /// Draws one truncated line and returns its rect.
-pub fn paint_line(ui: &Ui, pos: Pos2, text: &str, font: FontId, color: Color32, max_w: f32) -> Rect {
+pub fn paint_line(
+    ui: &Ui,
+    pos: Pos2,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_w: f32,
+) -> Rect {
     let g = one_line(ui, text, font, color, max_w);
     let rect = Rect::from_min_size(pos, g.size());
     ui.painter().galley(pos, g, color);
@@ -60,10 +73,18 @@ pub fn artwork(ui: &Ui, rect: Rect, url: Option<&str>, radius: CornerRadius) {
         return;
     }
     ui.painter().rect_filled(rect, radius, pal().surface_active);
-    paint_icon(ui.painter(), rect.center(), icon::MUSIC_NOTES, regular(rect.height() * 0.38), pal().text_faint);
+    paint_icon(
+        ui.painter(),
+        rect.center(),
+        icon::MUSIC_NOTES,
+        regular(rect.height() * 0.38),
+        pal().text_faint,
+    );
     if let Some(url) = url {
         crate::artcache::drawn(url);
-        let mut img = egui::Image::new(url).corner_radius(radius).show_loading_spinner(false);
+        let mut img = egui::Image::new(url)
+            .corner_radius(radius)
+            .show_loading_spinner(false);
         // YouTube video pictures are wide: show their middle square instead of squashing them.
         if url.contains("i.ytimg.com/") {
             let uv = if url.contains("hqdefault") {
@@ -84,7 +105,11 @@ pub fn artwork(ui: &Ui, rect: Rect, url: Option<&str>, radius: CornerRadius) {
 fn paint_loaded(ui: &Ui, img: egui::Image, rect: Rect, url: &str) {
     if img.load_for_size(ui.ctx(), rect.size()).is_ok() {
         let shown = crate::theme::appear(ui.ctx(), egui::Id::new(("art_in", url)), 0.22);
-        let img = if shown < 1.0 { img.tint(Color32::from_white_alpha((shown * 255.0) as u8)) } else { img };
+        let img = if shown < 1.0 {
+            img.tint(Color32::from_white_alpha((shown * 255.0) as u8))
+        } else {
+            img
+        };
         img.paint_at(ui, rect);
     }
 }
@@ -109,7 +134,13 @@ fn liked_art(ui: &Ui, rect: Rect, radius: CornerRadius) {
         mesh.add_triangle(0, 1 + i, 1 + (i + 1) % n);
     }
     ui.painter().add(egui::Shape::mesh(mesh));
-    paint_icon(ui.painter(), rect.center() + vec2(0.0, rect.height() * 0.02), icon::HEART, filled_icon(rect.height() * 0.42), Color32::WHITE);
+    paint_icon(
+        ui.painter(),
+        rect.center() + vec2(0.0, rect.height() * 0.02),
+        icon::HEART,
+        filled_icon(rect.height() * 0.42),
+        Color32::WHITE,
+    );
 }
 
 /// Vertical gradient (used behind page headers).
@@ -133,7 +164,15 @@ pub fn artwork_cover(ui: &Ui, rect: Rect, url: Option<&str>, radius: CornerRadiu
         Rect::from_min_max(pos2(left, 0.0), pos2(left + w, 1.0))
     };
     crate::artcache::drawn(url);
-    paint_loaded(ui, egui::Image::new(url).uv(uv).corner_radius(radius).show_loading_spinner(false), rect, url);
+    paint_loaded(
+        ui,
+        egui::Image::new(url)
+            .uv(uv)
+            .corner_radius(radius)
+            .show_loading_spinner(false),
+        rect,
+        url,
+    );
 }
 
 pub fn vgradient(ui: &Ui, rect: Rect, top: Color32, bottom: Color32) {
@@ -168,7 +207,12 @@ pub fn focus_ring(ui: &Ui, resp: &Response) {
     }
     if resp.has_focus() {
         let r = CornerRadius::same((resp.rect.height() / 2.0).min(10.0) as u8);
-        ui.painter().rect_stroke(resp.rect.expand(2.0), r, Stroke::new(2.0, pal().accent_soft), egui::StrokeKind::Outside);
+        ui.painter().rect_stroke(
+            resp.rect.expand(2.0),
+            r,
+            Stroke::new(2.0, pal().accent_soft),
+            egui::StrokeKind::Outside,
+        );
     }
 }
 
@@ -182,12 +226,38 @@ pub fn labeled_button(ui: &mut Ui, glyph: &str, label: &str, active: bool) -> Re
     a11y(ui, &resp, WidgetType::Button, || label.to_owned());
     focus_ring(ui, &resp);
     let hovered = resp.hovered();
-    let fill = if active { pal().surface_active } else if hovered { pal().surface_hover } else { Color32::TRANSPARENT };
+    let fill = if active {
+        pal().surface_active
+    } else if hovered {
+        pal().surface_hover
+    } else {
+        Color32::TRANSPARENT
+    };
     ui.painter().rect_filled(rect, CornerRadius::same(16), fill);
-    let col = if active { pal().accent_soft } else if hovered { pal().text } else { pal().text_muted };
-    let text_col = if active || hovered { pal().text } else { pal().text_muted };
-    paint_icon(ui.painter(), pos2(rect.left() + 20.0, rect.center().y), glyph, regular(16.0), col);
-    ui.painter().galley(pos2(rect.left() + 34.0, rect.center().y - g.size().y / 2.0), g, text_col);
+    let col = if active {
+        pal().accent_soft
+    } else if hovered {
+        pal().text
+    } else {
+        pal().text_muted
+    };
+    let text_col = if active || hovered {
+        pal().text
+    } else {
+        pal().text_muted
+    };
+    paint_icon(
+        ui.painter(),
+        pos2(rect.left() + 20.0, rect.center().y),
+        glyph,
+        regular(16.0),
+        col,
+    );
+    ui.painter().galley(
+        pos2(rect.left() + 34.0, rect.center().y - g.size().y / 2.0),
+        g,
+        text_col,
+    );
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
@@ -197,11 +267,26 @@ pub fn icon_button(ui: &mut Ui, glyph: &str, size: f32, color: Color32, tip: &st
 
 /// An icon button that is switched on or off (shuffle, repeat). `name` is the
 /// screen-reader name; the on/off state is announced separately.
-pub fn icon_toggle(ui: &mut Ui, glyph: &str, size: f32, color: Color32, tip: &str, name: &str, on: bool) -> Response {
+pub fn icon_toggle(
+    ui: &mut Ui,
+    glyph: &str,
+    size: f32,
+    color: Color32,
+    tip: &str,
+    name: &str,
+    on: bool,
+) -> Response {
     icon_button_impl(ui, glyph, size, color, tip, Some((name, on)))
 }
 
-fn icon_button_impl(ui: &mut Ui, glyph: &str, size: f32, color: Color32, tip: &str, toggle: Option<(&str, bool)>) -> Response {
+fn icon_button_impl(
+    ui: &mut Ui,
+    glyph: &str,
+    size: f32,
+    color: Color32,
+    tip: &str,
+    toggle: Option<(&str, bool)>,
+) -> Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size + 12.0), Sense::click());
     match toggle {
         Some((name, on)) => resp_selected(ui, &resp, on, name),
@@ -209,18 +294,33 @@ fn icon_button_impl(ui: &mut Ui, glyph: &str, size: f32, color: Color32, tip: &s
     }
     let hovered = resp.hovered();
     if hovered {
-        ui.painter().circle_filled(rect.center(), rect.width() / 2.0, pal().surface_hover);
+        ui.painter()
+            .circle_filled(rect.center(), rect.width() / 2.0, pal().surface_hover);
     }
-    let c = if hovered && color == pal().text_muted { pal().text } else { color };
+    let c = if hovered && color == pal().text_muted {
+        pal().text
+    } else {
+        color
+    };
     paint_icon(ui.painter(), rect.center(), glyph, regular(size), c);
     let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
-    if tip.is_empty() { resp } else { resp.on_hover_text(tip) }
+    if tip.is_empty() {
+        resp
+    } else {
+        resp.on_hover_text(tip)
+    }
 }
 
 /// Small dot-indicator used under active toggle buttons (shuffle / repeat).
 /// An on/off switch. The knob slides across with a little overshoot, stretches while
 /// it's pressed, and carries a check mark when on. `on_color` is the track color when on.
-pub fn toggle_switch(ui: &mut Ui, on: &mut bool, label: &str, on_color: Color32, off_color: Color32) -> Response {
+pub fn toggle_switch(
+    ui: &mut Ui,
+    on: &mut bool,
+    label: &str,
+    on_color: Color32,
+    off_color: Color32,
+) -> Response {
     let size = vec2(42.0, 24.0);
     let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
     if resp.clicked() {
@@ -236,7 +336,11 @@ pub fn toggle_switch(ui: &mut Ui, on: &mut bool, label: &str, on_color: Color32,
         let slide = {
             let c = 1.6;
             let x = t - 1.0;
-            if *on { 1.0 + (c + 1.0) * x.powi(3) + c * x.powi(2) } else { t * t * (3.0 - 2.0 * t) }
+            if *on {
+                1.0 + (c + 1.0) * x.powi(3) + c * x.powi(2)
+            } else {
+                t * t * (3.0 - 2.0 * t)
+            }
         };
         let pressed = resp.is_pointer_button_down_on();
         let stretch = ctx.animate_bool_with_time(resp.id.with("press"), pressed, 0.1);
@@ -246,13 +350,26 @@ pub fn toggle_switch(ui: &mut Ui, on: &mut bool, label: &str, on_color: Color32,
         let pad = 3.0;
         let d = rect.height() - pad * 2.0;
         let w = d + 4.0 * stretch;
-        let x0 = egui::lerp(rect.left() + pad..=rect.right() - pad - w, slide.clamp(-0.1, 1.1));
+        let x0 = egui::lerp(
+            rect.left() + pad..=rect.right() - pad - w,
+            slide.clamp(-0.1, 1.1),
+        );
         let knob = Rect::from_min_size(pos2(x0, rect.top() + pad), vec2(w, d));
-        p.rect_filled(knob.translate(vec2(0.0, 1.0)), CornerRadius::same((d / 2.0) as u8), Color32::from_black_alpha(40));
+        p.rect_filled(
+            knob.translate(vec2(0.0, 1.0)),
+            CornerRadius::same((d / 2.0) as u8),
+            Color32::from_black_alpha(40),
+        );
         p.rect_filled(knob, CornerRadius::same((d / 2.0) as u8), Color32::WHITE);
         if t > 0.5 {
             let a = ((t - 0.5) * 2.0).clamp(0.0, 1.0);
-            paint_icon(p, knob.center(), icon::CHECK, FontId::proportional(11.0), on_color.gamma_multiply(a));
+            paint_icon(
+                p,
+                knob.center(),
+                icon::CHECK,
+                FontId::proportional(11.0),
+                on_color.gamma_multiply(a),
+            );
         }
     }
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -261,36 +378,60 @@ pub fn toggle_switch(ui: &mut Ui, on: &mut bool, label: &str, on_color: Color32,
 fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
     let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
     // Color32 stores premultiplied values, so mixing them straight is correct.
-    Color32::from_rgba_premultiplied(l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()), l(a.a(), b.a()))
+    Color32::from_rgba_premultiplied(
+        l(a.r(), b.r()),
+        l(a.g(), b.g()),
+        l(a.b(), b.b()),
+        l(a.a(), b.a()),
+    )
 }
 
 pub fn active_dot(ui: &Ui, resp: &Response) {
-    ui.painter().circle_filled(pos2(resp.rect.center().x, resp.rect.bottom() - 1.0), 2.0, pal().accent_soft);
+    ui.painter().circle_filled(
+        pos2(resp.rect.center().x, resp.rect.bottom() - 1.0),
+        2.0,
+        pal().accent_soft,
+    );
 }
 
 /// The big round accent "play" button.
 pub fn play_button(ui: &mut Ui, size: f32, playing: bool) -> Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
-    a11y(ui, &resp, WidgetType::Button, || if playing { "Pause" } else { "Play" }.to_owned());
+    a11y(ui, &resp, WidgetType::Button, || {
+        if playing { "Pause" } else { "Play" }.to_owned()
+    });
     // Hover is shown by the grow animation only: white on the lighter accent is too faint.
     let t = ui.ctx().animate_bool(resp.id, resp.hovered());
     // Grows a little under the pointer and gives a little when pressed.
-    let press = ui.ctx().animate_bool_with_time(resp.id.with("press"), resp.is_pointer_button_down_on(), crate::theme::motion(0.08));
+    let press = ui.ctx().animate_bool_with_time(
+        resp.id.with("press"),
+        resp.is_pointer_button_down_on(),
+        crate::theme::motion(0.08),
+    );
     let r = size / 2.0 * (1.0 + 0.05 * t - 0.08 * press);
     let style = &parts().play_button;
-    ui.painter().circle_filled(rect.center(), r, style.fill.unwrap_or(pal().accent));
+    ui.painter()
+        .circle_filled(rect.center(), r, style.fill.unwrap_or(pal().accent));
     if let Some(b) = style.border {
         ui.painter().circle_stroke(rect.center(), r, b);
     }
     let glyph = if playing { icon::PAUSE } else { icon::PLAY };
-    paint_icon(ui.painter(), rect.center(), glyph, filled_icon(size * 0.42), style.color.unwrap_or(Color32::WHITE));
+    paint_icon(
+        ui.painter(),
+        rect.center(),
+        glyph,
+        filled_icon(size * 0.42),
+        style.color.unwrap_or(Color32::WHITE),
+    );
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// A pill-shaped toggle (e.g. "This week" / "This month").
 pub fn pill(ui: &mut Ui, label: &str, selected: bool) -> Response {
     let label = tr(label);
-    let probe = ui.painter().layout_no_wrap(label.to_owned(), med(12.5), pal().text);
+    let probe = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), med(12.5), pal().text);
     let size = vec2(probe.size().x + 26.0, 30.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     resp.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, label));
@@ -310,29 +451,72 @@ pub fn pill(ui: &mut Ui, label: &str, selected: bool) -> Response {
 /// Outline button with icon + label ("Shuffle", "See all", ...).
 pub fn ghost_button(ui: &mut Ui, glyph: &str, label: &str) -> Response {
     let label = tr(label);
-    let g = ui.painter().layout_no_wrap(label.to_owned(), med(13.0), pal().text);
+    let g = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), med(13.0), pal().text);
     let icon_w = if glyph.is_empty() { 0.0 } else { 22.0 };
-    let (rect, resp) = ui.allocate_exact_size(vec2(g.size().x + icon_w + 28.0, 34.0), Sense::click());
+    let (rect, resp) =
+        ui.allocate_exact_size(vec2(g.size().x + icon_w + 28.0, 34.0), Sense::click());
     a11y(ui, &resp, WidgetType::Button, || label.to_owned());
     focus_ring(ui, &resp);
     let hovered = resp.hovered();
-    let stroke = if hovered { Stroke::new(1.0, pal().text_muted) } else { Stroke::new(1.0, pal().border) };
-    let fill = if hovered { pal().surface_hover } else { Color32::TRANSPARENT };
-    ui.painter().rect(rect, CornerRadius::same(17), fill, stroke, egui::StrokeKind::Inside);
+    let stroke = if hovered {
+        Stroke::new(1.0, pal().text_muted)
+    } else {
+        Stroke::new(1.0, pal().border)
+    };
+    let fill = if hovered {
+        pal().surface_hover
+    } else {
+        Color32::TRANSPARENT
+    };
+    ui.painter().rect(
+        rect,
+        CornerRadius::same(17),
+        fill,
+        stroke,
+        egui::StrokeKind::Inside,
+    );
     // The icon is drawn on its own so it's centered by its drawing, like every other icon.
     let left = rect.left() + 14.0;
     if !glyph.is_empty() {
-        paint_icon(ui.painter(), pos2(left + 8.0, rect.center().y), glyph, regular(15.0), pal().text);
+        paint_icon(
+            ui.painter(),
+            pos2(left + 8.0, rect.center().y),
+            glyph,
+            regular(15.0),
+            pal().text,
+        );
     }
-    ui.painter().galley(pos2(left + icon_w, rect.center().y - g.size().y / 2.0), g, pal().text);
+    ui.painter().galley(
+        pos2(left + icon_w, rect.center().y - g.size().y / 2.0),
+        g,
+        pal().text,
+    );
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// A text "link" (e.g. artist name) that underlines on hover.
 /// The song's artists as links: "Main, Featured 1, Featured 2". Returns the main
 /// artist's link and, if a featured artist was clicked, that artist's id.
-pub fn artist_links(ui: &Ui, id: egui::Id, pos: Pos2, t: &Track, font: FontId, color: Color32, max_w: f32) -> (Response, Option<crate::deezer::ArtistRef>) {
-    let main = link_text(ui, id.with("artist"), pos, &t.artist.name, font.clone(), color, max_w);
+pub fn artist_links(
+    ui: &Ui,
+    id: egui::Id,
+    pos: Pos2,
+    t: &Track,
+    font: FontId,
+    color: Color32,
+    max_w: f32,
+) -> (Response, Option<crate::deezer::ArtistRef>) {
+    let main = link_text(
+        ui,
+        id.with("artist"),
+        pos,
+        &t.artist.name,
+        font.clone(),
+        color,
+        max_w,
+    );
     let mut x = main.rect.right();
     let mut clicked = None;
     for (k, a) in t.featured.iter().enumerate() {
@@ -340,9 +524,19 @@ pub fn artist_links(ui: &Ui, id: egui::Id, pos: Pos2, t: &Track, font: FontId, c
         if room < 30.0 {
             break;
         }
-        let comma = ui.painter().text(pos2(x, pos.y), Align2::LEFT_TOP, ", ", font.clone(), color);
+        let comma = ui
+            .painter()
+            .text(pos2(x, pos.y), Align2::LEFT_TOP, ", ", font.clone(), color);
         x = comma.right();
-        let r = link_text(ui, id.with(("feat", k)), pos2(x, pos.y), &a.name, font.clone(), color, pos.x + max_w - x);
+        let r = link_text(
+            ui,
+            id.with(("feat", k)),
+            pos2(x, pos.y),
+            &a.name,
+            font.clone(),
+            color,
+            pos.x + max_w - x,
+        );
         x = r.rect.right();
         if r.clicked() {
             clicked = Some(a.clone());
@@ -351,7 +545,15 @@ pub fn artist_links(ui: &Ui, id: egui::Id, pos: Pos2, t: &Track, font: FontId, c
     (main, clicked)
 }
 
-pub fn link_text(ui: &Ui, rect_id: egui::Id, pos: Pos2, text: &str, font: FontId, color: Color32, max_w: f32) -> Response {
+pub fn link_text(
+    ui: &Ui,
+    rect_id: egui::Id,
+    pos: Pos2,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_w: f32,
+) -> Response {
     let g = one_line(ui, text, font, color, max_w);
     let rect = Rect::from_min_size(pos, g.size());
     let resp = ui.interact(rect, rect_id, Sense::click());
@@ -359,7 +561,8 @@ pub fn link_text(ui: &Ui, rect_id: egui::Id, pos: Pos2, text: &str, font: FontId
     let col = if resp.hovered() { pal().text } else { color };
     ui.painter().galley_with_override_text_color(pos, g, col);
     if resp.hovered() {
-        ui.painter().hline(rect.x_range(), rect.bottom() - 1.0, Stroke::new(1.0, col));
+        ui.painter()
+            .hline(rect.x_range(), rect.bottom() - 1.0, Stroke::new(1.0, col));
     }
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -371,7 +574,13 @@ pub fn link_text(ui: &Ui, rect_id: egui::Id, pos: Pos2, text: &str, font: FontId
 /// A thin, modern slider. `value` and `buffered` are 0..=1.
 /// Returns (response, value while dragging / clicked value).
 /// When focused with Tab, ←/→ move it by 5% and mark the response as changed.
-pub fn slim_slider(ui: &mut Ui, width: f32, value: f32, buffered: Option<f32>, label: &str) -> (Response, Option<f32>) {
+pub fn slim_slider(
+    ui: &mut Ui,
+    width: f32,
+    value: f32,
+    buffered: Option<f32>,
+    label: &str,
+) -> (Response, Option<f32>) {
     let (rect, mut resp) = ui.allocate_exact_size(vec2(width, 16.0), Sense::click_and_drag());
     resp.widget_info(|| WidgetInfo::slider(true, (value * 100.0).round() as f64, label));
     focus_ring(ui, &resp);
@@ -388,9 +597,17 @@ pub fn slim_slider(ui: &mut Ui, width: f32, value: f32, buffered: Option<f32>, l
     }
     if resp.has_focus() {
         ui.memory_mut(|m| {
-            m.set_focus_lock_filter(resp.id, egui::EventFilter { horizontal_arrows: true, ..Default::default() })
+            m.set_focus_lock_filter(
+                resp.id,
+                egui::EventFilter {
+                    horizontal_arrows: true,
+                    ..Default::default()
+                },
+            )
         });
-        let step = ui.input(|i| i.key_pressed(Key::ArrowRight) as i32 - i.key_pressed(Key::ArrowLeft) as i32);
+        let step = ui.input(|i| {
+            i.key_pressed(Key::ArrowRight) as i32 - i.key_pressed(Key::ArrowLeft) as i32
+        });
         if step != 0 {
             new_val = Some((value + step as f32 * 0.05).clamp(0.0, 1.0));
             resp.mark_changed();
@@ -411,7 +628,10 @@ pub fn slim_slider(ui: &mut Ui, width: f32, value: f32, buffered: Option<f32>, l
     if hot {
         p.circle_filled(pos2(fill.right(), track.center().y), 6.5, pal().text);
     }
-    (resp.on_hover_cursor(egui::CursorIcon::PointingHand), new_val)
+    (
+        resp.on_hover_cursor(egui::CursorIcon::PointingHand),
+        new_val,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +667,8 @@ pub fn hover_intent(ui: &Ui, id: egui::Id, hovered: bool) -> bool {
     match ui.data(|d| d.get_temp::<f64>(key)) {
         None => {
             ui.data_mut(|d| d.insert_temp(key, now));
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(260));
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(260));
             false
         }
         // Negative: already reported for this hover.
@@ -461,9 +682,24 @@ pub fn hover_intent(ui: &Ui, id: egui::Id, hovered: bool) -> bool {
 
 /// A readable fallback for artists without a picture.
 pub fn artist_monogram(ui: &Ui, rect: Rect, name: &str, radius: CornerRadius) {
-    ui.painter().rect_filled(rect, radius, pal().surface_active.lerp_to_gamma(pal().accent, 0.18));
-    let initial = name.chars().find(|c| c.is_alphanumeric()).unwrap_or('?').to_uppercase().to_string();
-    paint_icon(ui.painter(), rect.center(), &initial, heavy(rect.height() * 0.42), pal().text);
+    ui.painter().rect_filled(
+        rect,
+        radius,
+        pal().surface_active.lerp_to_gamma(pal().accent, 0.18),
+    );
+    let initial = name
+        .chars()
+        .find(|c| c.is_alphanumeric())
+        .unwrap_or('?')
+        .to_uppercase()
+        .to_string();
+    paint_icon(
+        ui.painter(),
+        rect.center(),
+        &initial,
+        heavy(rect.height() * 0.42),
+        pal().text,
+    );
 }
 pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
     let h = w + 66.0;
@@ -472,7 +708,9 @@ pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
     // where this card sits keeps each copy's hover and play button its own: with one id
     // the second copy, not hovered, cancelled the first one's hover every frame.
     let id = ui.id().with(info.id);
-    a11y(ui, &resp, WidgetType::Button, || format!("{}, {}", info.title, info.subtitle));
+    a11y(ui, &resp, WidgetType::Button, || {
+        format!("{}, {}", info.title, info.subtitle)
+    });
     // Also counts as hovered while the pointer is on the play button: that button sits on
     // top of the card, so egui gives it the hover and `resp.hovered()` turns false. Going by
     // that alone, the button hid itself as soon as it was pointed at, then came back.
@@ -485,11 +723,16 @@ pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
         ui.painter().rect_filled(rect, radius, fill);
     }
     if let Some(b) = style.border {
-        ui.painter().rect_stroke(rect, radius, b, egui::StrokeKind::Inside);
+        ui.painter()
+            .rect_stroke(rect, radius, b, egui::StrokeKind::Inside);
     }
     let pad = style.padding.unwrap_or(10.0);
     let art_rect = Rect::from_min_size(rect.min + vec2(pad, pad), Vec2::splat(w - pad * 2.0));
-    let radius = if info.round { CornerRadius::same(((w - pad * 2.0) / 2.0).min(255.0) as u8) } else { r_md() };
+    let radius = if info.round {
+        CornerRadius::same(((w - pad * 2.0) / 2.0).min(255.0) as u8)
+    } else {
+        r_md()
+    };
     if info.round && info.art.is_none_or(|url| url.is_empty()) {
         artist_monogram(ui, art_rect, info.title, radius);
     } else {
@@ -497,16 +740,43 @@ pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
     }
     if let Some(b) = info.badge {
         // Darken the bottom of the picture a little and put the label on it.
-        vgradient(ui, Rect::from_min_max(pos2(art_rect.left(), art_rect.bottom() - 46.0), art_rect.max), Color32::TRANSPARENT, Color32::from_black_alpha(150));
+        vgradient(
+            ui,
+            Rect::from_min_max(
+                pos2(art_rect.left(), art_rect.bottom() - 46.0),
+                art_rect.max,
+            ),
+            Color32::TRANSPARENT,
+            Color32::from_black_alpha(150),
+        );
         let g = one_line(ui, b, heavy(15.0), Color32::WHITE, art_rect.width() - 20.0);
-        let label = Rect::from_min_size(pos2(art_rect.left() + 8.0, art_rect.bottom() - 32.0), g.size() + vec2(12.0, 6.0));
-        ui.painter().rect_filled(label, CornerRadius::same(4), pal().accent);
-        ui.painter().galley(label.min + vec2(6.0, 3.0), g, Color32::WHITE);
+        let label = Rect::from_min_size(
+            pos2(art_rect.left() + 8.0, art_rect.bottom() - 32.0),
+            g.size() + vec2(12.0, 6.0),
+        );
+        ui.painter()
+            .rect_filled(label, CornerRadius::same(4), pal().accent);
+        ui.painter()
+            .galley(label.min + vec2(6.0, 3.0), g, Color32::WHITE);
     }
 
     let text_w = w - pad * 2.0;
-    paint_line(ui, pos2(rect.left() + pad, art_rect.bottom() + 10.0), info.title, semi(13.5), pal().text, text_w);
-    paint_line(ui, pos2(rect.left() + pad, art_rect.bottom() + 30.0), &info.subtitle, regular(12.0), pal().text_muted, text_w);
+    paint_line(
+        ui,
+        pos2(rect.left() + pad, art_rect.bottom() + 10.0),
+        info.title,
+        semi(13.5),
+        pal().text,
+        text_w,
+    );
+    paint_line(
+        ui,
+        pos2(rect.left() + pad, art_rect.bottom() + 30.0),
+        &info.subtitle,
+        regular(12.0),
+        pal().text_muted,
+        text_w,
+    );
 
     // Floating play button appears on hover.
     let mut out = if resp.clicked() {
@@ -518,22 +788,55 @@ pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
     };
     let t = ui.ctx().animate_bool(id.with("hover"), hovered);
     if t > 0.0 && !info.round {
-        let c = pos2(art_rect.right() - 26.0, art_rect.bottom() - 26.0 + (1.0 - t) * 8.0);
+        let c = pos2(
+            art_rect.right() - 26.0,
+            art_rect.bottom() - 26.0 + (1.0 - t) * 8.0,
+        );
         let btn = Rect::from_center_size(c, Vec2::splat(42.0));
-        let b = ui.interact(btn, id.with("play"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
-        a11y(ui, &b, WidgetType::Button, || format!("Play {}", info.title));
+        let b = ui
+            .interact(btn, id.with("play"), Sense::click())
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
+        a11y(ui, &b, WidgetType::Button, || {
+            format!("Play {}", info.title)
+        });
         // Pointing at it: it grows a little and its glow gets stronger.
-        let over = ui.ctx().animate_bool_with_time(id.with("play_hover"), b.hovered(), crate::theme::motion(0.12));
+        let over = ui.ctx().animate_bool_with_time(
+            id.with("play_hover"),
+            b.hovered(),
+            crate::theme::motion(0.12),
+        );
         let r = 21.0 * (1.0 + 0.06 * over);
         let pb = &parts().play_button;
         let fill = pb.fill.unwrap_or(pal().accent);
         let disc = Rect::from_center_size(c, Vec2::splat(r * 2.0));
         let round = CornerRadius::same(r.round() as u8);
         // A soft shadow under it, then a small glow in its own colour around it.
-        ui.painter().add(egui::Shadow { offset: [0, 4], blur: 12, spread: 0, color: Color32::from_black_alpha((110.0 * t) as u8) }.as_shape(disc, round));
-        ui.painter().add(egui::Shadow { offset: [0, 0], blur: 14, spread: (2.0 * over).round() as u8, color: fill.gamma_multiply((0.22 + 0.28 * over) * t) }.as_shape(disc, round));
+        ui.painter().add(
+            egui::Shadow {
+                offset: [0, 4],
+                blur: 12,
+                spread: 0,
+                color: Color32::from_black_alpha((110.0 * t) as u8),
+            }
+            .as_shape(disc, round),
+        );
+        ui.painter().add(
+            egui::Shadow {
+                offset: [0, 0],
+                blur: 14,
+                spread: (2.0 * over).round() as u8,
+                color: fill.gamma_multiply((0.22 + 0.28 * over) * t),
+            }
+            .as_shape(disc, round),
+        );
         ui.painter().circle_filled(c, r, fill.gamma_multiply(t));
-        paint_icon(ui.painter(), c, icon::PLAY, filled_icon(17.0), pb.color.unwrap_or(Color32::WHITE).gamma_multiply(t));
+        paint_icon(
+            ui.painter(),
+            c,
+            icon::PLAY,
+            filled_icon(17.0),
+            pb.color.unwrap_or(Color32::WHITE).gamma_multiply(t),
+        );
         if b.clicked() {
             out = CardClick::Play;
         }
@@ -543,7 +846,12 @@ pub fn card(ui: &mut Ui, w: f32, info: &CardInfo) -> CardClick {
 }
 
 /// Lays out a responsive grid of cards. `max_rows` limits how many rows show.
-pub fn card_grid<T>(ui: &mut Ui, items: &[T], max_rows: Option<usize>, mut each: impl FnMut(&mut Ui, f32, &T)) {
+pub fn card_grid<T>(
+    ui: &mut Ui,
+    items: &[T],
+    max_rows: Option<usize>,
+    mut each: impl FnMut(&mut Ui, f32, &T),
+) {
     let gap = 8.0;
     let avail = ui.available_width();
     let cols = ((avail + gap) / (176.0 + gap)).floor().max(2.0) as usize;
@@ -583,8 +891,16 @@ pub enum TrackEvent {
     /// Add to Liked Songs (never removes, unlike ToggleLike).
     Like(Track),
     /// A row was clicked (Ctrl: add/remove it, Shift: select up to it).
-    Select { list: String, index: usize, ctrl: bool, shift: bool },
-    SelectAll { list: String, len: usize },
+    Select {
+        list: String,
+        index: usize,
+        ctrl: bool,
+        shift: bool,
+    },
+    SelectAll {
+        list: String,
+        len: usize,
+    },
     ClearSelection,
     /// "Go to song": the song's own page.
     OpenSongPage(Track),
@@ -642,7 +958,11 @@ pub fn track_menu(ui: &mut Ui, t: &Track, cx: &MenuCtx, ev: &mut Vec<TrackEvent>
             }
         }
     });
-    let like_label = if cx.liked { "Remove from Liked Songs" } else { "Save to Liked Songs" };
+    let like_label = if cx.liked {
+        "Remove from Liked Songs"
+    } else {
+        "Save to Liked Songs"
+    };
     if menu_item(ui, icon::HEART, like_label) {
         ev.push(TrackEvent::ToggleLike(t.clone()));
     }
@@ -658,7 +978,10 @@ pub fn track_menu(ui: &mut Ui, t: &Track, cx: &MenuCtx, ev: &mut Vec<TrackEvent>
     if crate::deezer::is_deezer_id(&t.artist.id) && menu_item(ui, icon::USER, "Go to artist") {
         ev.push(TrackEvent::OpenArtist(t.clone()));
     }
-    if let Some(al) = t.album.as_ref().filter(|a| crate::deezer::is_deezer_id(&a.id))
+    if let Some(al) = t
+        .album
+        .as_ref()
+        .filter(|a| crate::deezer::is_deezer_id(&a.id))
         && menu_item(ui, icon::VINYL_RECORD, "Go to album")
     {
         ev.push(TrackEvent::OpenAlbum(al.id.clone()));
@@ -681,8 +1004,16 @@ pub fn track_menu(ui: &mut Ui, t: &Track, cx: &MenuCtx, ev: &mut Vec<TrackEvent>
     menu_separator(ui);
     submenu(ui, icon::SHARE_FAT, "Share", |ui| {
         for (glyph, label, target) in [
-            (icon::YOUTUBE_LOGO, "Copy YouTube link", ShareTarget::YouTube),
-            (icon::SPOTIFY_LOGO, "Copy Spotify link", ShareTarget::Spotify),
+            (
+                icon::YOUTUBE_LOGO,
+                "Copy YouTube link",
+                ShareTarget::YouTube,
+            ),
+            (
+                icon::SPOTIFY_LOGO,
+                "Copy Spotify link",
+                ShareTarget::Spotify,
+            ),
             (icon::LINK, "Copy Deezer link", ShareTarget::Deezer),
         ] {
             if target == ShareTarget::Deezer && t.deezer_number().is_none() {
@@ -772,15 +1103,25 @@ fn columns(row: Rect, with_date: bool, with_views: bool, compact: bool) -> Cols 
     let like = col(time.left() - 40.0, time.left());
     // A compact list has no number column.
     let num = if compact { col(x0, x0 + 4.0) } else { num };
-    let date = (!compact && with_date && w > 900.0).then(|| col(like.left() - 150.0, like.left() - 12.0));
+    let date =
+        (!compact && with_date && w > 900.0).then(|| col(like.left() - 150.0, like.left() - 12.0));
     let after_views = date.map(|d| d.left()).unwrap_or(like.left());
-    let views = (!compact && with_views && w > 640.0).then(|| col(after_views - 130.0, after_views - 20.0));
+    let views =
+        (!compact && with_views && w > 640.0).then(|| col(after_views - 130.0, after_views - 20.0));
     let wide = !compact && w > 720.0;
     let album_right = views.map(|v| v.left()).unwrap_or(after_views) - 16.0;
     let album_w = (w * if date.is_some() { 0.24 } else { 0.3 }).min(320.0);
     let album = wide.then(|| col(album_right - album_w, album_right));
     let title_right = album.map(|a| a.left()).unwrap_or(like.left()) - 16.0;
-    Cols { num, title: col(num.right() + 4.0, title_right), album, views, date, like, time }
+    Cols {
+        num,
+        title: col(num.right() + 4.0, title_right),
+        album,
+        views,
+        date,
+        like,
+        time,
+    }
 }
 
 /// Where a song row's "more options" button goes: the end of the row.
@@ -811,7 +1152,11 @@ pub fn fmt_added(when: u64, now: u64) -> String {
         a if a < 7 * day => format!("{} days ago", a / day),
         a if a < 28 * day => {
             let w = a / (7 * day);
-            if w == 1 { "1 week ago".into() } else { format!("{w} weeks ago") }
+            if w == 1 {
+                "1 week ago".into()
+            } else {
+                format!("{w} weeks ago")
+            }
         }
         _ => {
             // Days since 1970 → calendar date (Howard Hinnant's algorithm).
@@ -824,7 +1169,9 @@ pub fn fmt_added(when: u64, now: u64) -> String {
             let d = doy - (153 * mp + 2) / 5 + 1;
             let m = if mp < 10 { mp + 3 } else { mp - 9 };
             let y = yoe + era * 400 + i64::from(m <= 2);
-            const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const MONTHS: [&str; 12] = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+            ];
             format!("{} {d}, {y}", MONTHS[(m - 1) as usize])
         }
     }
@@ -836,38 +1183,86 @@ pub fn track_table_header(ui: &mut Ui, with_date: bool, with_views: bool) {
     let f = med(11.5);
     let p = ui.painter();
     paint_icon(p, c.num.center(), "#", f.clone(), pal().text_faint);
-    p.text(c.title.left_center(), Align2::LEFT_CENTER, tr("Title").to_uppercase(), f.clone(), pal().text_faint);
+    p.text(
+        c.title.left_center(),
+        Align2::LEFT_CENTER,
+        tr("Title").to_uppercase(),
+        f.clone(),
+        pal().text_faint,
+    );
     if let Some(a) = c.album {
-        p.text(a.left_center(), Align2::LEFT_CENTER, tr("Album").to_uppercase(), f.clone(), pal().text_faint);
+        p.text(
+            a.left_center(),
+            Align2::LEFT_CENTER,
+            tr("Album").to_uppercase(),
+            f.clone(),
+            pal().text_faint,
+        );
     }
     if let Some(d) = c.date {
-        p.text(d.left_center(), Align2::LEFT_CENTER, tr("Date added").to_uppercase(), f.clone(), pal().text_faint);
+        p.text(
+            d.left_center(),
+            Align2::LEFT_CENTER,
+            tr("Date added").to_uppercase(),
+            f.clone(),
+            pal().text_faint,
+        );
     }
     if let Some(v) = c.views {
-        let r = p.text(v.right_center(), Align2::RIGHT_CENTER, tr("Views").to_uppercase(), f.clone(), pal().text_faint);
-        ui.interact(r, ui.id().with("views_hdr"), Sense::hover()).on_hover_text(tr("Views on YouTube"));
+        let r = p.text(
+            v.right_center(),
+            Align2::RIGHT_CENTER,
+            tr("Views").to_uppercase(),
+            f.clone(),
+            pal().text_faint,
+        );
+        ui.interact(r, ui.id().with("views_hdr"), Sense::hover())
+            .on_hover_text(tr("Views on YouTube"));
     }
-    p.text(c.time.right_center(), Align2::RIGHT_CENTER, icon::CLOCK_COUNTER_CLOCKWISE, regular(14.0), pal().text_faint);
-    p.hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, pal().border));
+    p.text(
+        c.time.right_center(),
+        Align2::RIGHT_CENTER,
+        icon::CLOCK_COUNTER_CLOCKWISE,
+        regular(14.0),
+        pal().text_faint,
+    );
+    p.hline(
+        rect.x_range(),
+        rect.bottom(),
+        Stroke::new(1.0, pal().border),
+    );
     ui.add_space(6.0);
 }
 
-pub fn track_table(ui: &mut Ui, id_salt: &str, tracks: &[Track], cx: &TableCtx, events: &mut Vec<TrackEvent>) {
+pub fn track_table(
+    ui: &mut Ui,
+    id_salt: &str,
+    tracks: &[Track],
+    cx: &TableCtx,
+    events: &mut Vec<TrackEvent>,
+) {
     if !cx.compact {
         track_table_header(ui, cx.added.is_some(), cx.views.is_some());
     }
     let base = ui.id().with(id_salt);
     // This list's selected rows (selection belongs to one list at a time).
     let empty = HashSet::new();
-    let selected = if cx.selection.0 == id_salt { cx.selection.1 } else { &empty };
+    let selected = if cx.selection.0 == id_salt {
+        cx.selection.1
+    } else {
+        &empty
+    };
     ui.spacing_mut().item_spacing.y = 0.0;
     // Only the rows on screen (plus a few either side, so Tab and the arrow keys can step
     // onto the next one) are built. Long playlists stay as quick as short ones.
     let top = ui.cursor().top();
     let clip = ui.clip_rect();
     const MARGIN: usize = 6;
-    let first = (((clip.top() - top) / ROW_H).floor().max(0.0) as usize).saturating_sub(MARGIN).min(tracks.len());
-    let last = ((((clip.bottom() - top) / ROW_H).ceil().max(0.0) as usize) + MARGIN).clamp(first, tracks.len());
+    let first = (((clip.top() - top) / ROW_H).floor().max(0.0) as usize)
+        .saturating_sub(MARGIN)
+        .min(tracks.len());
+    let last = ((((clip.bottom() - top) / ROW_H).ceil().max(0.0) as usize) + MARGIN)
+        .clamp(first, tracks.len());
     // The song you came here for is scrolled into view once, even from far down the list.
     if let Some((hid, at)) = cx.highlight
         && let Some(i) = tracks.iter().position(|t| t.id == hid)
@@ -876,7 +1271,10 @@ pub fn track_table(ui: &mut Ui, id_salt: &str, tracks: &[Track], cx: &TableCtx, 
         let key = egui::Id::new(("highlight_scrolled", hid, at.to_bits()));
         if !ui.ctx().data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
             let y = top + i as f32 * ROW_H;
-            ui.scroll_to_rect(egui::Rect::from_min_size(egui::pos2(ui.max_rect().left(), y), vec2(1.0, ROW_H)), Some(egui::Align::Center));
+            ui.scroll_to_rect(
+                egui::Rect::from_min_size(egui::pos2(ui.max_rect().left(), y), vec2(1.0, ROW_H)),
+                Some(egui::Align::Center),
+            );
             ui.ctx().data_mut(|d| d.insert_temp(key, true));
         }
     }
@@ -884,17 +1282,33 @@ pub fn track_table(ui: &mut Ui, id_salt: &str, tracks: &[Track], cx: &TableCtx, 
         ui.allocate_space(vec2(ui.available_width(), first as f32 * ROW_H));
     }
     for (i, t) in tracks.iter().enumerate().take(last).skip(first) {
-        track_row(ui, base.with(i), id_salt, i, t, tracks, selected, cx, events);
+        track_row(
+            ui,
+            base.with(i),
+            id_salt,
+            i,
+            t,
+            tracks,
+            selected,
+            cx,
+            events,
+        );
     }
     if last < tracks.len() {
-        ui.allocate_space(vec2(ui.available_width(), (tracks.len() - last) as f32 * ROW_H));
+        ui.allocate_space(vec2(
+            ui.available_width(),
+            (tracks.len() - last) as f32 * ROW_H,
+        ));
     }
     ui.spacing_mut().item_spacing.y = 6.0;
 
     // Keyboard, while this list has a selection (and nothing is being typed).
     if !selected.is_empty() && !ui.ctx().egui_wants_keyboard_input() {
         if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::A)) {
-            events.push(TrackEvent::SelectAll { list: id_salt.to_string(), len: tracks.len() });
+            events.push(TrackEvent::SelectAll {
+                list: id_salt.to_string(),
+                len: tracks.len(),
+            });
         }
         if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             events.push(TrackEvent::ClearSelection);
@@ -906,7 +1320,8 @@ pub fn track_table(ui: &mut Ui, id_salt: &str, tracks: &[Track], cx: &TableCtx, 
             events.push(TrackEvent::ClearSelection);
         }
         let focused_row = ui.ctx().memory(|m| m.focused()).is_some();
-        if !focused_row && ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter))
+        if !focused_row
+            && ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter))
             && let Some(first) = selected.iter().min()
         {
             events.push(TrackEvent::Play(*first));
@@ -915,9 +1330,18 @@ pub fn track_table(ui: &mut Ui, id_salt: &str, tracks: &[Track], cx: &TableCtx, 
 }
 
 /// The right-click menu for several selected songs at once.
-fn group_menu(ui: &mut Ui, rows: &[usize], tracks: &[Track], cx: &TableCtx, ev: &mut Vec<TrackEvent>) {
+fn group_menu(
+    ui: &mut Ui,
+    rows: &[usize],
+    tracks: &[Track],
+    cx: &TableCtx,
+    ev: &mut Vec<TrackEvent>,
+) {
     menu_begin(ui);
-    let picked: Vec<Track> = rows.iter().filter_map(|i| tracks.get(*i).cloned()).collect();
+    let picked: Vec<Track> = rows
+        .iter()
+        .filter_map(|i| tracks.get(*i).cloned())
+        .collect();
     menu_header(ui, &format!("{} {}", picked.len(), tr("songs selected")));
     menu_separator(ui);
     if menu_item(ui, icon::PLAY, "Play") {
@@ -932,7 +1356,11 @@ fn group_menu(ui: &mut Ui, rows: &[usize], tracks: &[Track], cx: &TableCtx, ev: 
         }
         for (pi, name) in cx.playlists.iter().enumerate() {
             if menu_item(ui, icon::PLAYLIST, name) {
-                ev.extend(picked.iter().map(|t| TrackEvent::AddToPlaylist(pi, t.clone())));
+                ev.extend(
+                    picked
+                        .iter()
+                        .map(|t| TrackEvent::AddToPlaylist(pi, t.clone())),
+                );
             }
         }
     });
@@ -942,17 +1370,29 @@ fn group_menu(ui: &mut Ui, rows: &[usize], tracks: &[Track], cx: &TableCtx, ev: 
     if !cx.queue_mode && menu_item(ui, icon::QUEUE, "Add to queue") {
         ev.extend(picked.iter().map(|t| TrackEvent::AddToQueue(t.clone())));
     }
-    if picked.iter().any(|t| !crate::local::is_local(&t.id) && !cx.downloads.contains_key(&t.id)) && menu_item(ui, icon::DOWNLOAD_SIMPLE, "Download") {
+    if picked
+        .iter()
+        .any(|t| !crate::local::is_local(&t.id) && !cx.downloads.contains_key(&t.id))
+        && menu_item(ui, icon::DOWNLOAD_SIMPLE, "Download")
+    {
         ev.extend(picked.iter().map(|t| TrackEvent::Download(t.clone())));
     }
     if cx.removable || cx.queue_mode {
         menu_separator(ui);
-        let label = if cx.queue_mode { "Remove from queue" } else { "Remove from this playlist" };
+        let label = if cx.queue_mode {
+            "Remove from queue"
+        } else {
+            "Remove from this playlist"
+        };
         if menu_item(ui, icon::TRASH, label) {
             let mut desc = rows.to_vec();
             desc.sort_unstable_by(|a, b| b.cmp(a));
             for i in desc {
-                ev.push(if cx.queue_mode { TrackEvent::RemoveFromQueue(i) } else { TrackEvent::RemoveFromPlaylist(i) });
+                ev.push(if cx.queue_mode {
+                    TrackEvent::RemoveFromQueue(i)
+                } else {
+                    TrackEvent::RemoveFromPlaylist(i)
+                });
             }
             ev.push(TrackEvent::ClearSelection);
         }
@@ -960,15 +1400,30 @@ fn group_menu(ui: &mut Ui, rows: &[usize], tracks: &[Track], cx: &TableCtx, ev: 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks: &[Track], selected: &HashSet<usize>, cx: &TableCtx, ev: &mut Vec<TrackEvent>) {
+fn track_row(
+    ui: &mut Ui,
+    id: egui::Id,
+    list: &str,
+    i: usize,
+    t: &Track,
+    tracks: &[Track],
+    selected: &HashSet<usize>,
+    cx: &TableCtx,
+    ev: &mut Vec<TrackEvent>,
+) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
     // Rows just off screen are registered too, so Tab can reach them
     // (focusing one then scrolls it into view, see `focus_ring`).
     let resp = ui.interact(rect, id, Sense::click());
-    a11y(ui, &resp, WidgetType::Button, || match crate::fixes::shown_length(t) {
-        0 => format!("{} by {}", t.title, t.all_artists()),
-        n => format!("{} by {}, {}", t.title, t.all_artists(), fmt_duration(n)),
-    });
+    a11y(
+        ui,
+        &resp,
+        WidgetType::Button,
+        || match crate::fixes::shown_length(t) {
+            0 => format!("{} by {}", t.title, t.all_artists()),
+            n => format!("{} by {}, {}", t.title, t.all_artists(), fmt_duration(n)),
+        },
+    );
     // The song you came here for is scrolled into view once, even from far down the list.
     if let Some((hid, at)) = cx.highlight
         && hid == t.id
@@ -984,20 +1439,34 @@ fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks:
     }
     let is_current = cx.now_playing == Some(t.id.as_str());
     // "More options": the same menu as a right-click, for anyone who doesn't right-click.
-    let more = ui.interact(Rect::from_center_size(more_slot(rect).center(), Vec2::splat(30.0)), id.with("more"), Sense::click());
-    a11y(ui, &more, WidgetType::Button, || format!("{} {}", tr("More options for"), t.title));
+    let more = ui.interact(
+        Rect::from_center_size(more_slot(rect).center(), Vec2::splat(30.0)),
+        id.with("more"),
+        Sense::click(),
+    );
+    a11y(ui, &more, WidgetType::Button, || {
+        format!("{} {}", tr("More options for"), t.title)
+    });
     let more_open = egui::Popup::menu(&more).is_open();
     // The heart, artist and album links sit on top of the row, so "the row is hovered"
     // is "the mouse is anywhere over it" (else the heart vanishes when you point at it).
-    let hovered = resp.hovered() || resp.context_menu_opened() || more_open || resp.has_focus() || ui.rect_contains_pointer(rect);
+    let hovered = resp.hovered()
+        || resp.context_menu_opened()
+        || more_open
+        || resp.has_focus()
+        || ui.rect_contains_pointer(rect);
     // Resting on a row for a moment: get the song ready (most clicks come right after).
     if hovered && !is_current {
         let key = egui::Id::new("row_hover_since");
         let now = ui.input(|i| i.time);
-        let (row, since) = ui.ctx().data(|d| d.get_temp::<(egui::Id, f64)>(key)).unwrap_or((egui::Id::NULL, now));
+        let (row, since) = ui
+            .ctx()
+            .data(|d| d.get_temp::<(egui::Id, f64)>(key))
+            .unwrap_or((egui::Id::NULL, now));
         if row != id {
             ui.ctx().data_mut(|d| d.insert_temp(key, (id, now)));
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(220));
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(220));
         } else if now - since > 0.2 {
             // Sent while the pointer stays; the app starts it once.
             ev.push(TrackEvent::Warm(t.clone()));
@@ -1007,19 +1476,34 @@ fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks:
     let radius = style.radius.map(CornerRadius::same).unwrap_or(r_md());
     let is_selected = selected.contains(&i);
     // The hover highlight fades in and out instead of blinking on and off.
-    let hover_t = ui.ctx().animate_bool_with_time(id.with("hover_fade"), hovered, crate::theme::motion(0.12));
+    let hover_t =
+        ui.ctx()
+            .animate_bool_with_time(id.with("hover_fade"), hovered, crate::theme::motion(0.12));
     if is_selected {
         ui.painter().rect_filled(rect, radius, pal().surface_active);
         if hovered {
-            ui.painter().rect_filled(rect, radius, Color32::from_white_alpha(6));
+            ui.painter()
+                .rect_filled(rect, radius, Color32::from_white_alpha(6));
         }
     } else if hover_t > 0.0 {
         if is_current && hover_t < 1.0 {
-            ui.painter().rect_filled(rect, radius, pal().accent.gamma_multiply(0.08 * (1.0 - hover_t)));
+            ui.painter().rect_filled(
+                rect,
+                radius,
+                pal().accent.gamma_multiply(0.08 * (1.0 - hover_t)),
+            );
         }
-        ui.painter().rect_filled(rect, radius, style.fill.unwrap_or(pal().surface_hover).gamma_multiply(hover_t));
+        ui.painter().rect_filled(
+            rect,
+            radius,
+            style
+                .fill
+                .unwrap_or(pal().surface_hover)
+                .gamma_multiply(hover_t),
+        );
     } else if is_current {
-        ui.painter().rect_filled(rect, radius, pal().accent.gamma_multiply(0.08));
+        ui.painter()
+            .rect_filled(rect, radius, pal().accent.gamma_multiply(0.08));
     }
     if let Some(b) = style.border {
         ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, b);
@@ -1028,54 +1512,120 @@ fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks:
         && hid == t.id
     {
         // The song you came here for stays tinted for a moment.
-        ui.painter().rect_filled(rect, radius, pal().accent.gamma_multiply(0.22));
+        ui.painter()
+            .rect_filled(rect, radius, pal().accent.gamma_multiply(0.22));
     }
     let c = columns(rect, cx.added.is_some(), cx.views.is_some(), cx.compact);
 
     // Number / play icon / "now playing" bars (in a compact list, on the cover instead)
     if cx.compact {
     } else if hovered {
-        let glyph = if is_current && cx.is_playing { icon::PAUSE } else { icon::PLAY };
-        paint_icon(ui.painter(), c.num.center(), glyph, filled_icon(15.0), pal().text);
+        let glyph = if is_current && cx.is_playing {
+            icon::PAUSE
+        } else {
+            icon::PLAY
+        };
+        paint_icon(
+            ui.painter(),
+            c.num.center(),
+            glyph,
+            filled_icon(15.0),
+            pal().text,
+        );
     } else if is_current && cx.is_playing {
         equalizer(ui, c.num.center());
     } else {
-        let col = if is_current { pal().accent_soft } else { pal().text_muted };
-        paint_icon(ui.painter(), c.num.center(), (i + 1 + cx.index_offset).to_string(), med(13.0), col);
+        let col = if is_current {
+            pal().accent_soft
+        } else {
+            pal().text_muted
+        };
+        paint_icon(
+            ui.painter(),
+            c.num.center(),
+            (i + 1 + cx.index_offset).to_string(),
+            med(13.0),
+            col,
+        );
     }
 
     // Art + title + artist
-    let art = Rect::from_min_size(pos2(c.title.left(), rect.center().y - 20.0), Vec2::splat(40.0));
+    let art = Rect::from_min_size(
+        pos2(c.title.left(), rect.center().y - 20.0),
+        Vec2::splat(40.0),
+    );
     // Ultra-low resource: no pictures in long lists (a plain tile instead).
-    let pic = if crate::perf::on(crate::perf::Extra::ListArtwork) { t.art_small() } else { None };
+    let pic = if crate::perf::on(crate::perf::Extra::ListArtwork) {
+        t.art_small()
+    } else {
+        None
+    };
     artwork(ui, art, pic, CornerRadius::same(5));
     if cx.compact && (hovered || (is_current && cx.is_playing)) {
         // A compact list has no number column: play / pause / "now playing" go on the cover.
-        ui.painter().rect_filled(art, CornerRadius::same(5), Color32::from_black_alpha(130));
+        ui.painter()
+            .rect_filled(art, CornerRadius::same(5), Color32::from_black_alpha(130));
         if hovered {
-            let glyph = if is_current && cx.is_playing { icon::PAUSE } else { icon::PLAY };
-            paint_icon(ui.painter(), art.center(), glyph, filled_icon(16.0), Color32::WHITE);
+            let glyph = if is_current && cx.is_playing {
+                icon::PAUSE
+            } else {
+                icon::PLAY
+            };
+            paint_icon(
+                ui.painter(),
+                art.center(),
+                glyph,
+                filled_icon(16.0),
+                Color32::WHITE,
+            );
         } else {
             equalizer(ui, art.center());
         }
     }
     let tx = art.right() + 12.0;
     let tw = c.title.right() - tx;
-    let title_col = if is_current { pal().accent_soft } else { pal().text };
-    let title_link = link_text(ui, id.with("title"), pos2(tx, rect.center().y - 17.0), &t.title, med(13.5), title_col, tw);
+    let title_col = if is_current {
+        pal().accent_soft
+    } else {
+        pal().text
+    };
+    let title_link = link_text(
+        ui,
+        id.with("title"),
+        pos2(tx, rect.center().y - 17.0),
+        &t.title,
+        med(13.5),
+        title_col,
+        tw,
+    );
     let mut artist_x = tx;
     if cx.downloads.contains_key(&t.id) {
-        paint_icon(ui.painter(), pos2(tx + 7.0, rect.center().y + 11.0), icon::ARROW_CIRCLE_DOWN, filled_icon(14.0), pal().accent_soft);
+        paint_icon(
+            ui.painter(),
+            pos2(tx + 7.0, rect.center().y + 11.0),
+            icon::ARROW_CIRCLE_DOWN,
+            filled_icon(14.0),
+            pal().accent_soft,
+        );
         artist_x += 19.0;
     }
     if t.explicit {
         // "E" badge for explicit lyrics, like other music apps.
         let badge = Rect::from_min_size(pos2(artist_x, rect.center().y + 4.0), vec2(14.0, 14.0));
-        ui.painter().rect_filled(badge, CornerRadius::same(3), pal().text_muted);
+        ui.painter()
+            .rect_filled(badge, CornerRadius::same(3), pal().text_muted);
         paint_icon(ui.painter(), badge.center(), "E", semi(9.5), pal().bg);
         artist_x += 19.0;
     }
-    let (artist, featured_click) = artist_links(ui, id, pos2(artist_x, rect.center().y + 3.0), t, regular(12.5), pal().text_muted, tw - (artist_x - tx));
+    let (artist, featured_click) = artist_links(
+        ui,
+        id,
+        pos2(artist_x, rect.center().y + 3.0),
+        t,
+        regular(12.5),
+        pal().text_muted,
+        tw - (artist_x - tx),
+    );
     if let Some(a) = featured_click {
         ev.push(TrackEvent::OpenArtistRef(a));
     }
@@ -1094,39 +1644,77 @@ fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks:
     }
 
     if let (Some(v), Some((n, _))) = (c.views, cx.views.and_then(|m| m.get(&t.id))) {
-        ui.painter().text(v.right_center(), Align2::RIGHT_CENTER, fmt_thousands(*n), regular(12.5), pal().text_muted);
+        ui.painter().text(
+            v.right_center(),
+            Align2::RIGHT_CENTER,
+            fmt_thousands(*n),
+            regular(12.5),
+            pal().text_muted,
+        );
     }
     if let (Some(d), Some(when)) = (c.date, cx.added.and_then(|a| a.get(&t.id))) {
         let text = fmt_added(*when, crate::app::now_unix());
-        paint_line(ui, pos2(d.left(), d.center().y - 8.0), tr(&text), regular(12.5), pal().text_muted, d.width());
+        paint_line(
+            ui,
+            pos2(d.left(), d.center().y - 8.0),
+            tr(&text),
+            regular(12.5),
+            pal().text_muted,
+            d.width(),
+        );
     }
 
     // Heart
     let liked = cx.liked.contains(&t.id);
-    let heart = ui.interact(Rect::from_center_size(c.like.center(), Vec2::splat(28.0)), id.with("like"), Sense::click());
+    let heart = ui.interact(
+        Rect::from_center_size(c.like.center(), Vec2::splat(28.0)),
+        id.with("like"),
+        Sense::click(),
+    );
     resp_selected(ui, &heart, liked, "Like");
     if liked || hovered || heart.has_focus() {
         let size = 16.0 * heart_pop(ui, id.with("like_pop"), liked);
         let (font, col) = if liked {
             (filled_icon(size), pal().accent_soft)
         } else {
-            (regular(size), if heart.hovered() { pal().text } else { pal().text_muted })
+            (
+                regular(size),
+                if heart.hovered() {
+                    pal().text
+                } else {
+                    pal().text_muted
+                },
+            )
         };
         paint_icon(ui.painter(), c.like.center(), icon::HEART, font, col);
     }
     // A song whose length isn't known yet (Deezer lists only a clip) shows none.
     let length = crate::fixes::shown_length(t);
     if length > 0 {
-        ui.painter().text(c.time.right_center(), Align2::RIGHT_CENTER, fmt_duration(length), regular(12.5), pal().text_muted);
+        ui.painter().text(
+            c.time.right_center(),
+            Align2::RIGHT_CENTER,
+            fmt_duration(length),
+            regular(12.5),
+            pal().text_muted,
+        );
     }
     if hovered || more.has_focus() {
         let hot = more.hovered() || more_open;
         if hot {
-            ui.painter().circle_filled(more.rect.center(), 15.0, pal().surface_hover);
+            ui.painter()
+                .circle_filled(more.rect.center(), 15.0, pal().surface_hover);
         }
-        paint_more_dots(ui.painter(), more.rect.center(), 22.0, if hot { pal().text } else { pal().text_muted });
+        paint_more_dots(
+            ui.painter(),
+            more.rect.center(),
+            22.0,
+            if hot { pal().text } else { pal().text_muted },
+        );
     }
-    let more = more.on_hover_text(tr("More options")).on_hover_cursor(egui::CursorIcon::PointingHand);
+    let more = more
+        .on_hover_text(tr("More options"))
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
 
     // Interactions
     // Resting on the title (which opens the song's album or page) loads that page ahead.
@@ -1140,7 +1728,9 @@ fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks:
     } else if artist.clicked() {
         ev.push(TrackEvent::OpenArtist(t.clone()));
     } else if album_link.as_ref().is_some_and(|r| r.clicked()) {
-        ev.push(TrackEvent::OpenAlbum(t.album.as_ref().map(|a| a.id.clone()).unwrap_or_default()));
+        ev.push(TrackEvent::OpenAlbum(
+            t.album.as_ref().map(|a| a.id.clone()).unwrap_or_default(),
+        ));
     } else if resp.double_clicked() {
         ev.push(TrackEvent::Play(i));
     } else if resp.clicked() {
@@ -1150,12 +1740,22 @@ fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks:
             ev.push(TrackEvent::Play(i));
         } else {
             // A click selects, like Spotify (Ctrl: add/remove, Shift: a range).
-            ev.push(TrackEvent::Select { list: list.to_string(), index: i, ctrl: mods.command, shift: mods.shift });
+            ev.push(TrackEvent::Select {
+                list: list.to_string(),
+                index: i,
+                ctrl: mods.command,
+                shift: mods.shift,
+            });
         }
     }
     if resp.secondary_clicked() && !is_selected {
         // Right-clicking a song outside the selection selects just that song.
-        ev.push(TrackEvent::Select { list: list.to_string(), index: i, ctrl: false, shift: false });
+        ev.push(TrackEvent::Select {
+            list: list.to_string(),
+            index: i,
+            ctrl: false,
+            shift: false,
+        });
     }
     // In the queue, Alt+↑/↓ moves the focused song and Delete removes it.
     if resp.has_focus() && cx.queue_mode {
@@ -1171,7 +1771,8 @@ fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks:
     }
     // Keyboard equivalents of the right-click menu for the focused row.
     if resp.has_focus() && !cx.queue_mode {
-        let plain = |key| ui.input_mut(|i| i.modifiers.is_none() && i.consume_key(Modifiers::NONE, key));
+        let plain =
+            |key| ui.input_mut(|i| i.modifiers.is_none() && i.consume_key(Modifiers::NONE, key));
         if plain(Key::Q) {
             ev.push(TrackEvent::AddToQueue(t.clone()));
         }
@@ -1204,18 +1805,27 @@ fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks:
         track_menu(ui, t, &mcx, ev);
     };
     resp.context_menu(|ui| menu(ui));
-    egui::Popup::menu(&more).align(egui::RectAlign::BOTTOM_END).show(|ui| menu(ui));
+    egui::Popup::menu(&more)
+        .align(egui::RectAlign::BOTTOM_END)
+        .show(|ui| menu(ui));
 }
 
 /// How big a heart is drawn (1 = normal): it pops up and settles back when you like
 /// something. Already-liked hearts on a page you open don't pop.
 pub fn heart_pop(ui: &Ui, id: egui::Id, liked: bool) -> f32 {
-    let t = ui.ctx().animate_bool_with_time(id, liked, crate::theme::motion(0.32));
-    if liked && t < 1.0 { 1.0 + 0.4 * (t * std::f32::consts::PI).sin() } else { 1.0 }
+    let t = ui
+        .ctx()
+        .animate_bool_with_time(id, liked, crate::theme::motion(0.32));
+    if liked && t < 1.0 {
+        1.0 + 0.4 * (t * std::f32::consts::PI).sin()
+    } else {
+        1.0
+    }
 }
 
 fn pointer_in(ui: &Ui, r: Rect) -> bool {
-    ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| r.contains(p))
+    ui.input(|i| i.pointer.interact_pos())
+        .is_some_and(|p| r.contains(p))
 }
 
 /// Screen-reader name + on/off state for a toggle (like, shuffle, repeat...).
@@ -1238,7 +1848,9 @@ pub fn menu_begin(ui: &mut Ui) {
     let now = ui.input(|i| i.time);
     let frame = ui.ctx().cumulative_frame_nr();
     // A menu that wasn't drawn last frame has just opened.
-    let (start, last) = ui.data(|d| d.get_temp::<(f64, u64)>(id)).unwrap_or((now, 0));
+    let (start, last) = ui
+        .data(|d| d.get_temp::<(f64, u64)>(id))
+        .unwrap_or((now, 0));
     let start = if last + 1 < frame { now } else { start };
     ui.data_mut(|d| d.insert_temp(id, (start, frame)));
     let t = ((now - start) / 0.12).clamp(0.0, 1.0) as f32;
@@ -1265,19 +1877,56 @@ fn menu_row(ui: &mut Ui, glyph: &str, label: &str, trailing: Option<&str>, open:
     let rect = resp.rect;
     a11y(ui, &resp, WidgetType::Button, || label.to_owned());
     let hot = resp.hovered() || resp.has_focus() || open;
-    let t = ui.ctx().animate_bool_with_time(resp.id.with("hover"), hot, 0.08);
+    let t = ui
+        .ctx()
+        .animate_bool_with_time(resp.id.with("hover"), hot, 0.08);
     if t > 0.0 {
-        let fill = if danger { Color32::from_rgb(220, 70, 70).gamma_multiply(0.16) } else { pal().surface_hover.lerp_to_gamma(pal().accent, 0.10) };
-        ui.painter().rect_filled(rect, r_sm().at_least(6), fill.gamma_multiply(t));
+        let fill = if danger {
+            Color32::from_rgb(220, 70, 70).gamma_multiply(0.16)
+        } else {
+            pal().surface_hover.lerp_to_gamma(pal().accent, 0.10)
+        };
+        ui.painter()
+            .rect_filled(rect, r_sm().at_least(6), fill.gamma_multiply(t));
     }
-    let base = if danger { Color32::from_rgb(235, 105, 105) } else { pal().text };
-    let icon_col = if danger { base } else if hot { pal().accent_soft } else { pal().text_muted };
+    let base = if danger {
+        Color32::from_rgb(235, 105, 105)
+    } else {
+        pal().text
+    };
+    let icon_col = if danger {
+        base
+    } else if hot {
+        pal().accent_soft
+    } else {
+        pal().text_muted
+    };
     // Icons sit in a fixed column, centered by their box, so they line up row to row.
-    paint_icon(ui.painter(), pos2(rect.left() + 16.0, rect.center().y), glyph, regular(14.5), icon_col);
-    let text_col = if hot || danger { base } else { pal().text.gamma_multiply(0.92) };
-    ui.painter().galley(pos2(rect.left() + 33.0, rect.center().y - g.size().y / 2.0), g, text_col);
+    paint_icon(
+        ui.painter(),
+        pos2(rect.left() + 16.0, rect.center().y),
+        glyph,
+        regular(14.5),
+        icon_col,
+    );
+    let text_col = if hot || danger {
+        base
+    } else {
+        pal().text.gamma_multiply(0.92)
+    };
+    ui.painter().galley(
+        pos2(rect.left() + 33.0, rect.center().y - g.size().y / 2.0),
+        g,
+        text_col,
+    );
     if let Some(tr_glyph) = trailing {
-        paint_icon(ui.painter(), pos2(rect.right() - 12.0, rect.center().y), tr_glyph, regular(11.0), pal().text_muted);
+        paint_icon(
+            ui.painter(),
+            pos2(rect.right() - 12.0, rect.center().y),
+            tr_glyph,
+            regular(11.0),
+            pal().text_muted,
+        );
     }
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -1307,7 +1956,11 @@ pub fn menu_separator(ui: &mut Ui) {
     // allowed); the line spans the menu as wide as its items make it.
     let (rect, _) = ui.allocate_exact_size(vec2(1.0, 7.0), Sense::hover());
     let x = ui.max_rect().x_range();
-    ui.painter().hline(x.min + 6.0..=x.max - 6.0, rect.center().y, Stroke::new(1.0, pal().border));
+    ui.painter().hline(
+        x.min + 6.0..=x.max - 6.0,
+        rect.center().y,
+        Stroke::new(1.0, pal().border),
+    );
 }
 
 /// A small heading at the top of a menu.
@@ -1315,7 +1968,11 @@ pub fn menu_header(ui: &mut Ui, text: &str) {
     ui.add_space(2.0);
     ui.horizontal(|ui| {
         ui.add_space(10.0);
-        ui.label(egui::RichText::new(tr(text)).font(semi(11.0)).color(pal().text_faint));
+        ui.label(
+            egui::RichText::new(tr(text))
+                .font(semi(11.0))
+                .color(pal().text_faint),
+        );
     });
     ui.add_space(2.0);
 }
@@ -1336,10 +1993,17 @@ pub fn more_button(ui: &mut Ui, size: f32, tip: &str) -> Response {
     a11y(ui, &resp, WidgetType::Button, || tip.to_owned());
     let hot = resp.hovered();
     if hot {
-        ui.painter().circle_filled(rect.center(), rect.width() / 2.0, pal().surface_hover);
+        ui.painter()
+            .circle_filled(rect.center(), rect.width() / 2.0, pal().surface_hover);
     }
-    paint_more_dots(ui.painter(), rect.center(), size, if hot { pal().text } else { pal().text_muted });
-    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
+    paint_more_dots(
+        ui.painter(),
+        rect.center(),
+        size,
+        if hot { pal().text } else { pal().text_muted },
+    );
+    resp.on_hover_text(tip)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// The "more options" button that opens a menu below it.
@@ -1356,17 +2020,26 @@ pub fn equalizer(ui: &Ui, center: Pos2) {
     // With animations off (Gaming Mode, Reduce motion), or behind another window (a
     // game), the bars stand still.
     let moving = !crate::theme::reduce_motion() && ui.input(|i| i.focused);
-    let t = if moving { ui.input(|i| i.time) as f32 } else { 0.7 };
+    let t = if moving {
+        ui.input(|i| i.time) as f32
+    } else {
+        0.7
+    };
     for k in 0..3 {
         let phase = t * (5.0 + k as f32 * 1.7) + k as f32 * 1.3;
         let h = 4.0 + (phase.sin() * 0.5 + 0.5) * 9.0;
         let x = center.x - 5.0 + k as f32 * 5.0;
-        let r = Rect::from_min_max(pos2(x - 1.5, center.y + 6.5 - h), pos2(x + 1.5, center.y + 6.5));
-        ui.painter().rect_filled(r, CornerRadius::same(1), pal().accent_soft);
+        let r = Rect::from_min_max(
+            pos2(x - 1.5, center.y + 6.5 - h),
+            pos2(x + 1.5, center.y + 6.5),
+        );
+        ui.painter()
+            .rect_filled(r, CornerRadius::same(1), pal().accent_soft);
     }
     if moving {
         // 15 times a second is smooth enough for three little bars.
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(66));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(66));
     }
 }
 
@@ -1381,24 +2054,52 @@ pub fn skeleton_rows(ui: &mut Ui, n: usize) {
     for k in 0..n {
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
         let c = columns(rect, false, false, false);
-        let art = Rect::from_min_size(pos2(c.title.left(), rect.center().y - 20.0), Vec2::splat(40.0));
+        let art = Rect::from_min_size(
+            pos2(c.title.left(), rect.center().y - 20.0),
+            Vec2::splat(40.0),
+        );
         ui.painter().rect_filled(art, CornerRadius::same(5), col);
         let w1 = 140.0 + ((k * 37) % 90) as f32;
-        ui.painter().rect_filled(Rect::from_min_size(pos2(art.right() + 12.0, rect.center().y - 13.0), vec2(w1, 10.0)), CornerRadius::same(4), col);
-        ui.painter().rect_filled(Rect::from_min_size(pos2(art.right() + 12.0, rect.center().y + 5.0), vec2(w1 * 0.55, 8.0)), CornerRadius::same(4), col);
+        ui.painter().rect_filled(
+            Rect::from_min_size(
+                pos2(art.right() + 12.0, rect.center().y - 13.0),
+                vec2(w1, 10.0),
+            ),
+            CornerRadius::same(4),
+            col,
+        );
+        ui.painter().rect_filled(
+            Rect::from_min_size(
+                pos2(art.right() + 12.0, rect.center().y + 5.0),
+                vec2(w1 * 0.55, 8.0),
+            ),
+            CornerRadius::same(4),
+            col,
+        );
     }
     if !crate::theme::reduce_motion() && ui.input(|i| i.focused) {
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(100));
     }
 }
 
 /// Centered message with an icon, optional button. Returns true if the button was clicked.
-pub fn empty_state(ui: &mut Ui, glyph: &str, title: &str, body: &str, button: Option<&str>) -> bool {
+pub fn empty_state(
+    ui: &mut Ui,
+    glyph: &str,
+    title: &str,
+    body: &str,
+    button: Option<&str>,
+) -> bool {
     let (title, body, button) = (tr(title), tr(body), button.map(tr));
     let mut clicked = false;
     ui.add_space(60.0);
     ui.vertical_centered(|ui| {
-        ui.label(egui::RichText::new(glyph).font(regular(44.0)).color(pal().text_faint));
+        ui.label(
+            egui::RichText::new(glyph)
+                .font(regular(44.0))
+                .color(pal().text_faint),
+        );
         ui.add_space(8.0);
         ui.label(egui::RichText::new(title).font(semi(17.0)));
         ui.add_space(2.0);
@@ -1419,9 +2120,20 @@ pub fn section_title(ui: &mut Ui, title: &str, action: Option<&str>) -> bool {
         ui.label(egui::RichText::new(title).font(theme::heavy(20.0)));
         if let Some(a) = action {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let r = ui.add(egui::Label::new(egui::RichText::new(a).font(semi(12.5)).color(pal().text_muted)).sense(Sense::click()));
+                let r = ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(a)
+                            .font(semi(12.5))
+                            .color(pal().text_muted),
+                    )
+                    .sense(Sense::click()),
+                );
                 if r.hovered() {
-                    ui.painter().hline(r.rect.x_range(), r.rect.bottom(), Stroke::new(1.0, pal().text_muted));
+                    ui.painter().hline(
+                        r.rect.x_range(),
+                        r.rect.bottom(),
+                        Stroke::new(1.0, pal().text_muted),
+                    );
                 }
                 clicked = r.on_hover_cursor(egui::CursorIcon::PointingHand).clicked();
             });

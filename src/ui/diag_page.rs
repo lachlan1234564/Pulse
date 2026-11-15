@@ -18,15 +18,25 @@ pub fn diagnostics_page(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     let offline = app.saved.settings.offline_dir();
     app.diag.poll(&ctx, offline.clone());
-    page_title(ui, "Diagnostics", Some("For when something isn't working. Nothing here leaves your PC unless you copy it or send a report."));
+    page_title(
+        ui,
+        "Diagnostics",
+        Some(
+            "For when something isn't working. Nothing here leaves your PC unless you copy it or send a report.",
+        ),
+    );
     ui.set_max_width(ui.available_width().min(860.0));
     ui.add_space(6.0);
 
     ui.horizontal_wrapped(|ui| {
-        let copy = egui::Button::new(RichText::new(format!("{}  {}", icon::COPY, tr("Copy report"))).font(med(13.0)).color(Color32::WHITE))
-            .fill(pal().accent)
-            .corner_radius(17)
-            .min_size(egui::vec2(0.0, 34.0));
+        let copy = egui::Button::new(
+            RichText::new(format!("{}  {}", icon::COPY, tr("Copy report")))
+                .font(med(13.0))
+                .color(Color32::WHITE),
+        )
+        .fill(pal().accent)
+        .corner_radius(17)
+        .min_size(egui::vec2(0.0, 34.0));
         if ui.add(copy).clicked() {
             ctx.copy_text(crate::diag::report(&app.diag, &app.saved.settings));
             app.toast(tr("Report copied"), &ctx);
@@ -51,9 +61,18 @@ pub fn diagnostics_page(app: &mut App, ui: &mut Ui) {
     let facts = app.diag.facts.clone();
     let waiting = tr("Checking…");
     let gpu = app.diag.gpu.clone().unwrap_or_else(|| waiting.to_string());
-    let os = facts.as_ref().map_or(waiting, |f| f.os.as_str()).to_string();
-    let ytdlp = facts.as_ref().map_or(waiting, |f| f.ytdlp.as_str()).to_string();
-    let deno = facts.as_ref().map_or(waiting, |f| f.deno.as_str()).to_string();
+    let os = facts
+        .as_ref()
+        .map_or(waiting, |f| f.os.as_str())
+        .to_string();
+    let ytdlp = facts
+        .as_ref()
+        .map_or(waiting, |f| f.ytdlp.as_str())
+        .to_string();
+    let deno = facts
+        .as_ref()
+        .map_or(waiting, |f| f.deno.as_str())
+        .to_string();
     kv(ui, "Pulse", env!("CARGO_PKG_VERSION"));
     kv(ui, tr("System"), &os);
     kv(ui, tr("Graphics"), &gpu);
@@ -74,7 +93,11 @@ pub fn diagnostics_page(app: &mut App, ui: &mut Ui) {
         ui.horizontal(|ui| {
             match &check {
                 None => {
-                    ui.label(RichText::new(icon::CIRCLE).size(16.0).color(pal().text_faint));
+                    ui.label(
+                        RichText::new(icon::CIRCLE)
+                            .size(16.0)
+                            .color(pal().text_faint),
+                    );
                 }
                 Some(Check::Running) => {
                     ui.add(egui::Spinner::new().size(15.0).color(pal().text_muted));
@@ -87,9 +110,23 @@ pub fn diagnostics_page(app: &mut App, ui: &mut Ui) {
                 }
             }
             let used = ui.min_rect().width() + ui.spacing().item_spacing.x;
-            fixed(ui, COLUMN - used, egui::Label::new(RichText::new(tr(service.name)).font(med(13.5)).color(pal().text)));
-            let text = check.as_ref().map_or_else(|| tr("Not run yet").to_string(), Check::summary);
-            let color = if matches!(check, Some(Check::Failed(_))) { BAD } else { pal().text_muted };
+            fixed(
+                ui,
+                COLUMN - used,
+                egui::Label::new(
+                    RichText::new(tr(service.name))
+                        .font(med(13.5))
+                        .color(pal().text),
+                ),
+            );
+            let text = check
+                .as_ref()
+                .map_or_else(|| tr("Not run yet").to_string(), Check::summary);
+            let color = if matches!(check, Some(Check::Failed(_))) {
+                BAD
+            } else {
+                pal().text_muted
+            };
             ui.add(egui::Label::new(RichText::new(text).font(regular(13.0)).color(color)).wrap());
         });
         ui.add_space(4.0);
@@ -106,17 +143,35 @@ pub fn diagnostics_page(app: &mut App, ui: &mut Ui) {
             let total: u64 = f.storage.iter().map(|(_, n)| n).sum();
             ui.add_space(2.0);
             ui.horizontal(|ui| {
-                fixed(ui, COLUMN, egui::Label::new(RichText::new(tr("Total")).font(heavy(13.5)).color(pal().text)));
-                ui.label(RichText::new(fmt_bytes(total)).font(heavy(13.5)).color(pal().text));
+                fixed(
+                    ui,
+                    COLUMN,
+                    egui::Label::new(
+                        RichText::new(tr("Total"))
+                            .font(heavy(13.5))
+                            .color(pal().text),
+                    ),
+                );
+                ui.label(
+                    RichText::new(fmt_bytes(total))
+                        .font(heavy(13.5))
+                        .color(pal().text),
+                );
             });
         }
     }
     ui.add_space(10.0);
     ui.horizontal_wrapped(|ui| {
         if ghost_button(ui, icon::FOLDER_OPEN, "Open data folder").clicked() {
-            ctx.open_url(egui::OpenUrl::new_tab(crate::settings::file_uri(&crate::settings::data_dir())));
+            ctx.open_url(egui::OpenUrl::new_tab(crate::settings::file_uri(
+                &crate::settings::data_dir(),
+            )));
         }
-        ui.label(RichText::new(tr("Clear the cache from Settings › Storage.")).font(regular(12.5)).color(pal().text_faint));
+        ui.label(
+            RichText::new(tr("Clear the cache from Settings › Storage."))
+                .font(regular(12.5))
+                .color(pal().text_faint),
+        );
     });
 
     // ------------------------------------------------------------ Problems
@@ -125,12 +180,23 @@ pub fn diagnostics_page(app: &mut App, ui: &mut Ui) {
     if problems.is_empty() {
         ui.label(RichText::new(tr("No problems since Pulse started.")).color(pal().text_muted));
     } else {
-        egui::Frame::new().fill(pal().surface).corner_radius(r_md()).inner_margin(12).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            for p in problems.iter().rev() {
-                ui.add(egui::Label::new(RichText::new(p).font(egui::FontId::monospace(12.0)).color(pal().text_muted)).wrap());
-            }
-        });
+        egui::Frame::new()
+            .fill(pal().surface)
+            .corner_radius(r_md())
+            .inner_margin(12)
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                for p in problems.iter().rev() {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(p)
+                                .font(egui::FontId::monospace(12.0))
+                                .color(pal().text_muted),
+                        )
+                        .wrap(),
+                    );
+                }
+            });
     }
     let reports = crate::crash::reports().len();
     ui.add_space(10.0);
@@ -142,7 +208,9 @@ pub fn diagnostics_page(app: &mut App, ui: &mut Ui) {
         };
         ui.label(RichText::new(text).color(pal().text_muted));
         if reports > 0 && ghost_button(ui, icon::FOLDER_OPEN, "Open folder").clicked() {
-            ctx.open_url(egui::OpenUrl::new_tab(crate::settings::file_uri(&crate::crash::dir())));
+            ctx.open_url(egui::OpenUrl::new_tab(crate::settings::file_uri(
+                &crate::crash::dir(),
+            )));
         }
     });
     ui.add_space(30.0);
@@ -159,16 +227,28 @@ const COLUMN: f32 = 190.0;
 
 /// A label in a column `w` wide.
 fn fixed(ui: &mut Ui, w: f32, label: egui::Label) {
-    ui.allocate_ui_with_layout(egui::vec2(w, 20.0), Layout::left_to_right(Align::Center), |ui| {
-        ui.set_min_width(w);
-        ui.add(label.truncate());
-    });
+    ui.allocate_ui_with_layout(
+        egui::vec2(w, 20.0),
+        Layout::left_to_right(Align::Center),
+        |ui| {
+            ui.set_min_width(w);
+            ui.add(label.truncate());
+        },
+    );
 }
 
 /// "Name    value" on one line.
 fn kv(ui: &mut Ui, key: &str, value: &str) {
     ui.horizontal(|ui| {
-        fixed(ui, COLUMN, egui::Label::new(RichText::new(key).font(regular(13.5)).color(pal().text_muted)));
+        fixed(
+            ui,
+            COLUMN,
+            egui::Label::new(
+                RichText::new(key)
+                    .font(regular(13.5))
+                    .color(pal().text_muted),
+            ),
+        );
         ui.add(egui::Label::new(RichText::new(value).font(med(13.5)).color(pal().text)).wrap());
     });
     ui.add_space(3.0);

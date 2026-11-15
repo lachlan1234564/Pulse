@@ -19,7 +19,10 @@ pub const SITE: &str = "https://listen2pulse.github.io/";
 
 pub(crate) fn base() -> String {
     // Developer check: PULSE_DEBUG_ACCOUNTS points Pulse at a test server.
-    std::env::var("PULSE_DEBUG_ACCOUNTS").unwrap_or_else(|_| ACCOUNTS_URL.to_string()).trim_end_matches('/').to_string()
+    std::env::var("PULSE_DEBUG_ACCOUNTS")
+        .unwrap_or_else(|_| ACCOUNTS_URL.to_string())
+        .trim_end_matches('/')
+        .to_string()
 }
 
 /// Are online features set up in this build?
@@ -126,7 +129,9 @@ static SESSION: Mutex<Option<Option<Session>>> = Mutex::new(None);
 pub fn session() -> Option<Session> {
     let mut s = SESSION.lock().unwrap();
     if s.is_none() {
-        let read = std::fs::read(session_file()).ok().and_then(|b| serde_json::from_slice(&b).ok());
+        let read = std::fs::read(session_file())
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
         *s = Some(read);
     }
     s.clone().flatten()
@@ -154,7 +159,11 @@ fn call(method: &str, path: &str, body: Option<Value>, signed_in: bool) -> Resul
     if base().is_empty() {
         return Err("Online features aren't set up in this version of Pulse.".into());
     }
-    let token = if signed_in { Some(session().ok_or("Please sign in first.")?.token) } else { None };
+    let token = if signed_in {
+        Some(session().ok_or("Please sign in first.")?.token)
+    } else {
+        None
+    };
     let agent = crate::net::api();
     let auth = token.map(|t| format!("Bearer {t}"));
     let result = match (method, body) {
@@ -166,7 +175,11 @@ fn call(method: &str, path: &str, body: Option<Value>, signed_in: bool) -> Resul
             r.call()
         }
         ("DELETE", None) => {
-            let mut r = agent.delete(&url).config().http_status_as_error(false).build();
+            let mut r = agent
+                .delete(&url)
+                .config()
+                .http_status_as_error(false)
+                .build();
             if let Some(a) = &auth {
                 r = r.header("Authorization", a);
             }
@@ -190,13 +203,21 @@ fn call(method: &str, path: &str, body: Option<Value>, signed_in: bool) -> Resul
     };
     let mut resp = result.map_err(crate::net::friendly_error)?;
     let status = resp.status().as_u16();
-    let text = resp.body_mut().with_config().limit(8 * 1024 * 1024).read_to_string().map_err(|e| format!("Couldn't read the reply ({e})"))?;
+    let text = resp
+        .body_mut()
+        .with_config()
+        .limit(8 * 1024 * 1024)
+        .read_to_string()
+        .map_err(|e| format!("Couldn't read the reply ({e})"))?;
     let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
     if (200..300).contains(&status) {
         return Ok(v);
     }
-    let message =
-        v.get("error").and_then(Value::as_str).map(str::to_owned).unwrap_or_else(|| format!("The accounts server returned an error (HTTP {status})."));
+    let message = v
+        .get("error")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("The accounts server returned an error (HTTP {status})."));
     // The session ended (not just a wrong password, which is a 401 too).
     if status == 401 && signed_in && message == "Please sign in again." {
         set_session(None);
@@ -205,8 +226,15 @@ fn call(method: &str, path: &str, body: Option<Value>, signed_in: bool) -> Resul
 }
 
 /// Song fixes for these song ids (see `crate::fixes`). Songs without one aren't listed.
-pub fn song_fixes(ids: &[String]) -> Result<std::collections::HashMap<String, crate::fixes::Fix>, String> {
-    let v = call("GET", &format!("/fixes?ids={}", crate::net::encode(&ids.join(","))), None, false)?;
+pub fn song_fixes(
+    ids: &[String],
+) -> Result<std::collections::HashMap<String, crate::fixes::Fix>, String> {
+    let v = call(
+        "GET",
+        &format!("/fixes?ids={}", crate::net::encode(&ids.join(","))),
+        None,
+        false,
+    )?;
     parse(v.get("fixes").cloned().unwrap_or(Value::Null))
 }
 
@@ -252,28 +280,66 @@ pub fn artist_extra(artist_id: &str, name: &str, titles: &[String]) -> Result<Ar
         }
         t.push_str(&title);
     }
-    let path = format!("/artist-extra?artist={}&name={}&t={}", crate::net::encode(artist_id), crate::net::encode(name), crate::net::encode(&t));
+    let path = format!(
+        "/artist-extra?artist={}&name={}&t={}",
+        crate::net::encode(artist_id),
+        crate::net::encode(name),
+        crate::net::encode(&t)
+    );
     parse(call("GET", &path, None, false)?)
 }
 
 fn parse<T: for<'de> Deserialize<'de>>(v: Value) -> Result<T, String> {
-    serde_json::from_value(v).map_err(|_| "The accounts server sent something Pulse couldn't read.".to_string())
+    serde_json::from_value(v)
+        .map_err(|_| "The accounts server sent something Pulse couldn't read.".to_string())
 }
 
 fn signed_in_as(v: &Value) -> Result<Session, String> {
-    let token = v.get("token").and_then(Value::as_str).ok_or("No sign-in key came back.")?.to_string();
-    let username = v.pointer("/user/username").and_then(Value::as_str).unwrap_or_default().to_string();
-    let email = v.pointer("/user/email").and_then(Value::as_str).unwrap_or_default().to_string();
-    let supporter = v.pointer("/user/supporter").and_then(Value::as_bool).unwrap_or(false);
-    let s = Session { token, username, email, supporter };
+    let token = v
+        .get("token")
+        .and_then(Value::as_str)
+        .ok_or("No sign-in key came back.")?
+        .to_string();
+    let username = v
+        .pointer("/user/username")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let email = v
+        .pointer("/user/email")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let supporter = v
+        .pointer("/user/supporter")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let s = Session {
+        token,
+        username,
+        email,
+        supporter,
+    };
     set_session(Some(s.clone()));
     Ok(s)
 }
 
 /// `birthdate` is "YYYY-MM-DD" (see `parse_birthday`). The server checks the age too, and
 /// doesn't keep the birthday.
-pub fn sign_up(username: &str, email: &str, password: &str, birthdate: &str) -> Result<Session, String> {
-    let v = call("POST", "/signup", Some(json!({ "username": username.trim(), "email": email.trim(), "password": password, "birthdate": birthdate })), false)?;
+pub fn sign_up(
+    username: &str,
+    email: &str,
+    password: &str,
+    birthdate: &str,
+) -> Result<Session, String> {
+    let v = call(
+        "POST",
+        "/signup",
+        Some(
+            json!({ "username": username.trim(), "email": email.trim(), "password": password, "birthdate": birthdate }),
+        ),
+        false,
+    )?;
     signed_in_as(&v)
 }
 
@@ -287,9 +353,19 @@ pub const TOO_YOUNG: &str = "You need to be at least 13 to make a Pulse account.
 /// if `month_first` (English: 4/25/2010), otherwise day first (25/4/2010). "2010-04-25" works
 /// either way. Returns (year, month, day) if it's a real date.
 pub fn parse_birthday(text: &str, month_first: bool) -> Option<(i32, u32, u32)> {
-    let parts: Vec<u32> = text.split(|c: char| matches!(c, '/' | '.' | '-' | ' ')).filter(|p| !p.is_empty()).map(|p| p.parse().ok()).collect::<Option<_>>()?;
+    let parts: Vec<u32> = text
+        .split(|c: char| matches!(c, '/' | '.' | '-' | ' '))
+        .filter(|p| !p.is_empty())
+        .map(|p| p.parse().ok())
+        .collect::<Option<_>>()?;
     let [a, b, c] = parts[..] else { return None };
-    let (y, m, d) = if a > 999 { (a, b, c) } else if month_first { (c, a, b) } else { (c, b, a) };
+    let (y, m, d) = if a > 999 {
+        (a, b, c)
+    } else if month_first {
+        (c, a, b)
+    } else {
+        (c, b, a)
+    };
     let y = i32::try_from(y).ok().filter(|y| *y > 999)?;
     (1..=12).contains(&m).then_some(())?;
     (1..=days_in_month(y, m)).contains(&d).then_some((y, m, d))
@@ -318,7 +394,10 @@ pub fn age_on(birth: (i32, u32, u32), today: (i32, u32, u32)) -> Option<u32> {
 
 /// Today's date (UTC), as (year, month, day).
 pub fn today() -> (i32, u32, u32) {
-    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() / 86_400).unwrap_or(0) as i64;
+    let days = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() / 86_400)
+        .unwrap_or(0) as i64;
     // Days since 1970-01-01 to a calendar date (Howard Hinnant's civil_from_days).
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
@@ -345,7 +424,9 @@ pub fn check_birthday(text: &str, month_first: bool) -> Result<String, &'static 
     if signup_blocked() {
         return Err(TOO_YOUNG);
     }
-    let Some(birth) = parse_birthday(text, month_first) else { return Err("Enter your birthday.") };
+    let Some(birth) = parse_birthday(text, month_first) else {
+        return Err("Enter your birthday.");
+    };
     match age_on(birth, today()) {
         None => Err("Enter your birthday."),
         Some(age) if age < MIN_AGE => {
@@ -358,7 +439,12 @@ pub fn check_birthday(text: &str, month_first: bool) -> Result<String, &'static 
 
 /// `username` can also be the account's email address.
 pub fn sign_in(username: &str, password: &str) -> Result<Session, String> {
-    let v = call("POST", "/login", Some(json!({ "username": username.trim(), "password": password })), false)?;
+    let v = call(
+        "POST",
+        "/login",
+        Some(json!({ "username": username.trim(), "password": password })),
+        false,
+    )?;
     signed_in_as(&v)
 }
 
@@ -372,8 +458,15 @@ pub fn sign_out() {
 pub fn refresh() -> Result<Session, String> {
     let v = call("GET", "/me", None, true)?;
     let mut s = session().ok_or("Please sign in first.")?;
-    s.email = v.pointer("/user/email").and_then(Value::as_str).unwrap_or_default().to_string();
-    s.supporter = v.pointer("/user/supporter").and_then(Value::as_bool).unwrap_or(false);
+    s.email = v
+        .pointer("/user/email")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    s.supporter = v
+        .pointer("/user/supporter")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     set_session(Some(s.clone()));
     Ok(s)
 }
@@ -386,7 +479,12 @@ pub fn supporters() -> Result<Vec<String>, String> {
 
 /// Adds or changes the email that password-reset codes go to.
 pub fn set_email(email: &str, password: &str) -> Result<(), String> {
-    call("PUT", "/me/email", Some(json!({ "email": email.trim(), "password": password })), true)?;
+    call(
+        "PUT",
+        "/me/email",
+        Some(json!({ "email": email.trim(), "password": password })),
+        true,
+    )?;
     if let Some(mut s) = session() {
         s.email = email.trim().to_lowercase();
         set_session(Some(s));
@@ -397,13 +495,26 @@ pub fn set_email(email: &str, password: &str) -> Result<(), String> {
 /// Forgot password, step 1: emails a code to the account (`who`: username or email).
 /// Returns the server's message.
 pub fn reset_start(who: &str) -> Result<String, String> {
-    let v = call("POST", "/reset/start", Some(json!({ "who": who.trim() })), false)?;
-    Ok(v.get("message").and_then(Value::as_str).unwrap_or("A code is on its way.").to_string())
+    let v = call(
+        "POST",
+        "/reset/start",
+        Some(json!({ "who": who.trim() })),
+        false,
+    )?;
+    Ok(v.get("message")
+        .and_then(Value::as_str)
+        .unwrap_or("A code is on its way.")
+        .to_string())
 }
 
 /// Forgot password, step 2: the code from the email and a new password. Signs you in.
 pub fn reset_finish(who: &str, code: &str, password: &str) -> Result<Session, String> {
-    let v = call("POST", "/reset/finish", Some(json!({ "who": who.trim(), "code": code.trim(), "password": password })), false)?;
+    let v = call(
+        "POST",
+        "/reset/finish",
+        Some(json!({ "who": who.trim(), "code": code.trim(), "password": password })),
+        false,
+    )?;
     signed_in_as(&v)
 }
 
@@ -412,7 +523,11 @@ pub fn valid_email(e: &str) -> bool {
     let e = e.trim();
     match e.split_once('@') {
         Some((a, b)) => {
-            !a.is_empty() && !e.contains(char::is_whitespace) && !b.contains('@') && b.split('.').count() >= 2 && b.split('.').all(|p| !p.is_empty())
+            !a.is_empty()
+                && !e.contains(char::is_whitespace)
+                && !b.contains('@')
+                && b.split('.').count() >= 2
+                && b.split('.').all(|p| !p.is_empty())
         }
         None => false,
     }
@@ -424,10 +539,19 @@ pub fn set_avatar(picture: &std::path::Path) -> Result<(), String> {
     use base64::Engine;
     let img = image::open(picture).map_err(|e| format!("Couldn't read the picture ({e})"))?;
     let side = img.width().min(img.height());
-    let square = img.crop_imm((img.width() - side) / 2, (img.height() - side) / 2, side, side);
-    let small = square.resize_exact(256, 256, image::imageops::FilterType::Lanczos3).to_rgb8();
+    let square = img.crop_imm(
+        (img.width() - side) / 2,
+        (img.height() - side) / 2,
+        side,
+        side,
+    );
+    let small = square
+        .resize_exact(256, 256, image::imageops::FilterType::Lanczos3)
+        .to_rgb8();
     let mut jpeg = Vec::new();
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 85).encode_image(&small).map_err(|e| e.to_string())?;
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 85)
+        .encode_image(&small)
+        .map_err(|e| e.to_string())?;
     let data = base64::engine::general_purpose::STANDARD.encode(&jpeg);
     call("PUT", "/me/avatar", Some(json!({ "data": data })), true).map(|_| ())
 }
@@ -442,7 +566,13 @@ pub fn set_bio(bio: &str) -> Result<(), String> {
 }
 
 pub fn change_password(old: &str, new: &str) -> Result<(), String> {
-    call("POST", "/me/password", Some(json!({ "old": old, "new": new })), true).map(|_| ())
+    call(
+        "POST",
+        "/me/password",
+        Some(json!({ "old": old, "new": new })),
+        true,
+    )
+    .map(|_| ())
 }
 
 /// Deletes your account and everything you published.
@@ -454,18 +584,35 @@ pub fn delete_account(password: &str) -> Result<(), String> {
 
 /// Songs that can be published: not the ones on your computer (their ids hold file paths).
 pub fn shareable(tracks: &[Track]) -> Vec<&Track> {
-    tracks.iter().filter(|t| !crate::local::is_local(&t.id)).collect()
+    tracks
+        .iter()
+        .filter(|t| !crate::local::is_local(&t.id))
+        .collect()
 }
 
 /// Publishes a playlist; returns its public id.
 pub fn publish(name: &str, tracks: &[Track]) -> Result<String, String> {
-    let v = call("POST", "/playlists", Some(json!({ "name": name, "tracks": shareable(tracks) })), true)?;
-    v.get("id").and_then(Value::as_str).map(str::to_owned).ok_or_else(|| "No playlist id came back.".into())
+    let v = call(
+        "POST",
+        "/playlists",
+        Some(json!({ "name": name, "tracks": shareable(tracks) })),
+        true,
+    )?;
+    v.get("id")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| "No playlist id came back.".into())
 }
 
 /// Updates a published playlist (after you changed it).
 pub fn update(id: &str, name: &str, tracks: &[Track]) -> Result<(), String> {
-    call("PUT", &format!("/playlists/{id}"), Some(json!({ "name": name, "tracks": shareable(tracks) })), true).map(|_| ())
+    call(
+        "PUT",
+        &format!("/playlists/{id}"),
+        Some(json!({ "name": name, "tracks": shareable(tracks) })),
+        true,
+    )
+    .map(|_| ())
 }
 
 /// Makes a playlist private again (removes the public copy).
@@ -482,12 +629,22 @@ pub fn profile(username: &str) -> Result<Profile, String> {
     if !valid_username(username) {
         return Err("There's no one called that.".into());
     }
-    parse(call("GET", &format!("/users/{}", username.to_lowercase()), None, false)?)
+    parse(call(
+        "GET",
+        &format!("/users/{}", username.to_lowercase()),
+        None,
+        false,
+    )?)
 }
 
 /// Usernames that start with `q` (up to 10).
 pub fn search(q: &str) -> Vec<User> {
-    let q: String = q.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.').take(20).collect();
+    let q: String = q
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.')
+        .take(20)
+        .collect();
     if q.len() < 2 || !available() {
         return vec![];
     }
@@ -500,15 +657,27 @@ pub fn search(q: &str) -> Vec<User> {
 
 pub fn report(id: &str, reason: &str) -> Result<(), String> {
     check_id(id)?;
-    call("POST", "/report", Some(json!({ "playlist": id, "reason": reason })), false).map(|_| ())
+    call(
+        "POST",
+        "/report",
+        Some(json!({ "playlist": id, "reason": reason })),
+        false,
+    )
+    .map(|_| ())
 }
 
 fn check_id(id: &str) -> Result<(), String> {
-    if id.len() == 10 && id.chars().all(|c| c.is_ascii_alphanumeric()) { Ok(()) } else { Err("That playlist link isn't right.".into()) }
+    if id.len() == 10 && id.chars().all(|c| c.is_ascii_alphanumeric()) {
+        Ok(())
+    } else {
+        Err("That playlist link isn't right.".into())
+    }
 }
 
 pub fn valid_username(u: &str) -> bool {
-    (1..=20).contains(&u.len()) && u.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+    (1..=20).contains(&u.len())
+        && u.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
 }
 
 // ---------------------------------------------------------------- links
@@ -532,14 +701,21 @@ pub enum Link {
 pub fn read_link(text: &str) -> Option<Link> {
     let t = text.trim();
     // Today's site, the old one (mercy123xz.github.io/Pulse/, still shared around) and the old test domain.
-    if !t.contains("listen2pulse.github.io") && !t.contains("/Pulse/") && !t.contains("pulse.is-a.software") {
+    if !t.contains("listen2pulse.github.io")
+        && !t.contains("/Pulse/")
+        && !t.contains("pulse.is-a.software")
+    {
         return None;
     }
     let query = t.split_once('?')?.1.split('#').next().unwrap_or("");
     for pair in query.split('&') {
         match pair.split_once('=') {
-            Some(("id", v)) if check_id(v).is_ok() && t.contains("/p.html") => return Some(Link::Playlist(v.to_string())),
-            Some(("name", v)) if valid_username(v) && t.contains("/u.html") => return Some(Link::Profile(v.to_lowercase())),
+            Some(("id", v)) if check_id(v).is_ok() && t.contains("/p.html") => {
+                return Some(Link::Playlist(v.to_string()));
+            }
+            Some(("name", v)) if valid_username(v) && t.contains("/u.html") => {
+                return Some(Link::Profile(v.to_lowercase()));
+            }
             _ => {}
         }
     }
@@ -552,20 +728,46 @@ mod tests {
 
     #[test]
     fn reads_pulse_links() {
-        assert_eq!(read_link("https://mercy123xz.github.io/Pulse/p.html?id=AbCdEfGh23"), Some(Link::Playlist("AbCdEfGh23".into())));
-        assert_eq!(read_link(" https://mercy123xz.github.io/Pulse/u.html?name=Mercy_1#x "), Some(Link::Profile("mercy_1".into())));
-        assert_eq!(read_link("https://listen2pulse.github.io/u.html?name=Mercy_1"), Some(Link::Profile("mercy_1".into())));
-        assert_eq!(read_link(&playlist_link("Zz23456789")), Some(Link::Playlist("Zz23456789".into())));
-        assert_eq!(read_link(&profile_link("joe")), Some(Link::Profile("joe".into())));
-        assert_eq!(read_link("https://mercy123xz.github.io/Pulse/p.html?id=short"), None);
+        assert_eq!(
+            read_link("https://mercy123xz.github.io/Pulse/p.html?id=AbCdEfGh23"),
+            Some(Link::Playlist("AbCdEfGh23".into()))
+        );
+        assert_eq!(
+            read_link(" https://mercy123xz.github.io/Pulse/u.html?name=Mercy_1#x "),
+            Some(Link::Profile("mercy_1".into()))
+        );
+        assert_eq!(
+            read_link("https://listen2pulse.github.io/u.html?name=Mercy_1"),
+            Some(Link::Profile("mercy_1".into()))
+        );
+        assert_eq!(
+            read_link(&playlist_link("Zz23456789")),
+            Some(Link::Playlist("Zz23456789".into()))
+        );
+        assert_eq!(
+            read_link(&profile_link("joe")),
+            Some(Link::Profile("joe".into()))
+        );
+        assert_eq!(
+            read_link("https://mercy123xz.github.io/Pulse/p.html?id=short"),
+            None
+        );
         assert_eq!(read_link("https://example.com/p.html?id=AbCdEfGh23"), None);
         assert_eq!(read_link("osamason"), None);
     }
 
     #[test]
     fn songs_on_your_computer_are_never_published() {
-        let local = Track { id: "local:C:\\Users\\me\\Music\\a.mp3".into(), title: "a".into(), ..Default::default() };
-        let online = Track { id: "dz:1".into(), title: "b".into(), ..Default::default() };
+        let local = Track {
+            id: "local:C:\\Users\\me\\Music\\a.mp3".into(),
+            title: "a".into(),
+            ..Default::default()
+        };
+        let online = Track {
+            id: "dz:1".into(),
+            title: "b".into(),
+            ..Default::default()
+        };
         let list = [local, online];
         let out = shareable(&list);
         assert_eq!(out.len(), 1);
@@ -581,52 +783,121 @@ mod tests {
         unsafe { std::env::set_var("PULSE_DATA_DIR", &dir) };
         let name = format!("t{}", std::process::id());
         let mail = format!("{name}@example.com");
-        assert!(sign_up(&name, "", "a good password", "2000-01-01").unwrap_err().contains("email"));
-        let s = sign_up(&name, &format!("  {}  ", mail.to_uppercase()), "a good password", "2000-01-01").unwrap();
-        assert_eq!((s.username.as_str(), s.email.as_str()), (name.as_str(), mail.as_str()));
+        assert!(
+            sign_up(&name, "", "a good password", "2000-01-01")
+                .unwrap_err()
+                .contains("email")
+        );
+        let s = sign_up(
+            &name,
+            &format!("  {}  ", mail.to_uppercase()),
+            "a good password",
+            "2000-01-01",
+        )
+        .unwrap();
+        assert_eq!(
+            (s.username.as_str(), s.email.as_str()),
+            (name.as_str(), mail.as_str())
+        );
         assert_eq!(session().unwrap(), s, "kept for next time");
         assert!(dir.join("account.json").is_file());
         let song = |id: &str, title: &str| {
-            let mut t = Track { id: id.into(), title: title.into(), duration: 100, ..Default::default() };
+            let mut t = Track {
+                id: id.into(),
+                title: title.into(),
+                duration: 100,
+                ..Default::default()
+            };
             t.artist.name = "OsamaSon".into();
             t.cover_big = Some("https://cdn-images.dzcdn.net/images/cover/x/500x500.jpg".into());
             t
         };
-        let tracks =
-            vec![song("dz:1", "Get Away"), Track { id: "local:C:\\me\\a.mp3".into(), title: "mine".into(), ..Default::default() }, song("dz:2", "Blonde")];
+        let tracks = vec![
+            song("dz:1", "Get Away"),
+            Track {
+                id: "local:C:\\me\\a.mp3".into(),
+                title: "mine".into(),
+                ..Default::default()
+            },
+            song("dz:2", "Blonde"),
+        ];
         let id = publish("Rage", &tracks).unwrap();
         let p = playlist(&id).unwrap();
-        assert_eq!((p.name.as_str(), p.username.as_str(), p.tracks.len()), ("Rage", name.as_str(), 2));
+        assert_eq!(
+            (p.name.as_str(), p.username.as_str(), p.tracks.len()),
+            ("Rage", name.as_str(), 2)
+        );
         assert_eq!(p.tracks[1].title, "Blonde");
-        assert_eq!(p.cover.as_deref(), Some("https://cdn-images.dzcdn.net/images/cover/x/500x500.jpg"));
+        assert_eq!(
+            p.cover.as_deref(),
+            Some("https://cdn-images.dzcdn.net/images/cover/x/500x500.jpg")
+        );
         update(&id, "Rage 2", &tracks[..1]).unwrap();
         assert_eq!(playlist(&id).unwrap().tracks.len(), 1);
         set_bio("hi").unwrap();
         let prof = profile(&name).unwrap();
-        assert_eq!((prof.user.bio.as_str(), prof.playlists.len(), prof.playlists[0].name.as_str()), ("hi", 1, "Rage 2"));
+        assert_eq!(
+            (
+                prof.user.bio.as_str(),
+                prof.playlists.len(),
+                prof.playlists[0].name.as_str()
+            ),
+            ("hi", 1, "Rage 2")
+        );
         assert!(search(&name[..3]).iter().any(|u| u.username == name));
-        assert_eq!(sign_in(&name, "wrong password").unwrap_err(), "Wrong username or password.");
-        assert_eq!(sign_up(&name, "x@example.com", "a good password", "2000-01-01").unwrap_err(), "That username is taken.");
-        assert_eq!(sign_in(&mail, "a good password").unwrap().username, name, "sign in with email");
+        assert_eq!(
+            sign_in(&name, "wrong password").unwrap_err(),
+            "Wrong username or password."
+        );
+        assert_eq!(
+            sign_up(&name, "x@example.com", "a good password", "2000-01-01").unwrap_err(),
+            "That username is taken."
+        );
+        assert_eq!(
+            sign_in(&mail, "a good password").unwrap().username,
+            name,
+            "sign in with email"
+        );
         let mail2 = format!("{name}.2@example.com");
-        assert_eq!(set_email(&mail2, "wrong password").unwrap_err(), "That password is wrong.");
+        assert_eq!(
+            set_email(&mail2, "wrong password").unwrap_err(),
+            "That password is wrong."
+        );
         set_email(&mail2, "a good password").unwrap();
         assert_eq!(refresh().unwrap().email, mail2);
         // Forgot password: the local server keeps the email it would have sent.
         assert!(reset_start(&name).unwrap().contains("code"));
-        let sent: Value = crate::net::api().get(&format!("{}/__mail", base())).call().unwrap().body_mut().read_json().unwrap();
+        let sent: Value = crate::net::api()
+            .get(&format!("{}/__mail", base()))
+            .call()
+            .unwrap()
+            .body_mut()
+            .read_json()
+            .unwrap();
         assert_eq!(sent["to"], mail2.as_str());
         let code = sent["subject"].as_str().unwrap()[..6].to_string();
         let wrong = if code == "000000" { "111111" } else { "000000" };
-        assert_eq!(reset_finish(&name, wrong, "reset password 1").unwrap_err(), "That code is wrong.");
+        assert_eq!(
+            reset_finish(&name, wrong, "reset password 1").unwrap_err(),
+            "That code is wrong."
+        );
         let s = reset_finish(&mail2, &code, "reset password 1").unwrap();
-        assert_eq!((s.username.as_str(), s.email.as_str()), (name.as_str(), mail2.as_str()));
+        assert_eq!(
+            (s.username.as_str(), s.email.as_str()),
+            (name.as_str(), mail2.as_str())
+        );
         change_password("reset password 1", "a newer password").unwrap();
         unpublish(&id).unwrap();
-        assert_eq!(playlist(&id).unwrap_err(), "That playlist isn't public anymore.");
+        assert_eq!(
+            playlist(&id).unwrap_err(),
+            "That playlist isn't public anymore."
+        );
         report(&"A".repeat(10), "x").unwrap_err();
         delete_account("a newer password").unwrap();
-        assert!(session().is_none() && !dir.join("account.json").exists(), "signed out and forgotten");
+        assert!(
+            session().is_none() && !dir.join("account.json").exists(),
+            "signed out and forgotten"
+        );
         assert_eq!(profile(&name).unwrap_err(), "There's no one called that.");
         let _ = std::fs::remove_dir_all(&dir);
     }

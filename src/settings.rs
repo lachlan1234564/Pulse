@@ -6,7 +6,9 @@ use std::path::PathBuf;
 /// A separate profile for testing (PULSE_DATA_DIR=<folder>): a whole second Pulse with its
 /// own library, settings and window, that opens next to the everyday one and never touches it.
 pub fn separate_profile() -> Option<PathBuf> {
-    std::env::var_os("PULSE_DATA_DIR").filter(|d| !d.is_empty()).map(PathBuf::from)
+    std::env::var_os("PULSE_DATA_DIR")
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
 }
 
 /// The file the library is saved in: eframe's `app.ron` (in a separate profile, its own copy).
@@ -63,7 +65,13 @@ pub enum Language {
 }
 
 impl Language {
-    pub const ALL: [Language; 5] = [Language::English, Language::Spanish, Language::Portuguese, Language::French, Language::German];
+    pub const ALL: [Language; 5] = [
+        Language::English,
+        Language::Spanish,
+        Language::Portuguese,
+        Language::French,
+        Language::German,
+    ];
 
     /// The language's name in that language, as shown in the picker.
     pub fn native_name(self) -> &'static str {
@@ -102,9 +110,15 @@ impl Quality {
     /// 128 kbps; Auto and High take the best one available.
     pub fn ytdlp_format(self) -> &'static str {
         match self {
-            Quality::Low => "worstaudio[ext=m4a]/bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]",
-            Quality::Medium => "bestaudio[ext=m4a][abr<=130]/bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]",
-            Quality::Auto | Quality::High => "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]",
+            Quality::Low => {
+                "worstaudio[ext=m4a]/bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]"
+            }
+            Quality::Medium => {
+                "bestaudio[ext=m4a][abr<=130]/bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]"
+            }
+            Quality::Auto | Quality::High => {
+                "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]"
+            }
         }
     }
 }
@@ -256,13 +270,18 @@ pub fn set_hardware_acceleration(on: bool) {
         let _ = std::fs::remove_file(flag);
     } else {
         let _ = std::fs::create_dir_all(data_dir());
-        let _ = std::fs::write(flag, "Pulse draws without the graphics card. Delete this file to undo.\n");
+        let _ = std::fs::write(
+            flag,
+            "Pulse draws without the graphics card. Delete this file to undo.\n",
+        );
     }
 }
 
 /// Size of a folder in bytes (for "clear cache").
 pub fn folder_size(dir: &std::path::Path) -> u64 {
-    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
     entries
         .flatten()
         .map(|e| match e.metadata() {
@@ -298,8 +317,14 @@ mod tests {
 
     #[test]
     fn picture_addresses() {
-        assert_eq!(file_uri(std::path::Path::new("/home/a/b.png")), "file:///home/a/b.png");
-        assert_eq!(file_uri(std::path::Path::new("C:\\Users\\x\\c.png")), "file:///C:/Users/x/c.png");
+        assert_eq!(
+            file_uri(std::path::Path::new("/home/a/b.png")),
+            "file:///home/a/b.png"
+        );
+        assert_eq!(
+            file_uri(std::path::Path::new("C:\\Users\\x\\c.png")),
+            "file:///C:/Users/x/c.png"
+        );
     }
 
     #[test]

@@ -71,7 +71,11 @@ impl Avoid {
 /// and "Get Lucky" by Daft Punk share one key.
 fn song_key(t: &Track) -> String {
     let title = core_title(&t.title);
-    let cut = [" (", " [", " - "].iter().filter_map(|m| title.find(m)).min().unwrap_or(title.len());
+    let cut = [" (", " [", " - "]
+        .iter()
+        .filter_map(|m| title.find(m))
+        .min()
+        .unwrap_or(title.len());
     format!("{}|{}", norm(&title[..cut]), artist_key(t))
 }
 
@@ -94,40 +98,88 @@ pub fn for_song(seed: &Track, video: Option<String>, avoid: &Avoid) -> Vec<Pick>
     let video = video.or_else(|| crate::youtube::music_video(seed));
     // Side by side: YouTube Music's radio for the song, and the artists like this one.
     let (items, similar) = std::thread::scope(|s| {
-        let radio = s.spawn(|| video.as_deref().map(|v| youtube_radio(v, 2)).and_then(Result::ok).unwrap_or_default());
+        let radio = s.spawn(|| {
+            video
+                .as_deref()
+                .map(|v| youtube_radio(v, 2))
+                .and_then(Result::ok)
+                .unwrap_or_default()
+        });
         let similar = s.spawn(|| similar_artists(seed));
-        (radio.join().unwrap_or_default(), similar.join().unwrap_or_default())
+        (
+            radio.join().unwrap_or_default(),
+            similar.join().unwrap_or_default(),
+        )
     });
-    let picks = match_to_deezer(items.into_iter().filter(|i| Some(&i.video) != video.as_ref()).collect(), 36);
+    let picks = match_to_deezer(
+        items
+            .into_iter()
+            .filter(|i| Some(&i.video) != video.as_ref())
+            .collect(),
+        36,
+    );
     let close: HashSet<String> = similar.iter().map(|a| norm(&a.name)).collect();
     // Few songs by artists like this one: add their best-known songs.
-    let near = picks.iter().filter(|p| close.contains(&artist_key(&p.track))).count();
+    let near = picks
+        .iter()
+        .filter(|p| close.contains(&artist_key(&p.track)))
+        .count();
     let mut extra = vec![];
     if near < 20 {
         let ids: Vec<String> = similar.iter().take(12).map(|a| a.id.clone()).collect();
-        extra = deezer::top_songs_of(&ids, 2).into_iter().map(|track| Pick { track, video: None }).collect();
+        extra = deezer::top_songs_of(&ids, 2)
+            .into_iter()
+            .map(|track| Pick { track, video: None })
+            .collect();
     }
     // Still little to go on: Deezer's radio for the artist.
     if picks.len() + extra.len() < 12 {
-        extra.extend(deezer_radio(seed).into_iter().map(|track| Pick { track, video: None }));
+        extra.extend(
+            deezer_radio(seed)
+                .into_iter()
+                .map(|track| Pick { track, video: None }),
+        );
     }
-    tidy(seed, close_first(picks, extra, &close, &artist_key(seed)), avoid)
+    tidy(
+        seed,
+        close_first(picks, extra, &close, &artist_key(seed)),
+        avoid,
+    )
 }
 
 /// Artists whose fans also play the seed's artist, most alike first.
 fn similar_artists(seed: &Track) -> Vec<deezer::ArtistInfo> {
-    let id = if seed.has_artist_page() { Some(seed.artist.id.clone()) } else { deezer::find_artist(&seed.artist.name).ok().flatten() };
-    id.map(|id| deezer::related_artists(&id, 20)).unwrap_or_default()
+    let id = if seed.has_artist_page() {
+        Some(seed.artist.id.clone())
+    } else {
+        deezer::find_artist(&seed.artist.name).ok().flatten()
+    };
+    id.map(|id| deezer::related_artists(&id, 20))
+        .unwrap_or_default()
 }
 
 /// The order of play, six songs at a time: four by artists like the one you picked
 /// (`close`: the radio's own picks taking turns with `extra`, their best-known songs), one by
 /// the artist you picked (`seed_artist`), and one from further afield in the radio. Whatever
 /// runs out, the others fill its places.
-fn close_first(radio: Vec<Pick>, extra: Vec<Pick>, close: &HashSet<String>, seed_artist: &str) -> Vec<Pick> {
-    let (own, rest): (Vec<Pick>, Vec<Pick>) = radio.into_iter().partition(|p| artist_key(&p.track) == seed_artist);
-    let (near, far): (Vec<Pick>, Vec<Pick>) = rest.into_iter().partition(|p| close.contains(&artist_key(&p.track)));
-    let (mut near, mut extra, mut own, mut far) = (near.into_iter(), extra.into_iter(), own.into_iter(), far.into_iter());
+fn close_first(
+    radio: Vec<Pick>,
+    extra: Vec<Pick>,
+    close: &HashSet<String>,
+    seed_artist: &str,
+) -> Vec<Pick> {
+    let (own, rest): (Vec<Pick>, Vec<Pick>) = radio
+        .into_iter()
+        .partition(|p| artist_key(&p.track) == seed_artist);
+    let (near, far): (Vec<Pick>, Vec<Pick>) = rest
+        .into_iter()
+        .partition(|p| close.contains(&artist_key(&p.track)));
+    let (mut near, mut extra, mut own, mut far) = (
+        near.into_iter(),
+        extra.into_iter(),
+        own.into_iter(),
+        far.into_iter(),
+    );
     let mut out = vec![];
     for turn in 0.. {
         let first = match turn % 6 {
@@ -136,7 +188,12 @@ fn close_first(radio: Vec<Pick>, extra: Vec<Pick>, close: &HashSet<String>, seed
             1 | 4 => extra.next().or_else(|| near.next()),
             _ => near.next().or_else(|| extra.next()),
         };
-        match first.or_else(|| near.next()).or_else(|| extra.next()).or_else(|| own.next()).or_else(|| far.next()) {
+        match first
+            .or_else(|| near.next())
+            .or_else(|| extra.next())
+            .or_else(|| own.next())
+            .or_else(|| far.next())
+        {
             Some(p) => out.push(p),
             None => break,
         }
@@ -153,18 +210,31 @@ pub fn youtube_radio(video: &str, pages: usize) -> Result<Vec<RadioItem>, String
     let mut body = serde_json::json!({ "context": context.clone(), "videoId": video, "playlistId": format!("RDAMVM{video}"), "isAudioOnly": true });
     let mut out: Vec<RadioItem> = vec![];
     for page in 0..pages.max(1) {
-        let mut resp = match crate::net::api().post("https://music.youtube.com/youtubei/v1/next?prettyPrint=false").header("Origin", "https://music.youtube.com").send_json(&body) {
+        let mut resp = match crate::net::api()
+            .post("https://music.youtube.com/youtubei/v1/next?prettyPrint=false")
+            .header("Origin", "https://music.youtube.com")
+            .send_json(&body)
+        {
             Ok(r) => r,
             Err(e) if page == 0 => return Err(crate::net::friendly_error(e)),
             Err(_) => break, // the first page is enough
         };
-        let Ok(reply) = resp.body_mut().with_config().limit(8 * 1024 * 1024).read_json::<serde_json::Value>() else { break };
+        let Ok(reply) = resp
+            .body_mut()
+            .with_config()
+            .limit(8 * 1024 * 1024)
+            .read_json::<serde_json::Value>()
+        else {
+            break;
+        };
         for item in radio_items(&reply) {
             if !out.iter().any(|o| o.video == item.video) {
                 out.push(item);
             }
         }
-        let Some(more) = continuation(&reply) else { break };
+        let Some(more) = continuation(&reply) else {
+            break;
+        };
         body = serde_json::json!({ "context": context.clone(), "continuation": more });
     }
     Ok(out)
@@ -174,7 +244,10 @@ pub fn youtube_radio(video: &str, pages: usize) -> Result<Vec<RadioItem>, String
 fn continuation(v: &serde_json::Value) -> Option<String> {
     match v {
         serde_json::Value::Object(m) => {
-            if let Some(c) = m.get("nextRadioContinuationData").and_then(|d| d["continuation"].as_str()) {
+            if let Some(c) = m
+                .get("nextRadioContinuationData")
+                .and_then(|d| d["continuation"].as_str())
+            {
                 return Some(c.to_string());
             }
             m.values().find_map(continuation)
@@ -201,7 +274,12 @@ pub fn radio_items(reply: &serde_json::Value) -> Vec<RadioItem> {
     }
     let mut found = vec![];
     walk(reply, &mut found);
-    let text = |v: &serde_json::Value| -> String { v["runs"].as_array().map(|r| r.iter().filter_map(|x| x["text"].as_str()).collect()).unwrap_or_default() };
+    let text = |v: &serde_json::Value| -> String {
+        v["runs"]
+            .as_array()
+            .map(|r| r.iter().filter_map(|x| x["text"].as_str()).collect())
+            .unwrap_or_default()
+    };
     let mut seen = HashSet::new();
     found
         .into_iter()
@@ -249,7 +327,10 @@ fn parse_clock(s: &str) -> Option<u32> {
 /// and stopping once `want` are found. Fan uploads are left out: they're edits and remixes
 /// more often than songs.
 fn match_to_deezer(items: Vec<RadioItem>, want: usize) -> Vec<Pick> {
-    let items: Vec<RadioItem> = items.into_iter().filter(|i| i.kind != Kind::Upload).collect();
+    let items: Vec<RadioItem> = items
+        .into_iter()
+        .filter(|i| i.kind != Kind::Upload)
+        .collect();
     let found: Mutex<Vec<(usize, Pick)>> = Mutex::new(vec![]);
     let next = AtomicUsize::new(0);
     let count = AtomicUsize::new(0);
@@ -265,7 +346,10 @@ fn match_to_deezer(items: Vec<RadioItem>, want: usize) -> Vec<Pick> {
                     let Some(item) = items.get(i) else { return };
                     if let Some(pick) = match_one(item) {
                         count.fetch_add(1, Ordering::Relaxed);
-                        found.lock().unwrap_or_else(|e| e.into_inner()).push((i, pick));
+                        found
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .push((i, pick));
                     }
                 }
             });
@@ -277,11 +361,20 @@ fn match_to_deezer(items: Vec<RadioItem>, want: usize) -> Vec<Pick> {
 }
 
 fn match_one(item: &RadioItem) -> Option<Pick> {
-    let track = deezer::find_track(&item.artists.join(", "), &item.title, item.duration.unwrap_or(0)).ok().flatten()?;
+    let track = deezer::find_track(
+        &item.artists.join(", "),
+        &item.title,
+        item.duration.unwrap_or(0),
+    )
+    .ok()
+    .flatten()?;
     // YouTube Music's album audio is the right recording if it's the same version (explicit
     // or clean) and the same length; then the song can start without searching YouTube.
-    let same_length = item.duration.is_some_and(|d| track.duration == 0 || d.abs_diff(track.duration) <= 3);
-    let video = (item.kind == Kind::Song && same_length && item.explicit == track.explicit).then(|| item.video.clone());
+    let same_length = item
+        .duration
+        .is_some_and(|d| track.duration == 0 || d.abs_diff(track.duration) <= 3);
+    let video = (item.kind == Kind::Song && same_length && item.explicit == track.explicit)
+        .then(|| item.video.clone());
     Some(Pick { track, video })
 }
 
@@ -291,7 +384,11 @@ fn match_one(item: &RadioItem) -> Option<Pick> {
 /// similar artists.
 pub fn deezer_radio(seed: &Track) -> Vec<Track> {
     let radio = deezer::similar_to(seed).unwrap_or_default();
-    let ids: Vec<String> = similar_artists(seed).into_iter().take(6).map(|a| a.id).collect();
+    let ids: Vec<String> = similar_artists(seed)
+        .into_iter()
+        .take(6)
+        .map(|a| a.id)
+        .collect();
     let related = deezer::top_songs_of(&ids, 3);
     // Two from the radio, then one from a similar artist, and so on.
     let mut out = vec![];
@@ -380,7 +477,10 @@ fn spread_out(picks: Vec<Pick>, seed_artist: &str) -> Vec<Pick> {
     };
     for p in picks {
         // Songs that had to wait go in first, as soon as they fit.
-        while let Some(i) = waiting.iter().position(|w| fits(w, out.len(), &last, last_seed)) {
+        while let Some(i) = waiting
+            .iter()
+            .position(|w| fits(w, out.len(), &last, last_seed))
+        {
             let w = waiting.remove(i);
             place(w, &mut out, &mut last, &mut last_seed);
         }
@@ -390,7 +490,10 @@ fn spread_out(picks: Vec<Pick>, seed_artist: &str) -> Vec<Pick> {
             waiting.push(p);
         }
     }
-    while let Some(i) = waiting.iter().position(|w| fits(w, out.len(), &last, last_seed)) {
+    while let Some(i) = waiting
+        .iter()
+        .position(|w| fits(w, out.len(), &last, last_seed))
+    {
         let w = waiting.remove(i);
         place(w, &mut out, &mut last, &mut last_seed);
     }
@@ -402,13 +505,23 @@ mod tests {
     use super::*;
 
     fn song(id: &str, title: &str, artist: &str) -> Track {
-        let mut t = Track { id: id.into(), title: title.into(), duration: 200, ..Default::default() };
+        let mut t = Track {
+            id: id.into(),
+            title: title.into(),
+            duration: 200,
+            ..Default::default()
+        };
         t.artist.id = format!("a-{}", norm(artist));
         t.artist.name = artist.into();
         t
     }
     fn picks(list: &[(&str, &str, &str)]) -> Vec<Pick> {
-        list.iter().map(|(id, title, artist)| Pick { track: song(id, title, artist), video: None }).collect()
+        list.iter()
+            .map(|(id, title, artist)| Pick {
+                track: song(id, title, artist),
+                video: None,
+            })
+            .collect()
     }
     fn artists(p: &[Pick]) -> Vec<String> {
         p.iter().map(|p| p.track.artist.name.clone()).collect()
@@ -443,11 +556,25 @@ mod tests {
         ] } });
         let items = radio_items(&reply);
         assert_eq!(items.len(), 3, "the repeat of v2 is left out: {items:?}");
-        assert_eq!(items[0], RadioItem { video: "seed1".into(), title: "Pink + White".into(), artists: vec!["Frank Ocean".into()], duration: Some(184), explicit: false, kind: Kind::Song });
+        assert_eq!(
+            items[0],
+            RadioItem {
+                video: "seed1".into(),
+                title: "Pink + White".into(),
+                artists: vec!["Frank Ocean".into()],
+                duration: Some(184),
+                explicit: false,
+                kind: Kind::Song
+            }
+        );
         assert_eq!(items[1].artists, ["Kendrick Lamar", "SZA"]);
         assert!(items[1].explicit);
         assert_eq!(items[2].kind, Kind::Upload);
-        assert_eq!(items[2].artists, ["SelectaKilla"], "no artist links: the byline's names");
+        assert_eq!(
+            items[2].artists,
+            ["SelectaKilla"],
+            "no artist links: the byline's names"
+        );
     }
 
     #[test]
@@ -472,7 +599,10 @@ mod tests {
             &avoid,
         );
         let titles: Vec<&str> = out.iter().map(|p| p.track.title.as_str()).collect();
-        assert_eq!(titles, ["Best Part (feat. H.E.R.)", "Location", "Superpowers"]);
+        assert_eq!(
+            titles,
+            ["Best Part (feat. H.E.R.)", "Location", "Superpowers"]
+        );
     }
 
     #[test]
@@ -493,11 +623,28 @@ mod tests {
         );
         let who = artists(&out);
         assert!(who.windows(2).all(|w| w[0] != w[1]), "{who:?}");
-        assert_eq!(who.iter().filter(|a| *a == "Daniel Caesar").count(), 2, "{who:?}");
+        assert_eq!(
+            who.iter().filter(|a| *a == "Daniel Caesar").count(),
+            2,
+            "{who:?}"
+        );
         // You picked a Frank Ocean song: other artists first, then Frank Ocean now and then.
         assert!(!who[..3].contains(&"Frank Ocean".to_string()), "{who:?}");
-        assert_eq!(who.iter().filter(|a| *a == "Frank Ocean").count(), 1, "{who:?}");
-        assert_eq!(who, ["Daniel Caesar", "Steve Lacy", "Daniel Caesar", "Frank Ocean", "Khalid"]);
+        assert_eq!(
+            who.iter().filter(|a| *a == "Frank Ocean").count(),
+            1,
+            "{who:?}"
+        );
+        assert_eq!(
+            who,
+            [
+                "Daniel Caesar",
+                "Steve Lacy",
+                "Daniel Caesar",
+                "Frank Ocean",
+                "Khalid"
+            ]
+        );
     }
 
     #[test]
@@ -505,14 +652,39 @@ mod tests {
         let seed = song("dz:0", "Pink + White", "Frank Ocean");
         // A radio that's half Frank Ocean.
         let list: Vec<(String, String, String)> = (0..40)
-            .map(|i| if i % 2 == 0 { (format!("f{i}"), format!("Frank song {i}"), "Frank Ocean".to_string()) } else { (format!("o{i}"), format!("Other song {i}"), format!("Artist {}", i / 2)) })
+            .map(|i| {
+                if i % 2 == 0 {
+                    (
+                        format!("f{i}"),
+                        format!("Frank song {i}"),
+                        "Frank Ocean".to_string(),
+                    )
+                } else {
+                    (
+                        format!("o{i}"),
+                        format!("Other song {i}"),
+                        format!("Artist {}", i / 2),
+                    )
+                }
+            })
             .collect();
-        let refs: Vec<(&str, &str, &str)> = list.iter().map(|(a, b, c)| (a.as_str(), b.as_str(), c.as_str())).collect();
+        let refs: Vec<(&str, &str, &str)> = list
+            .iter()
+            .map(|(a, b, c)| (a.as_str(), b.as_str(), c.as_str()))
+            .collect();
         let out = tidy(&seed, picks(&refs), &Avoid::default());
-        let frank: Vec<usize> = out.iter().enumerate().filter(|(_, p)| p.track.artist.name == "Frank Ocean").map(|(i, _)| i).collect();
+        let frank: Vec<usize> = out
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.track.artist.name == "Frank Ocean")
+            .map(|(i, _)| i)
+            .collect();
         assert!(frank.len() <= 4 && !frank.is_empty(), "{frank:?}");
         assert!(frank[0] >= 3, "not in the first three: {frank:?}");
-        assert!(frank.windows(2).all(|w| w[1] - w[0] >= SEED_ARTIST_GAP), "spaced out: {frank:?}");
+        assert!(
+            frank.windows(2).all(|w| w[1] - w[0] >= SEED_ARTIST_GAP),
+            "spaced out: {frank:?}"
+        );
         assert!(out.len() >= 20, "the other artists all stay: {}", out.len());
     }
 
@@ -520,9 +692,19 @@ mod tests {
     fn artists_like_yours_first_and_others_now_and_then() {
         // You picked a song by S. A, B and E are like S; X and Y aren't.
         let close: HashSet<String> = ["a", "b", "e"].iter().map(|s| s.to_string()).collect();
-        let radio = picks(&[("x1", "Pop hit", "X"), ("a1", "Song a", "A"), ("s1", "Song s", "S"), ("y1", "Other hit", "Y"), ("b1", "Song b", "B"), ("x2", "Pop hit 2", "X")]);
+        let radio = picks(&[
+            ("x1", "Pop hit", "X"),
+            ("a1", "Song a", "A"),
+            ("s1", "Song s", "S"),
+            ("y1", "Other hit", "Y"),
+            ("b1", "Song b", "B"),
+            ("x2", "Pop hit 2", "X"),
+        ]);
         let extra = picks(&[("e1", "Song e1", "E"), ("e2", "Song e2", "E")]);
-        let order: Vec<String> = close_first(radio, extra, &close, "s").into_iter().map(|p| p.track.id).collect();
+        let order: Vec<String> = close_first(radio, extra, &close, "s")
+            .into_iter()
+            .map(|p| p.track.id)
+            .collect();
         // Like-S, like-S, S, like-S, like-S, then one from further afield; the rest after.
         assert_eq!(order, ["a1", "e1", "s1", "b1", "e2", "x1", "y1", "x2"]);
     }
@@ -536,8 +718,18 @@ mod tests {
 
     #[test]
     fn same_song_whatever_the_version() {
-        assert_eq!(song_key(&song("1", "Get Lucky (Radio Edit - feat. Pharrell Williams)", "Daft Punk")), song_key(&song("2", "Get Lucky", "Daft Punk")));
-        assert_ne!(song_key(&song("1", "Get Lucky", "Daft Punk")), song_key(&song("2", "Get Lucky", "Someone Else")));
+        assert_eq!(
+            song_key(&song(
+                "1",
+                "Get Lucky (Radio Edit - feat. Pharrell Williams)",
+                "Daft Punk"
+            )),
+            song_key(&song("2", "Get Lucky", "Daft Punk"))
+        );
+        assert_ne!(
+            song_key(&song("1", "Get Lucky", "Daft Punk")),
+            song_key(&song("2", "Get Lucky", "Someone Else"))
+        );
     }
 
     #[test]
@@ -563,13 +755,36 @@ mod tests {
             let started = std::time::Instant::now();
             let out = for_song(&seed, None, &Avoid::default());
             let took = started.elapsed().as_secs_f32();
-            let old: Vec<Track> = deezer::similar_to(&seed).unwrap_or_default().into_iter().take(15).collect();
-            println!("\n== after “{}” by {}: {} songs in {took:.1}s, {} with YouTube Music's audio", seed.title, seed.artist.name, out.len(), out.iter().filter(|p| p.video.is_some()).count());
-            println!("  {:<46} | {}", "NOW (first 15)", "BEFORE (Deezer artist radio, first 15)");
+            let old: Vec<Track> = deezer::similar_to(&seed)
+                .unwrap_or_default()
+                .into_iter()
+                .take(15)
+                .collect();
+            println!(
+                "\n== after “{}” by {}: {} songs in {took:.1}s, {} with YouTube Music's audio",
+                seed.title,
+                seed.artist.name,
+                out.len(),
+                out.iter().filter(|p| p.video.is_some()).count()
+            );
+            println!(
+                "  {:<46} | {}",
+                "NOW (first 15)", "BEFORE (Deezer artist radio, first 15)"
+            );
             for i in 0..15 {
-                let now = out.get(i).map(|p| format!("{} — {}", p.track.title, p.track.artist.name)).unwrap_or_default();
-                let was = old.get(i).map(|t| format!("{} — {}", t.title, t.artist.name)).unwrap_or_default();
-                println!("  {:<46} | {}", now.chars().take(46).collect::<String>(), was);
+                let now = out
+                    .get(i)
+                    .map(|p| format!("{} — {}", p.track.title, p.track.artist.name))
+                    .unwrap_or_default();
+                let was = old
+                    .get(i)
+                    .map(|t| format!("{} — {}", t.title, t.artist.name))
+                    .unwrap_or_default();
+                println!(
+                    "  {:<46} | {}",
+                    now.chars().take(46).collect::<String>(),
+                    was
+                );
             }
             assert!(out.len() >= 10);
         }

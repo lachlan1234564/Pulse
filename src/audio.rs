@@ -114,7 +114,10 @@ pub struct StreamReader {
 impl StreamReader {
     fn new(buf: &Arc<StreamBuffer>) -> Self {
         buf.readers.fetch_add(1, Ordering::SeqCst);
-        StreamReader { buf: buf.clone(), pos: 0 }
+        StreamReader {
+            buf: buf.clone(),
+            pos: 0,
+        }
     }
 }
 
@@ -156,7 +159,10 @@ impl Seek for StreamReader {
             }
         };
         if new_pos < 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "seek before start"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "seek before start",
+            ));
         }
         self.pos = new_pos as u64;
         Ok(self.pos)
@@ -176,7 +182,11 @@ impl Drop for StreamReader {
 /// Opens the audio and returns a decoder that can start playing right away while
 /// the rest of the file keeps downloading in the background.
 /// `still_wanted` returns false once the user has moved on to another song.
-fn open_streaming_decoder(src: &StreamSource, still_wanted: impl Fn() -> bool + Send + 'static, buffered: Arc<Mutex<f32>>) -> Result<StreamDecoder, String> {
+fn open_streaming_decoder(
+    src: &StreamSource,
+    still_wanted: impl Fn() -> bool + Send + 'static,
+    buffered: Arc<Mutex<f32>>,
+) -> Result<StreamDecoder, String> {
     if let Some(path) = src.url.strip_prefix("file://") {
         // A song on this computer: read it all at once.
         let bytes = std::fs::read(path).map_err(|e| format!("Couldn't open {path} ({e})"))?;
@@ -215,16 +225,32 @@ fn open_streaming_decoder(src: &StreamSource, still_wanted: impl Fn() -> bool + 
                 _ => None,
             };
             // Start the other pieces right away, while the first one is still arriving.
-            let pieces = parallel_from.map(|from| ParallelPieces::start(&url, &headers, from, total.unwrap()));
+            let pieces = parallel_from
+                .map(|from| ParallelPieces::start(&url, &headers, from, total.unwrap()));
             let still = || !buf.state.lock().unwrap().cancelled && still_wanted();
-            sequential_download(&buf, &url, &headers, body, partial, if pieces.is_some() { Some(FIRST_CHUNK) } else { total }, &buffered, &still);
+            sequential_download(
+                &buf,
+                &url,
+                &headers,
+                body,
+                partial,
+                if pieces.is_some() {
+                    Some(FIRST_CHUNK)
+                } else {
+                    total
+                },
+                &buffered,
+                &still,
+            );
             if let Some(mut p) = pieces {
                 p.finish(&buf, &buffered, total.unwrap(), &still);
             }
             let mut st = buf.state.lock().unwrap();
             st.done = true;
             // All of it arrived (not skipped, not cut short): keep a copy for next time.
-            let whole = !st.cancelled && !st.bytes.is_empty() && total.is_none_or(|t| st.bytes.len() as u64 == t);
+            let whole = !st.cancelled
+                && !st.bytes.is_empty()
+                && total.is_none_or(|t| st.bytes.len() as u64 == t);
             let copy = keep_as.filter(|_| whole).map(|p| (p, st.bytes.clone()));
             if !st.cancelled {
                 st.total = Some(st.bytes.len() as u64);
@@ -246,11 +272,25 @@ fn open_streaming_decoder(src: &StreamSource, still_wanted: impl Fn() -> bool + 
     let inner = match build_decoder(StreamReader::new(&buf), src.codec, total, !forward) {
         Ok(d) => d,
         // A file with its index at the end can't start early: wait for all of it.
-        Err(_) if forward => return Ok(StreamDecoder::new(build_decoder(StreamReader::new(&buf), src.codec, total, true)?, None, src.duration)),
+        Err(_) if forward => {
+            return Ok(StreamDecoder::new(
+                build_decoder(StreamReader::new(&buf), src.codec, total, true)?,
+                None,
+                src.duration,
+            ));
+        }
         Err(e) => return Err(e),
     };
     drop(keep);
-    Ok(StreamDecoder::new(inner, forward.then_some(Reopen { buf, codec: src.codec, total }), src.duration))
+    Ok(StreamDecoder::new(
+        inner,
+        forward.then_some(Reopen {
+            buf,
+            codec: src.codec,
+            total,
+        }),
+        src.duration,
+    ))
 }
 
 /// What's needed to open a song again from its start.
@@ -273,8 +313,18 @@ pub struct StreamDecoder {
 }
 
 impl StreamDecoder {
-    fn new(inner: Decoder<StreamReader>, reopen: Option<Reopen>, known_duration: Option<Duration>) -> Self {
-        StreamDecoder { inner, reopen, base: Duration::ZERO, samples: 0, known_duration }
+    fn new(
+        inner: Decoder<StreamReader>,
+        reopen: Option<Reopen>,
+        known_duration: Option<Duration>,
+    ) -> Self {
+        StreamDecoder {
+            inner,
+            reopen,
+            base: Duration::ZERO,
+            samples: 0,
+            known_duration,
+        }
     }
 
     fn played(&self) -> Duration {
@@ -307,7 +357,10 @@ impl Source for StreamDecoder {
     }
 
     fn total_duration(&self) -> Option<Duration> {
-        self.inner.total_duration().filter(|d| !d.is_zero()).or(self.known_duration)
+        self.inner
+            .total_duration()
+            .filter(|d| !d.is_zero())
+            .or(self.known_duration)
     }
 
     fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
@@ -316,8 +369,8 @@ impl Source for StreamDecoder {
         {
             // Once everything has arrived, open it for jumping anywhere.
             let done = r.buf.state.lock().unwrap().done;
-            let fresh =
-                build_decoder(StreamReader::new(&r.buf), r.codec, r.total, done).map_err(|e| rodio::source::SeekError::Other(Arc::new(io::Error::other(e))))?;
+            let fresh = build_decoder(StreamReader::new(&r.buf), r.codec, r.total, done)
+                .map_err(|e| rodio::source::SeekError::Other(Arc::new(io::Error::other(e))))?;
             self.inner = fresh;
             if done {
                 self.reopen = None;
@@ -436,7 +489,16 @@ impl ParallelPieces {
     fn start(url: &str, headers: &[(String, String)], from: u64, total: u64) -> Self {
         let starts: Vec<u64> = (from..total).step_by(PIECE as usize).collect();
         let (tx, rx) = std::sync::mpsc::channel();
-        let mut p = Self { url: url.to_string(), headers: headers.to_vec(), tries: vec![0; starts.len()], starts, total, next_to_start: 0, rx, tx };
+        let mut p = Self {
+            url: url.to_string(),
+            headers: headers.to_vec(),
+            tries: vec![0; starts.len()],
+            starts,
+            total,
+            next_to_start: 0,
+            rx,
+            tx,
+        };
         for _ in 0..PARALLEL {
             p.launch_next();
         }
@@ -468,7 +530,13 @@ impl ParallelPieces {
     }
 
     /// Adds the pieces to the buffer in order as they arrive; gives up on a piece after 4 tries.
-    fn finish(&mut self, buf: &StreamBuffer, buffered: &Mutex<f32>, total: u64, still: &dyn Fn() -> bool) {
+    fn finish(
+        &mut self,
+        buf: &StreamBuffer,
+        buffered: &Mutex<f32>,
+        total: u64,
+        still: &dyn Fn() -> bool,
+    ) {
         let mut waiting: std::collections::HashMap<usize, Vec<u8>> = Default::default();
         let mut next = 0;
         while next < self.starts.len() {
@@ -507,7 +575,12 @@ impl ParallelPieces {
 }
 
 /// `anywhere`: the decoder may jump around the file (it then needs all of it to open an MP4).
-fn build_decoder(reader: StreamReader, codec: Codec, total: Option<u64>, anywhere: bool) -> Result<Decoder<StreamReader>, String> {
+fn build_decoder(
+    reader: StreamReader,
+    codec: Codec,
+    total: Option<u64>,
+    anywhere: bool,
+) -> Result<Decoder<StreamReader>, String> {
     let (hint, mime) = codec.hint();
     let mut builder = Decoder::builder()
         .with_data(reader)
@@ -520,7 +593,9 @@ fn build_decoder(reader: StreamReader, codec: Codec, total: Option<u64>, anywher
     }
     // Last, because giving the size switches jumping around back on.
     builder = builder.with_seekable(anywhere);
-    builder.build().map_err(|e| format!("Couldn't decode this song ({e})"))
+    builder
+        .build()
+        .map_err(|e| format!("Couldn't decode this song ({e})"))
 }
 
 // ---------------------------------------------------------------------------
@@ -553,7 +628,9 @@ struct Steps {
 
 impl Steps {
     fn new() -> Self {
-        Self { marks: Mutex::new(vec![("getting ready", std::time::Instant::now())]) }
+        Self {
+            marks: Mutex::new(vec![("getting ready", std::time::Instant::now())]),
+        }
     }
 
     /// Notes that a new step began (repeated messages of the same step are ignored).
@@ -582,7 +659,11 @@ impl Steps {
             .filter(|(_, d)| d.as_secs_f32() >= 0.05)
             .map(|(step, d)| format!("{step} {:.1} s", d.as_secs_f32()))
             .collect();
-        format!("Started in {:.1} s: {}", started.elapsed().as_secs_f32(), parts.join(" · "))
+        format!(
+            "Started in {:.1} s: {}",
+            started.elapsed().as_secs_f32(),
+            parts.join(" · ")
+        )
     }
 }
 
@@ -657,8 +738,13 @@ impl Drop for AudioEngine {
 /// The first-launch intro's beat, "bum, ba-dum-dum-DUM": when each hit lands (seconds
 /// after the start), its note (Hz), whether it has a bass thump, its loudness, and the
 /// chord on the last one. The intro's bars bounce at the same times.
-pub const INTRO_HITS: [(f32, f32, bool, f32); 5] =
-    [(0.0, 65.4, true, 0.9), (0.42, 164.8, false, 0.45), (0.56, 196.0, false, 0.5), (0.7, 261.6, false, 0.55), (0.9, 130.8, true, 1.0)];
+pub const INTRO_HITS: [(f32, f32, bool, f32); 5] = [
+    (0.0, 65.4, true, 0.9),
+    (0.42, 164.8, false, 0.45),
+    (0.56, 196.0, false, 0.5),
+    (0.7, 261.6, false, 0.55),
+    (0.9, 130.8, true, 1.0),
+];
 const INTRO_CHORD: [f32; 3] = [261.6, 329.6, 392.0];
 
 /// The intro's beat as samples (mono), made here: there's no sound file.
@@ -671,10 +757,22 @@ pub fn intro_samples(rate: u32) -> Vec<f32> {
         let mut phase = 0f32;
         for i in 0..((len + 0.05) * rate_f) as usize {
             let t = i as f32 / rate_f;
-            let f = if bounce { freq * 1.5 * (1.0 / 1.5f32).powf((t / 0.06).min(1.0)) } else { freq };
+            let f = if bounce {
+                freq * 1.5 * (1.0 / 1.5f32).powf((t / 0.06).min(1.0))
+            } else {
+                freq
+            };
             phase += std::f32::consts::TAU * f / rate_f;
-            let wave = if triangle { std::f32::consts::FRAC_2_PI * phase.sin().asin() } else { phase.sin() };
-            let env = if t < 0.012 { 0.0001 * (gain / 0.0001).powf(t / 0.012) } else { gain * (0.0001 / gain).powf(((t - 0.012) / (len - 0.012)).min(1.0)) };
+            let wave = if triangle {
+                std::f32::consts::FRAC_2_PI * phase.sin().asin()
+            } else {
+                phase.sin()
+            };
+            let env = if t < 0.012 {
+                0.0001 * (gain / 0.0001).powf(t / 0.012)
+            } else {
+                gain * (0.0001 / gain).powf(((t - 0.012) / (len - 0.012)).min(1.0))
+            };
             if let Some(o) = out.get_mut(start + i) {
                 *o += wave * env;
             }
@@ -712,18 +810,32 @@ impl AudioEngine {
     pub fn play_intro(&self, volume: f32) {
         let Some(device) = &self._device else { return };
         let rate = 44_100;
-        let samples: Vec<f32> = intro_samples(rate).into_iter().map(|s| s * volume.clamp(0.0, 1.0)).collect();
-        device.mixer().add(rodio::buffer::SamplesBuffer::new(std::num::NonZero::new(1).unwrap(), std::num::NonZero::new(rate).unwrap(), samples));
+        let samples: Vec<f32> = intro_samples(rate)
+            .into_iter()
+            .map(|s| s * volume.clamp(0.0, 1.0))
+            .collect();
+        device.mixer().add(rodio::buffer::SamplesBuffer::new(
+            std::num::NonZero::new(1).unwrap(),
+            std::num::NonZero::new(rate).unwrap(),
+            samples,
+        ));
     }
 
     pub fn new() -> Self {
         let (device, decks, device_error) = match rodio::DeviceSinkBuilder::open_default_sink() {
             Ok(mut device) => {
                 device.log_on_drop(false);
-                let decks = vec![Arc::new(Player::connect_new(device.mixer())), Arc::new(Player::connect_new(device.mixer()))];
+                let decks = vec![
+                    Arc::new(Player::connect_new(device.mixer())),
+                    Arc::new(Player::connect_new(device.mixer())),
+                ];
                 (Some(device), decks, None)
             }
-            Err(e) => (None, vec![], Some(format!("No audio output device found ({e})"))),
+            Err(e) => (
+                None,
+                vec![],
+                Some(format!("No audio output device found ({e})")),
+            ),
         };
         let engine = Self {
             _device: device,
@@ -765,7 +877,14 @@ impl AudioEngine {
 
     /// Starts a song. Returns immediately; finding and streaming the audio happen
     /// on a background thread. `ctx` is used to wake up the UI.
-    pub fn load(&self, id: &str, expected: Duration, resolve: Resolver, start_paused: bool, ctx: egui::Context) {
+    pub fn load(
+        &self,
+        id: &str,
+        expected: Duration,
+        resolve: Resolver,
+        start_paused: bool,
+        ctx: egui::Context,
+    ) {
         if !self.has_output() {
             return;
         }
@@ -792,7 +911,8 @@ impl AudioEngine {
             }
             ready
         };
-        *self.load_state.lock().unwrap() = (generation, LoadState::Resolving("Getting ready…".into()));
+        *self.load_state.lock().unwrap() =
+            (generation, LoadState::Resolving("Getting ready…".into()));
 
         let gen_counter = self.generation.clone();
         let load_state = self.load_state.clone();
@@ -838,7 +958,8 @@ impl AudioEngine {
                         move || gen_counter.load(Ordering::SeqCst) == generation
                     };
                     let buffered = Arc::new(Mutex::new(0.0));
-                    let decoder = match open_streaming_decoder(&src, still_wanted, buffered.clone()) {
+                    let decoder = match open_streaming_decoder(&src, still_wanted, buffered.clone())
+                    {
                         Ok(d) => d,
                         Err(e) => return set_state(LoadState::Failed(e)),
                     };
@@ -851,8 +972,14 @@ impl AudioEngine {
             if !current() {
                 return;
             }
-            *timing.lock().unwrap() =
-                Some(if from_ahead { format!("Started in {:.1} s (found ahead of time)", started.elapsed().as_secs_f32()) } else { steps.summary(started) });
+            *timing.lock().unwrap() = Some(if from_ahead {
+                format!(
+                    "Started in {:.1} s (found ahead of time)",
+                    started.elapsed().as_secs_f32()
+                )
+            } else {
+                steps.summary(started)
+            });
             let duration = known_or_long(decoder.total_duration(), expected);
             let ctl = Arc::new(TrackCtl::default());
             let source = Processor::new(decoder, effects, ctl.clone(), 1.0, false);
@@ -867,7 +994,12 @@ impl AudioEngine {
                     sh.decks[deck].play();
                 }
                 sh.buffered = buffered;
-                sh.playing = Some(Playing { id, deck, ctl, duration });
+                sh.playing = Some(Playing {
+                    id,
+                    deck,
+                    ctl,
+                    duration,
+                });
             }
             set_state(LoadState::Ready);
         });
@@ -891,7 +1023,11 @@ impl AudioEngine {
         }
         self.next_generation.fetch_add(1, Ordering::SeqCst);
         sh.prepared = None;
-        sh.next = next.map(|(id, duration, resolver)| NextRequest { id, duration, resolver: Some(resolver) });
+        sh.next = next.map(|(id, duration, resolver)| NextRequest {
+            id,
+            duration,
+            resolver: Some(resolver),
+        });
     }
 
     /// The id of the song the engine moved on to by itself (gapless, crossfade,
@@ -922,7 +1058,11 @@ impl AudioEngine {
 
     pub fn load_state(&self) -> LoadState {
         let ls = self.load_state.lock().unwrap();
-        if ls.0 == self.generation.load(Ordering::SeqCst) { ls.1.clone() } else { LoadState::Loading }
+        if ls.0 == self.generation.load(Ordering::SeqCst) {
+            ls.1.clone()
+        } else {
+            LoadState::Loading
+        }
     }
 
     /// How long the current song took to start, e.g. "Started in 3.2 s: finding 1.4 s · link 1.1 s · audio 0.7 s".
@@ -978,7 +1118,8 @@ impl AudioEngine {
         sh.prepared = None;
         sh.next = None;
         sh.pending_seek = None;
-        *self.load_state.lock().unwrap() = (self.generation.load(Ordering::SeqCst), LoadState::Idle);
+        *self.load_state.lock().unwrap() =
+            (self.generation.load(Ordering::SeqCst), LoadState::Idle);
     }
 
     pub fn set_volume(&self, v: f32) {
@@ -993,7 +1134,10 @@ impl AudioEngine {
     /// The playing song's real length, once its audio is open.
     pub fn length(&self) -> Option<Duration> {
         let sh = self.shared.lock().unwrap();
-        sh.playing.as_ref().map(|p| p.duration).filter(|d| !d.is_zero() && *d < UNKNOWN_LENGTH)
+        sh.playing
+            .as_ref()
+            .map(|p| p.duration)
+            .filter(|d| !d.is_zero() && *d < UNKNOWN_LENGTH)
     }
 
     pub fn position(&self) -> Duration {
@@ -1037,7 +1181,11 @@ impl AudioEngine {
             return false;
         }
         let sh = self.shared.lock().unwrap();
-        sh.queued.is_none() && sh.playing.as_ref().is_some_and(|p| sh.decks[p.deck].empty())
+        sh.queued.is_none()
+            && sh
+                .playing
+                .as_ref()
+                .is_some_and(|p| sh.decks[p.deck].empty())
     }
 }
 
@@ -1054,7 +1202,13 @@ fn arrived(to: Duration, duration: Duration, have: f32) -> bool {
 
 /// One check of the monitor thread: finish fades, notice gapless switches,
 /// open the next song early, and start transitions.
-fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, shared: &Arc<Mutex<Shared>>, next_generation: &Arc<AtomicU64>) {
+fn monitor_step(
+    sh: &mut Shared,
+    fx: &Effects,
+    effects: &Arc<SharedEffects>,
+    shared: &Arc<Mutex<Shared>>,
+    next_generation: &Arc<AtomicU64>,
+) {
     // The old song finished fading out: stop it.
     if let Some((deck, ctl)) = &sh.fading_out
         && (ctl.fade_finished() || sh.decks[*deck].empty())
@@ -1117,11 +1271,18 @@ fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, sha
                 return;
             }
             let buffered = Arc::new(Mutex::new(0.0));
-            let Ok(decoder) = open_streaming_decoder(&src, still.clone(), buffered.clone()) else { return };
+            let Ok(decoder) = open_streaming_decoder(&src, still.clone(), buffered.clone()) else {
+                return;
+            };
             let mut sh = shared.lock().unwrap();
             if still() && sh.next.as_ref().is_some_and(|n| n.id == id) {
                 let duration = known_or_long(decoder.total_duration(), duration);
-                sh.prepared = Some(Prepared { id, decoder, duration, buffered });
+                sh.prepared = Some(Prepared {
+                    id,
+                    decoder,
+                    duration,
+                    buffered,
+                });
             }
         });
     }
@@ -1138,10 +1299,13 @@ fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, sha
     let xf = fx.transition_secs();
     if xf > 0.0 {
         // Automix: a song that has gone quiet near its end can hand over early.
-        let silent_end =
-            fx.automix && pos > Duration::from_secs(30) && remaining < Duration::from_secs(25) && cur_ctl.silent_for() > Duration::from_millis(1500);
+        let silent_end = fx.automix
+            && pos > Duration::from_secs(30)
+            && remaining < Duration::from_secs(25)
+            && cur_ctl.silent_for() > Duration::from_millis(1500);
         if remaining <= Duration::from_secs_f32(xf) || silent_end {
-            let over = Duration::from_secs_f32(if silent_end { xf.min(3.0) } else { xf }).min(remaining.max(Duration::from_millis(300)));
+            let over = Duration::from_secs_f32(if silent_end { xf.min(3.0) } else { xf })
+                .min(remaining.max(Duration::from_millis(300)));
             let pr = sh.prepared.take().unwrap();
             sh.next = None;
             let new_deck = 1 - cur_deck;
@@ -1156,7 +1320,12 @@ fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, sha
             sh.fading_out = Some((cur_deck, cur_ctl));
             sh.buffered = pr.buffered;
             sh.advanced = Some(pr.id.clone());
-            sh.playing = Some(Playing { id: pr.id, deck: new_deck, ctl, duration: pr.duration });
+            sh.playing = Some(Playing {
+                id: pr.id,
+                deck: new_deck,
+                ctl,
+                duration: pr.duration,
+            });
             if let Some(ctx) = &sh.ctx {
                 ctx.request_repaint();
             }
@@ -1166,9 +1335,20 @@ fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, sha
         let pr = sh.prepared.take().unwrap();
         sh.next = None;
         let ctl = Arc::new(TrackCtl::default());
-        sh.decks[cur_deck].append(Processor::new(pr.decoder, effects.clone(), ctl.clone(), 1.0, false));
+        sh.decks[cur_deck].append(Processor::new(
+            pr.decoder,
+            effects.clone(),
+            ctl.clone(),
+            1.0,
+            false,
+        ));
         sh.buffered = pr.buffered;
-        sh.queued = Some(Playing { id: pr.id, deck: cur_deck, ctl, duration: pr.duration });
+        sh.queued = Some(Playing {
+            id: pr.id,
+            deck: cur_deck,
+            ctl,
+            duration: pr.duration,
+        });
     }
 }
 
@@ -1193,12 +1373,15 @@ pub mod tests {
                     let mut req = [0u8; 4096];
                     let n = std::io::Read::read(&mut s, &mut req).unwrap_or(0);
                     let req = String::from_utf8_lossy(&req[..n]).to_lowercase();
-                    let range = req.lines().find_map(|l| l.strip_prefix("range: bytes=")).map(|r| {
-                        let (a, b) = r.trim().split_once('-').unwrap();
-                        let a: usize = a.parse().unwrap();
-                        let b: usize = b.parse().unwrap_or(data.len() - 1).min(data.len() - 1);
-                        (a, b)
-                    });
+                    let range = req
+                        .lines()
+                        .find_map(|l| l.strip_prefix("range: bytes="))
+                        .map(|r| {
+                            let (a, b) = r.trim().split_once('-').unwrap();
+                            let a: usize = a.parse().unwrap();
+                            let b: usize = b.parse().unwrap_or(data.len() - 1).min(data.len() - 1);
+                            (a, b)
+                        });
                     let (head, body) = match range.filter(|_| ranges) {
                         Some((a, b)) => (
                             format!(
@@ -1208,7 +1391,13 @@ pub mod tests {
                             ),
                             data[a..=b].to_vec(),
                         ),
-                        None => (format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", data.len()), data.clone()),
+                        None => (
+                            format!(
+                                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                                data.len()
+                            ),
+                            data.clone(),
+                        ),
                     };
                     s.write_all(head.as_bytes()).unwrap();
                     for part in body.chunks((bytes_per_sec / 20).max(1)) {
@@ -1224,7 +1413,15 @@ pub mod tests {
     }
 
     fn source(url: String, codec: Codec) -> StreamSource {
-        StreamSource { url, headers: vec![], codec, content_length: None, notice: None, duration: None, keep_as: None }
+        StreamSource {
+            url,
+            headers: vec![],
+            codec,
+            content_length: None,
+            notice: None,
+            duration: None,
+            keep_as: None,
+        }
     }
 
     fn check_stream_and_seek(file: &str, codec: Codec, ranges: bool) {
@@ -1236,21 +1433,40 @@ pub mod tests {
         let url = slow_server(data, 250_000, ranges);
         let buffered = Arc::new(Mutex::new(0.0));
         let t0 = Instant::now();
-        let mut dec = open_streaming_decoder(&source(url, codec), || true, buffered.clone()).expect("decoder");
+        let mut dec = open_streaming_decoder(&source(url, codec), || true, buffered.clone())
+            .expect("decoder");
         let ready_after = t0.elapsed();
         let first: Vec<_> = (&mut dec).take(44_100 * 2).collect(); // 1 s of stereo audio
         assert_eq!(first.len(), 44_100 * 2, "decoded the first second");
-        assert!(first.iter().any(|s| s.abs() > 0.05), "real audio, not silence");
-        println!("{file}: ready after {ready_after:?}, buffered {:.0}%", *buffered.lock().unwrap() * 100.0);
+        assert!(
+            first.iter().any(|s| s.abs() > 0.05),
+            "real audio, not silence"
+        );
+        println!(
+            "{file}: ready after {ready_after:?}, buffered {:.0}%",
+            *buffered.lock().unwrap() * 100.0
+        );
         // Every kind of song starts while it's still downloading.
-        assert!(*buffered.lock().unwrap() < 1.0, "playback starts before the download finishes");
+        assert!(
+            *buffered.lock().unwrap() < 1.0,
+            "playback starts before the download finishes"
+        );
 
         // Jump to 20 s of 30 s: waits for that part to download, then carries on.
         dec.try_seek(Duration::from_secs(20)).expect("seek");
         let rest = dec.count();
-        println!("{file}: samples after seeking to 20 s: {rest} (~{:.1} s)", rest as f32 / 88_200.0);
-        assert!(rest > 88_200 * 8 && rest < 88_200 * 11, "about 10 s should remain");
-        assert!((*buffered.lock().unwrap() - 1.0).abs() < 1e-6, "download completed");
+        println!(
+            "{file}: samples after seeking to 20 s: {rest} (~{:.1} s)",
+            rest as f32 / 88_200.0
+        );
+        assert!(
+            rest > 88_200 * 8 && rest < 88_200 * 11,
+            "about 10 s should remain"
+        );
+        assert!(
+            (*buffered.lock().unwrap() - 1.0).abs() < 1e-6,
+            "download completed"
+        );
     }
 
     /// Going back in a song that's still arriving, then forward again, then back once it's all here.
@@ -1261,18 +1477,32 @@ pub mod tests {
         };
         let url = slow_server(data, 250_000, true);
         let buffered = Arc::new(Mutex::new(0.0));
-        let mut dec = open_streaming_decoder(&source(url, codec), || true, buffered.clone()).expect("decoder");
+        let mut dec = open_streaming_decoder(&source(url, codec), || true, buffered.clone())
+            .expect("decoder");
         let secs = |n: usize| n as f32 / 88_200.0;
         assert_eq!((&mut dec).take(88_200 * 3).count(), 88_200 * 3, "3 s play");
-        dec.try_seek(Duration::from_secs(1)).expect("back while downloading");
-        assert!(*buffered.lock().unwrap() < 1.0, "still downloading when going back");
-        assert_eq!((&mut dec).take(88_200 * 2).count(), 88_200 * 2, "plays on after going back");
+        dec.try_seek(Duration::from_secs(1))
+            .expect("back while downloading");
+        assert!(
+            *buffered.lock().unwrap() < 1.0,
+            "still downloading when going back"
+        );
+        assert_eq!(
+            (&mut dec).take(88_200 * 2).count(),
+            88_200 * 2,
+            "plays on after going back"
+        );
         dec.try_seek(Duration::from_secs(25)).expect("forward");
         let n = (&mut dec).take(88_200).count();
         assert_eq!(n, 88_200, "plays after jumping ahead");
-        dec.try_seek(Duration::from_secs(10)).expect("back after everything arrived");
+        dec.try_seek(Duration::from_secs(10))
+            .expect("back after everything arrived");
         let rest = dec.count();
-        assert!((secs(rest) - 20.0).abs() < 1.5, "about 20 s remain after going back to 10 s, got {:.1}", secs(rest));
+        assert!(
+            (secs(rest) - 20.0).abs() < 1.5,
+            "about 20 s remain after going back to 10 s, got {:.1}",
+            secs(rest)
+        );
     }
 
     #[test]
@@ -1299,14 +1529,24 @@ pub mod tests {
         let url = slow_server(data, 500_000, true);
         let buffered = Arc::new(Mutex::new(0.0));
         let t0 = Instant::now();
-        let dec = open_streaming_decoder(&source(url, Codec::Mp4), || true, buffered.clone()).expect("decoder");
+        let dec = open_streaming_decoder(&source(url, Codec::Mp4), || true, buffered.clone())
+            .expect("decoder");
         let ready = t0.elapsed().as_secs_f32();
         println!("ready after {ready:.1} s (one connection would need ~{one_connection:.1} s)");
-        assert!(ready < 1.0, "starts on the first part, long before the download ends");
-        assert!(*buffered.lock().unwrap() < 0.6, "still downloading when it starts");
+        assert!(
+            ready < 1.0,
+            "starts on the first part, long before the download ends"
+        );
+        assert!(
+            *buffered.lock().unwrap() < 0.6,
+            "still downloading when it starts"
+        );
         let samples = dec.count();
         let secs = samples as f32 / 88_200.0;
-        assert!((secs - 240.0).abs() < 1.0, "whole song decoded in order: {secs:.1} s");
+        assert!(
+            (secs - 240.0).abs() < 1.0,
+            "whole song decoded in order: {secs:.1} s"
+        );
     }
 
     /// A song that has fully played through is kept, byte for byte, for next time.
@@ -1320,7 +1560,8 @@ pub mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let mut src = source(slow_server(data.clone(), 2_000_000, true), Codec::Mp4);
         src.keep_as = Some(dir.join("song.m4a"));
-        let dec = open_streaming_decoder(&src, || true, Arc::new(Mutex::new(0.0))).expect("decoder");
+        let dec =
+            open_streaming_decoder(&src, || true, Arc::new(Mutex::new(0.0))).expect("decoder");
         assert!(dec.count() > 88_200 * 25, "played to the end");
         let t0 = Instant::now();
         while !dir.join("song.m4a").is_file() && t0.elapsed() < Duration::from_secs(5) {
@@ -1331,7 +1572,8 @@ pub mod tests {
         // Skipped before it finished: nothing is kept.
         let mut src = source(slow_server(data, 100_000, true), Codec::Mp4);
         src.keep_as = Some(dir.join("skipped.m4a"));
-        let dec = open_streaming_decoder(&src, || true, Arc::new(Mutex::new(0.0))).expect("decoder");
+        let dec =
+            open_streaming_decoder(&src, || true, Arc::new(Mutex::new(0.0))).expect("decoder");
         drop(dec);
         std::thread::sleep(Duration::from_millis(400));
         assert!(!dir.join("skipped.m4a").exists());
@@ -1342,10 +1584,22 @@ pub mod tests {
     fn a_jump_waits_only_for_parts_that_have_not_arrived() {
         let song = Duration::from_secs(200);
         assert!(arrived(Duration::from_secs(20), song, 0.5), "already here");
-        assert!(!arrived(Duration::from_secs(150), song, 0.5), "not here yet");
-        assert!(!arrived(Duration::from_secs(100), song, 0.5), "too close to the edge");
-        assert!(arrived(Duration::from_secs(199), song, 1.0), "everything is here");
-        assert!(arrived(Duration::from_secs(5), Duration::ZERO, 0.0), "unknown length: just try");
+        assert!(
+            !arrived(Duration::from_secs(150), song, 0.5),
+            "not here yet"
+        );
+        assert!(
+            !arrived(Duration::from_secs(100), song, 0.5),
+            "too close to the edge"
+        );
+        assert!(
+            arrived(Duration::from_secs(199), song, 1.0),
+            "everything is here"
+        );
+        assert!(
+            arrived(Duration::from_secs(5), Duration::ZERO, 0.0),
+            "unknown length: just try"
+        );
     }
 
     #[test]
@@ -1392,5 +1646,7 @@ const UNKNOWN_LENGTH: Duration = Duration::from_secs(24 * 3600);
 /// The audio's own length, else the expected one, else "unknown" (never 0: a 0 length
 /// would move on to the next song at once).
 fn known_or_long(own: Option<Duration>, expected: Duration) -> Duration {
-    own.filter(|d| !d.is_zero()).or(Some(expected).filter(|d| !d.is_zero())).unwrap_or(UNKNOWN_LENGTH)
+    own.filter(|d| !d.is_zero())
+        .or(Some(expected).filter(|d| !d.is_zero()))
+        .unwrap_or(UNKNOWN_LENGTH)
 }
