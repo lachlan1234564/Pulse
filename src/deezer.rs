@@ -1039,7 +1039,9 @@ pub fn artist_page(id: &str) -> Result<ArtistPage, String> {
         (related, songs_like, extra.join().ok().and_then(Result::ok).unwrap_or_default())
     });
     let top_albums: std::collections::HashSet<u64> = top.data.iter().filter_map(|t| t.album.as_ref().map(|a| a.id)).collect();
-    let (own, others) = split_namesakes(albums.data, &top_albums);
+    // What TIDAL lists for this artist is theirs, even with few fans on Deezer.
+    let on_tidal: std::collections::HashSet<String> = extra.albums.iter().map(|a| &a.title).chain(extra.tracks.iter().map(|t| &t.title)).map(|t| crate::youtube::norm(&crate::youtube::core_title(t))).collect();
+    let (own, others) = split_namesakes(albums.data, &top_albums, &on_tidal, &recent_cutoff());
     let mut releases: Vec<AlbumInfo> = own.into_iter().map(|a| album_info(a, Some(&me))).collect();
     let mut namesakes: Vec<AlbumInfo> = others.into_iter().map(|a| album_info(a, Some(&me))).collect();
     sort_newest_first(&mut releases);
@@ -1144,18 +1146,33 @@ fn fix_artist_page(me: &ArtistRef, extra: &crate::account::ArtistExtra, top: &mu
 
 /// Deezer sometimes files many different artists who share a name (there are dozens
 /// called "Che") under one artist. Their releases then span many unrelated genres. When
-/// that happens, only the releases with real listeners, or with one of the artist's
-/// popular songs, are kept as the artist's own; the rest are returned separately.
+/// that happens, only these are kept as the artist's own, and the rest are returned
+/// separately: releases with real listeners, with one of the artist's popular songs, that
+/// TIDAL lists for this artist (`on_tidal`, by title), or out since `recent_from`
+/// ("YYYY-MM-DD": a new release hasn't had time to get fans).
 /// An ordinary artist (a few genres) keeps everything.
-fn split_namesakes(albums: Vec<DzAlbum>, top_albums: &std::collections::HashSet<u64>) -> (Vec<DzAlbum>, Vec<DzAlbum>) {
+fn split_namesakes(albums: Vec<DzAlbum>, top_albums: &std::collections::HashSet<u64>, on_tidal: &std::collections::HashSet<String>, recent_from: &str) -> (Vec<DzAlbum>, Vec<DzAlbum>) {
     let genres: std::collections::HashSet<i64> = albums.iter().map(|a| a.genre_id).filter(|g| *g > 0).collect();
     if albums.len() < 12 || genres.len() < 5 {
         return (albums, Vec::new());
     }
     let most = albums.iter().map(|a| a.fans).max().unwrap_or(0);
     let enough = (most / 10).max(3);
-    let (own, others): (Vec<_>, Vec<_>) = albums.into_iter().partition(|a| a.fans >= enough || top_albums.contains(&a.id));
+    let keep = |a: &DzAlbum| {
+        a.fans >= enough
+            || top_albums.contains(&a.id)
+            || on_tidal.contains(&crate::youtube::norm(&crate::youtube::core_title(&a.title)))
+            || a.release_date.as_deref().is_some_and(|d| d >= recent_from)
+    };
+    let (own, others): (Vec<_>, Vec<_>) = albums.into_iter().partition(|a| keep(a));
     if own.is_empty() { (others, Vec::new()) } else { (own, others) }
+}
+
+/// Releases out on or after this date ("YYYY-MM-DD", about 3 months ago) count as new.
+fn recent_cutoff() -> String {
+    let (y, m, d) = crate::account::today();
+    let (y, m) = if m > 3 { (y, m - 3) } else { (y - 1, m + 9) };
+    format!("{y:04}-{m:02}-{:02}", d.min(28))
 }
 
 /// Newest release first (Deezer returns them in no useful order).
@@ -1433,13 +1450,31 @@ mod tests {
             albums.push(release(10 + i as u64, i as u64 % 2, g));
         }
         let top = std::collections::HashSet::from([3]);
-        let (own, others) = split_namesakes(albums, &top);
+        let none = std::collections::HashSet::new();
+        let (own, others) = split_namesakes(albums, &top, &none, "2026-08-14");
         assert_eq!(own.iter().map(|a| a.id).collect::<Vec<_>>(), [1, 2, 3]);
         assert_eq!(others.len(), 10);
         // An ordinary artist: one or two genres, everything stays.
         let albums: Vec<DzAlbum> = (0..30).map(|i| release(i, i % 3, if i % 4 == 0 { 132 } else { 116 })).collect();
-        let (own, others) = split_namesakes(albums, &top);
+        let (own, others) = split_namesakes(albums, &top, &none, "2026-08-14");
         assert_eq!((own.len(), others.len()), (30, 0));
+    }
+
+    #[test]
+    fn new_releases_and_ones_on_tidal_stay_with_the_artist() {
+        // ericdoa: many genres, so Deezer's list looks like a pile of namesakes. "Música
+        // Divino" came out yesterday (few fans yet); "badgirlsclub" is on TIDAL.
+        let mut albums = vec![release(1, 693, 132), release(2, 400, 116)];
+        for (i, g) in [85, 106, 173, 165, 85, 106, 173, 165, 132, 116].into_iter().enumerate() {
+            albums.push(release(10 + i as u64, 2, g));
+        }
+        albums.push(DzAlbum { id: 50, title: "Música Divino".into(), fans: 22, genre_id: 132, release_date: Some("2026-11-13".into()), ..Default::default() });
+        albums.push(DzAlbum { id: 51, title: "badgirlsclub".into(), fans: 9, genre_id: 116, release_date: Some("2020-05-29".into()), ..Default::default() });
+        let on_tidal = std::collections::HashSet::from(["badgirlsclub".to_string()]);
+        let (own, _) = split_namesakes(albums, &std::collections::HashSet::new(), &on_tidal, "2026-08-14");
+        let ids: Vec<u64> = own.iter().map(|a| a.id).collect();
+        assert!(ids.contains(&50) && ids.contains(&51), "{ids:?}");
+        assert!(!ids.contains(&10));
     }
 
     fn artist(name: &str, fans: u64) -> ArtistInfo {

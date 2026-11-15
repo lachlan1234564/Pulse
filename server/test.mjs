@@ -226,14 +226,19 @@ r = await call("GET", "/fixes"); ok(r.status === 200 && Object.keys(r.data.fixes
     if (u.includes("/searchResults")) return json({ data: [{ relationships: { artists: { data: [{ id: "t2" }, { id: "t1" }, { id: "t3" }] } } }], included: [art("t1", "che"), art("t2", "Che"), art("t3", "Cheeky")] });
     const m = u.match(/\/artists\/(\w+)\/relationships\/(tracks|albums)/);
     if (m) {
-      const list = (m[2] === "tracks" ? tracksOf : albumsOf)[m[1]] || [];
-      return json({ data: list.map((_, i) => ({ id: `${m[1]}${m[2]}${i}` })), included: list.map(([title, code], i) => ({ id: `${m[1]}${m[2]}${i}`, type: m[2], attributes: m[2] === "tracks" ? { title, isrc: code } : { title, barcodeId: code } })) });
+      // Two items a page, with a link to the next page, like TIDAL.
+      const all = (m[2] === "tracks" ? tracksOf : albumsOf)[m[1]] || [];
+      const from = +(u.match(/page\[cursor\]=(\d+)/)?.[1] || 0);
+      const list = all.slice(from, from + 2);
+      const next = from + 2 < all.length ? `/artists/${m[1]}/relationships/${m[2]}?countryCode=US&include=${m[2]}&page[cursor]=${from + 2}` : undefined;
+      return json({ data: list.map((_, i) => ({ id: `${m[1]}${m[2]}${from + i}` })), included: list.map(([title, code], i) => ({ id: `${m[1]}${m[2]}${from + i}`, type: m[2], attributes: m[2] === "tracks" ? { title, isrc: code } : { title, barcodeId: code } })), links: { next } });
     }
     return new Response("{}", { status: 404 });
   };
   r = await call("GET", "/artist-extra?artist=333&name=che&t=" + encodeURIComponent("KickAss (Pull Up Pls)|Something Else"));
   ok(r.status === 200 && r.data.tidal === "t1" && r.data.tracks.map((t) => t.isrc).includes("USAAA2600001") && r.data.albums.some((a) => a.upc === "198000000001"), "picks the che who shares titles, and returns their songs and releases");
   ok(!r.data.tracks.some((t) => t.isrc.startsWith("DE")), "never the namesake's songs");
+  ok(r.data.tracks.some((t) => t.isrc === "USAAA2600003") && r.data.albums.length === 2, "follows TIDAL's next pages");
   r = await call("GET", "/artist-extra?artist=444&name=che&t=Nothing%20In%20Common");
   ok(r.status === 200 && r.data.tidal === null && r.data.tracks.length === 0, "no shared titles: nothing added");
   const before = calls;

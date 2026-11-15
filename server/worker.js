@@ -855,7 +855,7 @@ async function artistExtra(c) {
   if (skipTidal || !name || !titles.size || !c.env.TIDAL_CLIENT_ID) return c.reply(200, out);
 
   // The TIDAL part is the same for everyone, so it's kept for a day.
-  const cacheKey = new Request(`https://pulse-cache/artist-extra/${country}/${artist}`);
+  const cacheKey = new Request(`https://pulse-cache/artist-extra/v2/${country}/${artist}`);
   const cache = typeof caches !== "undefined" ? caches.default : null;
   const hit = cache && (await cache.match(cacheKey));
   if (hit) return c.reply(200, { ...out, ...(await hit.json()) });
@@ -888,6 +888,7 @@ async function tidalArtistMatch(env, name, titles, country) {
 
   let best = null;
   for (const id of candidates) {
+    // The first page of each is enough to tell namesakes apart.
     const [tracks, albums] = await Promise.all([tidalArtistItems(env, id, "tracks", country), tidalArtistItems(env, id, "albums", country)]);
     const shared = new Set([...tracks, ...albums].map((x) => normTitle(x.title)).filter((t) => titles.has(t))).size;
     if (shared > 0 && (!best || shared > best.shared)) best = { id, shared, tracks, albums, tie: false };
@@ -895,20 +896,31 @@ async function tidalArtistMatch(env, name, titles, country) {
   }
   // No shared titles, or two namesakes equally likely: better to add nothing.
   if (!best || best.tie) return none;
+  // More of the one that matched, so older releases count too.
+  [best.tracks, best.albums] = await Promise.all([tidalArtistItems(env, best.id, "tracks", country, 2), tidalArtistItems(env, best.id, "albums", country, 3)]);
   return {
     tidal: best.id,
-    tracks: best.tracks.filter((t) => /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(t.isrc)).map(({ isrc, title }) => ({ isrc, title })).slice(0, 40),
-    albums: best.albums.filter((a) => /^\d{8,14}$/.test(a.upc)).map(({ upc, title }) => ({ upc, title })).slice(0, 40),
+    tracks: best.tracks.filter((t) => /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(t.isrc)).map(({ isrc, title }) => ({ isrc, title })).slice(0, 60),
+    albums: best.albums.filter((a) => /^\d{8,14}$/.test(a.upc)).map(({ upc, title }) => ({ upc, title })).slice(0, 100),
   };
 }
 
-// One page (TIDAL's default size) of an artist's songs or releases, with their codes.
-async function tidalArtistItems(env, id, kind, country) {
+// An artist's songs or releases, with their codes: the first `pages` pages (TIDAL's size).
+async function tidalArtistItems(env, id, kind, country, pages = 1) {
   const extra = kind === "tracks" ? "&collapseBy=FINGERPRINT" : "";
-  const doc = await tidalGet(env, `/artists/${encodeURIComponent(id)}/relationships/${kind}?countryCode=${country}&include=${kind}${extra}`);
-  const byId = new Map((doc.included || []).filter((x) => x.type === kind).map((x) => [x.id, x.attributes || {}]));
-  return (doc.data || [])
-    .map((d) => byId.get(d.id))
-    .filter(Boolean)
-    .map((a) => ({ title: a.title || "", isrc: a.isrc || "", upc: String(a.barcodeId || "") }));
+  let path = `/artists/${encodeURIComponent(id)}/relationships/${kind}?countryCode=${country}&include=${kind}${extra}`;
+  const out = [];
+  for (let page = 0; page < pages && path; page++) {
+    const doc = await tidalGet(env, path);
+    const byId = new Map((doc.included || []).filter((x) => x.type === kind).map((x) => [x.id, x.attributes || {}]));
+    for (const d of doc.data || []) {
+      const a = byId.get(d.id);
+      if (a) out.push({ title: a.title || "", isrc: a.isrc || "", upc: String(a.barcodeId || "") });
+    }
+    // The next page's link: "/artists/…" or a full address.
+    const next = doc.links?.next || "";
+    path = next ? next.replace(/^https?:\/\/[^/]+(\/v2)?/, "") : "";
+    if (path && !path.startsWith("/")) path = "";
+  }
+  return out;
 }
