@@ -70,10 +70,7 @@ fn is_zero(n: &u64) -> bool {
 impl Track {
     /// "Quality Control, Lil Baby, DaBaby": the main artist and any featured artists.
     pub fn all_artists(&self) -> String {
-        std::iter::once(self.artist.name.as_str())
-            .chain(self.featured.iter().map(|a| a.name.as_str()))
-            .collect::<Vec<_>>()
-            .join(", ")
+        std::iter::once(self.artist.name.as_str()).chain(self.featured.iter().map(|a| a.name.as_str())).collect::<Vec<_>>().join(", ")
     }
 
     /// Deezer's number for this song, if it came from Deezer.
@@ -85,11 +82,7 @@ impl Track {
         self.id.strip_prefix("dz:").and_then(|s| s.parse().ok())
     }
     pub fn art_small(&self) -> Option<&str> {
-        self.cover_small.as_deref().or_else(|| {
-            self.artwork
-                .as_ref()
-                .and_then(|a| a.small.as_deref().or(a.medium.as_deref()))
-        })
+        self.cover_small.as_deref().or_else(|| self.artwork.as_ref().and_then(|a| a.small.as_deref().or(a.medium.as_deref())))
     }
     pub fn art_big(&self) -> Option<&str> {
         self.cover_big.as_deref().or_else(|| self.art_small())
@@ -140,10 +133,7 @@ impl AlbumInfo {
         }
     }
     pub fn year(&self) -> Option<&str> {
-        self.release_date
-            .as_deref()
-            .and_then(|d| d.get(..4))
-            .filter(|y| *y != "0000")
+        self.release_date.as_deref().and_then(|d| d.get(..4)).filter(|y| *y != "0000")
     }
 }
 
@@ -370,23 +360,14 @@ impl From<DzArtist> for ArtistInfo {
 
 fn artist_ref(a: &DzArtist) -> ArtistRef {
     // The 500 px picture: sharp in cards and lists on high-resolution screens.
-    ArtistRef {
-        id: a.id.to_string(),
-        name: a.name.clone(),
-        picture: a.picture_big.clone().or(a.picture_medium.clone()),
-    }
+    ArtistRef { id: a.id.to_string(), name: a.name.clone(), picture: a.picture_big.clone().or(a.picture_medium.clone()) }
 }
 
 /// The other credited artists of a song (featured artists), without the main one.
 fn featured_from(main: &ArtistRef, contributors: &[DzArtist]) -> Vec<ArtistRef> {
     let mut seen = std::collections::HashSet::new();
     seen.insert(main.id.clone());
-    contributors
-        .iter()
-        .filter(|c| c.id != 0 && !c.name.is_empty())
-        .map(artist_ref)
-        .filter(|a| seen.insert(a.id.clone()))
-        .collect()
+    contributors.iter().filter(|c| c.id != 0 && !c.name.is_empty()).map(artist_ref).filter(|a| seen.insert(a.id.clone())).collect()
 }
 
 /// Featured artists of one song, from its full details (lists don't include them).
@@ -401,12 +382,7 @@ fn album_info(a: DzAlbum, fallback_artist: Option<&ArtistRef>) -> AlbumInfo {
         title: a.title,
         cover: a.cover_big.or(a.cover_xl).or(a.cover_medium.clone()),
         cover_small: a.cover_small.or(a.cover_medium),
-        artist: a
-            .artist
-            .as_ref()
-            .map(artist_ref)
-            .or_else(|| fallback_artist.cloned())
-            .unwrap_or_default(),
+        artist: a.artist.as_ref().map(artist_ref).or_else(|| fallback_artist.cloned()).unwrap_or_default(),
         release_date: a.release_date,
         record_type: a.record_type.unwrap_or_else(|| "album".into()),
         nb_tracks: a.nb_tracks,
@@ -419,27 +395,11 @@ fn album_info(a: DzAlbum, fallback_artist: Option<&ArtistRef>) -> AlbumInfo {
 fn track(t: DzTrack, album: Option<&AlbumInfo>) -> Track {
     let (album_ref, small, big) = match (&t.album, album) {
         (Some(a), _) if a.id != 0 => (
-            Some(AlbumRef {
-                id: a.id.to_string(),
-                title: a.title.clone(),
-            }),
-            a.cover_small
-                .clone()
-                .or(a.cover_medium.clone())
-                .or(album.and_then(|x| x.cover_small.clone())),
-            a.cover_big
-                .clone()
-                .or(a.cover_xl.clone())
-                .or(album.and_then(|x| x.cover.clone())),
+            Some(AlbumRef { id: a.id.to_string(), title: a.title.clone() }),
+            a.cover_small.clone().or(a.cover_medium.clone()).or(album.and_then(|x| x.cover_small.clone())),
+            a.cover_big.clone().or(a.cover_xl.clone()).or(album.and_then(|x| x.cover.clone())),
         ),
-        (_, Some(a)) => (
-            Some(AlbumRef {
-                id: a.id.clone(),
-                title: a.title.clone(),
-            }),
-            a.cover_small.clone(),
-            a.cover.clone(),
-        ),
+        (_, Some(a)) => (Some(AlbumRef { id: a.id.clone(), title: a.title.clone() }), a.cover_small.clone(), a.cover.clone()),
         _ => (None, None, None),
     };
     let main = artist_ref(&t.artist);
@@ -465,12 +425,7 @@ fn playlist_info(p: &DzPlaylist) -> PlaylistInfo {
         id: p.id.to_string(),
         title: p.title.clone(),
         picture: p.picture_big.clone().or(p.picture_medium.clone()),
-        creator: p
-            .creator
-            .as_ref()
-            .or(p.user.as_ref())
-            .map(|u| u.name.clone())
-            .unwrap_or_default(),
+        creator: p.creator.as_ref().or(p.user.as_ref()).map(|u| u.name.clone()).unwrap_or_default(),
         nb_tracks: p.nb_tracks,
     }
 }
@@ -495,19 +450,13 @@ fn get<T: for<'de> Deserialize<'de>>(path: &str, query: &[(&str, &str)]) -> Resu
     // Developer testing only: read saved replies instead of the network.
     #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var("PULSE_FIXTURES") {
-        let file = format!(
-            "{dir}/{}.json",
-            path.trim_start_matches('/').replace('/', "_")
-        );
+        let file = format!("{dir}/{}.json", path.trim_start_matches('/').replace('/', "_"));
         let text = std::fs::read_to_string(&file).map_err(|e| format!("{file}: {e}"))?;
         return parse(&text);
     }
     // The same reply asked for twice in a short while (a song page and its credits both
     // read the song and its album, for example) comes from memory.
-    let key = std::iter::once(path.to_string())
-        .chain(query.iter().map(|(k, v)| format!("{k}={v}")))
-        .collect::<Vec<_>>()
-        .join("&");
+    let key = std::iter::once(path.to_string()).chain(query.iter().map(|(k, v)| format!("{k}={v}"))).collect::<Vec<_>>().join("&");
     if let Some(text) = reply_cache::get(&key) {
         return parse(&text);
     }
@@ -520,12 +469,7 @@ fn get<T: for<'de> Deserialize<'de>>(path: &str, query: &[(&str, &str)]) -> Resu
             req = req.query(*k, *v);
         }
         let mut resp = req.call().map_err(crate::net::friendly_error)?;
-        let text = resp
-            .body_mut()
-            .with_config()
-            .limit(20 * 1024 * 1024)
-            .read_to_string()
-            .map_err(|e| format!("Couldn't read Deezer's reply ({e})"))?;
+        let text = resp.body_mut().with_config().limit(20 * 1024 * 1024).read_to_string().map_err(|e| format!("Couldn't read Deezer's reply ({e})"))?;
         if attempt < 3 && is_busy_reply(&text) {
             std::thread::sleep(std::time::Duration::from_millis(wait));
             wait *= 2;
@@ -557,9 +501,7 @@ mod reply_cache {
 
     pub fn get(key: &str) -> Option<Arc<str>> {
         let m = map().lock().unwrap();
-        m.get(key)
-            .filter(|(at, _)| at.elapsed() < LIFETIME)
-            .map(|(_, t)| t.clone())
+        m.get(key).filter(|(at, _)| at.elapsed() < LIFETIME).map(|(_, t)| t.clone())
     }
 
     pub fn put(key: String, text: String) {
@@ -570,10 +512,7 @@ mod reply_cache {
         let mut m = map().lock().unwrap();
         m.retain(|_, (at, _)| at.elapsed() < LIFETIME);
         if m.len() >= MAX
-            && let Some(oldest) = m
-                .iter()
-                .min_by_key(|(_, (at, _))| *at)
-                .map(|(k, _)| k.clone())
+            && let Some(oldest) = m.iter().min_by_key(|(_, (at, _))| *at).map(|(k, _)| k.clone())
         {
             m.remove(&oldest);
         }
@@ -597,17 +536,12 @@ fn tracks(list: List<DzTrack>) -> Vec<Track> {
 /// (Deezer id, name) of your top artists; `songs` are songs you played lately.
 pub fn home(artists: &[(String, String)], songs: &[Track]) -> Result<Chart, String> {
     let (c, for_you) = std::thread::scope(|s| {
-        let rows: Vec<_> =
-            artists
-                .iter()
-                .take(2)
-                .map(|(id, name)| {
-                    s.spawn(move || Suggestion::AlsoListen(name.clone(), related_artists(id, 12)))
-                })
-                .chain(songs.iter().take(2).map(|t| {
-                    s.spawn(move || Suggestion::SongsLike(t.title.clone(), songs_like(t)))
-                }))
-                .collect();
+        let rows: Vec<_> = artists
+            .iter()
+            .take(2)
+            .map(|(id, name)| s.spawn(move || Suggestion::AlsoListen(name.clone(), related_artists(id, 12))))
+            .chain(songs.iter().take(2).map(|t| s.spawn(move || Suggestion::SongsLike(t.title.clone(), songs_like(t)))))
+            .collect();
         let c = get::<DzChart>("/chart/0", &[]);
         let rows: Vec<Suggestion> = rows.into_iter().filter_map(|h| h.join().ok()).collect();
         (c, rows)
@@ -632,12 +566,7 @@ pub fn home(artists: &[(String, String)], songs: &[Track]) -> Result<Chart, Stri
     }
     Ok(Chart {
         tracks: tracks(c.tracks),
-        albums: c
-            .albums
-            .data
-            .into_iter()
-            .map(|a| album_info(a, None))
-            .collect(),
+        albums: c.albums.data.into_iter().map(|a| album_info(a, None)).collect(),
         artists: c.artists.data.into_iter().map(ArtistInfo::from).collect(),
         playlists: c.playlists.data.iter().map(playlist_info).collect(),
         for_you,
@@ -646,31 +575,22 @@ pub fn home(artists: &[(String, String)], songs: &[Track]) -> Result<Chart, Stri
 
 /// Artists whose listeners also play this one.
 pub fn related_artists(artist_id: &str, limit: usize) -> Vec<ArtistInfo> {
-    let found = get::<List<DzArtist>>(
-        &format!("/artist/{artist_id}/related"),
-        &[("limit", &limit.to_string())],
-    )
-    .map(|l| l.data.into_iter().map(ArtistInfo::from).collect())
-    .unwrap_or_default();
+    let found = get::<List<DzArtist>>(&format!("/artist/{artist_id}/related"), &[("limit", &limit.to_string())])
+        .map(|l| l.data.into_iter().map(ArtistInfo::from).collect())
+        .unwrap_or_default();
     one_per_name(found)
 }
 
 /// The most popular artists right now: overall (genre 0) or in one of `GENRES`.
 /// For "Pick artists you like".
 pub fn popular_artists(genre: u32, limit: usize) -> Result<Vec<ArtistInfo>, String> {
-    let path = if genre == 0 {
-        "/chart/0/artists".to_string()
-    } else {
-        format!("/genre/{genre}/artists")
-    };
-    get::<List<DzArtist>>(&path, &[("limit", &limit.to_string())])
-        .map(|l| one_per_name(l.data.into_iter().map(ArtistInfo::from).collect()))
+    let path = if genre == 0 { "/chart/0/artists".to_string() } else { format!("/genre/{genre}/artists") };
+    get::<List<DzArtist>>(&path, &[("limit", &limit.to_string())]).map(|l| one_per_name(l.data.into_iter().map(ArtistInfo::from).collect()))
 }
 
 /// Artists whose name matches what was typed, best known first.
 pub fn find_artists(q: &str) -> Result<Vec<ArtistInfo>, String> {
-    get::<List<DzArtist>>("/search/artist", &[("q", q), ("limit", "24")])
-        .map(|l| one_per_name(l.data.into_iter().map(ArtistInfo::from).collect()))
+    get::<List<DzArtist>>("/search/artist", &[("q", q), ("limit", "24")]).map(|l| one_per_name(l.data.into_iter().map(ArtistInfo::from).collect()))
 }
 
 /// Deezer sometimes has two profiles with the same name ("che" and "Che"): keep the
@@ -679,10 +599,7 @@ pub fn one_per_name(artists: Vec<ArtistInfo>) -> Vec<ArtistInfo> {
     let mut out: Vec<ArtistInfo> = vec![];
     for a in artists {
         let key = crate::youtube::norm(&a.name);
-        match out
-            .iter_mut()
-            .find(|b| crate::youtube::norm(&b.name) == key)
-        {
+        match out.iter_mut().find(|b| crate::youtube::norm(&b.name) == key) {
             Some(b) if a.fans > b.fans => *b = a,
             Some(_) => {}
             None => out.push(a),
@@ -701,9 +618,7 @@ pub fn songs_like(t: &Track) -> Vec<Track> {
 
 /// Up to 20 songs by other artists that sound like this artist's.
 pub fn songs_like_artist(artist_id: &str, name: &str) -> Vec<Track> {
-    let mut out = get::<List<DzTrack>>(&format!("/artist/{artist_id}/radio"), &[("limit", "40")])
-        .map(tracks)
-        .unwrap_or_default();
+    let mut out = get::<List<DzTrack>>(&format!("/artist/{artist_id}/radio"), &[("limit", "40")]).map(tracks).unwrap_or_default();
     if out.is_empty() {
         out = similar_artists_songs(artist_id);
     }
@@ -719,10 +634,7 @@ pub fn other_artists_only(list: &mut Vec<Track>, artist_id: &str, name: &str) {
     let mut per_artist: std::collections::HashMap<String, usize> = Default::default();
     let mut seen = std::collections::HashSet::new();
     list.retain(|t| {
-        if t.artist.id == artist_id
-            || crate::youtube::norm(&t.artist.name) == me
-            || !seen.insert(t.id.clone())
-        {
+        if t.artist.id == artist_id || crate::youtube::norm(&t.artist.name) == me || !seen.insert(t.id.clone()) {
             return false;
         }
         let n = per_artist.entry(t.artist.id.clone()).or_default();
@@ -776,41 +688,26 @@ pub fn split_artists(artists: &str) -> (String, Vec<String>) {
     }
     parts.push(artists[at..].trim().to_string());
     parts.retain(|p| !p.is_empty());
-    let main = if parts.is_empty() {
-        String::new()
-    } else {
-        parts.remove(0)
-    };
+    let main = if parts.is_empty() { String::new() } else { parts.remove(0) };
     (main, parts)
 }
 
 /// The artists a title credits: "Ride Wit Me (feat. City Spud)" → ["City Spud"].
 pub fn featured_in_title(title: &str) -> Vec<String> {
     let lower = title.to_ascii_lowercase();
-    let Some(i) = ["(feat", "[feat", "(ft.", "(with ", " feat.", " ft. "]
-        .iter()
-        .filter_map(|m| lower.find(m))
-        .min()
-    else {
+    let Some(i) = ["(feat", "[feat", "(ft.", "(with ", " feat.", " ft. "].iter().filter_map(|m| lower.find(m)).min() else {
         return vec![];
     };
     let rest = title[i..].trim_start_matches(['(', '[', ' ']);
     let rest = rest.split_once([' ', '.']).map_or("", |(_, r)| r);
     let rest = rest.split([')', ']']).next().unwrap_or("");
-    rest.split([',', '&'])
-        .map(|n| n.trim().to_string())
-        .filter(|n| !n.is_empty())
-        .collect()
+    rest.split([',', '&']).map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).collect()
 }
 
 /// The title without "(feat. …)", "(Remastered)", " - Radio Edit" and the like.
 fn base_title(title: &str) -> String {
     let t = crate::youtube::core_title(title);
-    let cut = [" (", " [", " - "]
-        .iter()
-        .filter_map(|m| t.find(m))
-        .min()
-        .unwrap_or(t.len());
+    let cut = [" (", " [", " - "].iter().filter_map(|m| t.find(m)).min().unwrap_or(t.len());
     crate::youtube::norm(&t[..cut])
 }
 
@@ -827,15 +724,8 @@ pub(crate) fn same_artist(wanted: &[String], got: &str) -> bool {
     use crate::youtube::norm;
     let bare = |s: String| s.strip_prefix("the").map(str::to_string).unwrap_or(s);
     let whole = bare(norm(got));
-    let parts: Vec<String> = got
-        .split(['&', ',', '/'])
-        .chain(got.split(" and "))
-        .map(|p| bare(norm(p)))
-        .collect();
-    wanted
-        .iter()
-        .map(|w| bare(w.clone()))
-        .any(|w| !w.is_empty() && (w == whole || parts.contains(&w)))
+    let parts: Vec<String> = got.split(['&', ',', '/']).chain(got.split(" and ")).map(|p| bare(norm(p))).collect();
+    wanted.iter().map(|w| bare(w.clone())).any(|w| !w.is_empty() && (w == whole || parts.contains(&w)))
 }
 
 /// Words a candidate's title may add to the source's and still be the same recording
@@ -868,30 +758,15 @@ fn same_recording(wanted_title: &str, wanted_artists: &str, got: &str) -> bool {
     ];
     let have = words(&format!("{wanted_title} {wanted_artists}"));
     let got = words(got);
-    got.split_whitespace().all(|w| {
-        have.contains(&format!(" {w} "))
-            || FINE.contains(&w)
-            || w.chars().all(|c| c.is_ascii_digit())
-    })
+    got.split_whitespace().all(|w| have.contains(&format!(" {w} ")) || FINE.contains(&w) || w.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// Karaoke labels and cover acts ("Made famous by …", "Rihanna Cover Band").
 pub fn cover_act(artist: &str) -> bool {
     let a = crate::youtube::norm(artist);
-    [
-        "madefamous",
-        "coverband",
-        "karaoke",
-        "tribute",
-        "inthestyleof",
-        "originallyperformed",
-        "coverversion",
-        "singalong",
-        "pianoplayers",
-        "lullaby",
-    ]
-    .iter()
-    .any(|m| a.contains(m))
+    ["madefamous", "coverband", "karaoke", "tribute", "inthestyleof", "originallyperformed", "coverversion", "singalong", "pianoplayers", "lullaby"]
+        .iter()
+        .any(|m| a.contains(m))
 }
 
 /// Which of the candidates is the song, best first. Wrong title, artist or a version the
@@ -905,55 +780,26 @@ fn best_match(candidates: Vec<Track>, artist: &str, title: &str, duration: u32) 
     let others = also.clone();
     also.extend(featured_in_title(title));
     let want_artist = norm(&main);
-    let also: Vec<String> = also
-        .iter()
-        .map(|a| norm(a))
-        .filter(|a| !a.is_empty())
-        .collect();
+    let also: Vec<String> = also.iter().map(|a| norm(a)).filter(|a| !a.is_empty()).collect();
     candidates
         .into_iter()
         .filter(|t| {
             let title_ok = same_title(title, &t.title);
-            let names: Vec<String> = std::iter::once(&main)
-                .chain(others.iter())
-                .map(|a| norm(a))
-                .collect();
+            let names: Vec<String> = std::iter::once(&main).chain(others.iter()).map(|a| norm(a)).collect();
             let artist_ok = want_artist.is_empty() || same_artist(&names, &t.artist.name);
-            let length_ok = duration == 0
-                || t.duration == 0
-                || (t.duration.abs_diff(duration) <= 8.max(duration / 25)
-                    && t.duration * 10 >= duration * 6);
+            let length_ok = duration == 0 || t.duration == 0 || (t.duration.abs_diff(duration) <= 8.max(duration / 25) && t.duration * 10 >= duration * 6);
             let recording_ok = same_recording(title, artist, &t.title);
-            title_ok
-                && artist_ok
-                && length_ok
-                && recording_ok
-                && !unwanted_version(title, &t.title)
-                && !cover_act(&t.artist.name)
+            title_ok && artist_ok && length_ok && recording_ok && !unwanted_version(title, &t.title) && !cover_act(&t.artist.name)
         })
         .min_by_key(|t| {
             // Credits the same featured artists (in its title or credits).
-            let credited =
-                norm(&t.title) + &t.featured.iter().map(|f| norm(&f.name)).collect::<String>();
-            let missing = also
-                .iter()
-                .filter(|a| !credited.contains(a.as_str()))
-                .count();
-            let off = if duration == 0 || t.duration == 0 {
-                0
-            } else {
-                t.duration.abs_diff(duration) / 3
-            };
+            let credited = norm(&t.title) + &t.featured.iter().map(|f| norm(&f.name)).collect::<String>();
+            let missing = also.iter().filter(|a| !credited.contains(a.as_str())).count();
+            let off = if duration == 0 || t.duration == 0 { 0 } else { t.duration.abs_diff(duration) / 3 };
             let inexact = norm(&core_title(&t.title)) != norm(&core_title(title));
             // The explicit or the clean version, as Settings asks (same length, same title).
             let wrong_version = t.explicit != prefer_explicit();
-            (
-                inexact,
-                off,
-                wrong_version,
-                missing,
-                std::cmp::Reverse(t.rank),
-            )
+            (inexact, off, wrong_version, missing, std::cmp::Reverse(t.rank))
         })
 }
 
@@ -964,11 +810,7 @@ pub fn find_track(artist: &str, title: &str, duration: u32) -> Result<Option<Tra
     use crate::youtube::core_title;
     let (main, _) = split_artists(artist);
     // Deezer's precise search first, then a plain one.
-    let precise = format!(
-        "artist:\"{}\" track:\"{}\"",
-        main.replace('"', ""),
-        core_title(title).replace('"', "")
-    );
+    let precise = format!("artist:\"{}\" track:\"{}\"", main.replace('"', ""), core_title(title).replace('"', ""));
     let first: List<DzTrack> = get("/search/track", &[("q", &precise), ("limit", "25")])?;
     let mut found = best_match(tracks(first), artist, title, duration);
     if found.is_none() {
@@ -995,12 +837,8 @@ fn without_tributes(q: &str, list: Vec<Track>, artists: &[ArtistInfo]) -> Vec<Tr
     let typed = norm(q);
     // The artists named in the search: from the artists found, and from the songs found
     // (a search for "Firework Katy Perry" finds no artist by that name).
-    let names: Vec<String> = artists
-        .iter()
-        .map(|a| norm(&a.name))
-        .chain(list.iter().map(|t| norm(&t.artist.name)))
-        .filter(|n| n.len() >= 4 && typed.contains(n.as_str()))
-        .collect();
+    let names: Vec<String> =
+        artists.iter().map(|a| norm(&a.name)).chain(list.iter().map(|t| norm(&t.artist.name))).filter(|n| n.len() >= 4 && typed.contains(n.as_str())).collect();
     list.into_iter()
         .filter(|t| {
             let title = norm(&core_title(&t.title));
@@ -1008,9 +846,7 @@ fn without_tributes(q: &str, list: Vec<Track>, artists: &[ArtistInfo]) -> Vec<Tr
             let credited = own.clone() + &norm(&t.title);
             // Named after the artist but not by them: a tribute. And when the search names
             // an artist, only their songs (or songs crediting them).
-            !names
-                .iter()
-                .any(|n| title.contains(n.as_str()) && !own.contains(n.as_str()))
+            !names.iter().any(|n| title.contains(n.as_str()) && !own.contains(n.as_str()))
                 && (names.is_empty() || names.iter().any(|n| credited.contains(n.as_str())))
         })
         .collect()
@@ -1021,29 +857,11 @@ fn without_tributes(q: &str, list: Vec<Track>, artists: &[ArtistInfo]) -> Vec<Tr
 pub(crate) fn candidates_for_test(artist: &str, title: &str) -> Vec<Track> {
     let (main, _) = split_artists(artist);
     let core = crate::youtube::core_title(title);
-    let precise = format!(
-        "artist:\"{}\" track:\"{}\"",
-        main.replace('"', ""),
-        core.replace('"', "")
-    );
+    let precise = format!("artist:\"{}\" track:\"{}\"", main.replace('"', ""), core.replace('"', ""));
     // Lengths as Deezer lists them (no fixes applied).
-    let raw = |l: List<DzTrack>| {
-        l.data
-            .into_iter()
-            .map(|t| track(t, None))
-            .collect::<Vec<_>>()
-    };
-    let mut all = get::<List<DzTrack>>("/search/track", &[("q", &precise), ("limit", "25")])
-        .map(raw)
-        .unwrap_or_default();
-    all.extend(
-        get::<List<DzTrack>>(
-            "/search/track",
-            &[("q", &format!("{main} {core}")), ("limit", "25")],
-        )
-        .map(raw)
-        .unwrap_or_default(),
-    );
+    let raw = |l: List<DzTrack>| l.data.into_iter().map(|t| track(t, None)).collect::<Vec<_>>();
+    let mut all = get::<List<DzTrack>>("/search/track", &[("q", &precise), ("limit", "25")]).map(raw).unwrap_or_default();
+    all.extend(get::<List<DzTrack>>("/search/track", &[("q", &format!("{main} {core}")), ("limit", "25")]).map(raw).unwrap_or_default());
     all
 }
 
@@ -1055,10 +873,7 @@ pub(crate) fn candidates_for_test(artist: &str, title: &str) -> Vec<Track> {
 pub fn rank_songs(q: &str, list: Vec<Track>) -> Vec<Track> {
     use crate::youtube::{core_title, norm, unwanted_version, words};
     let asks_cover = cover_act(q);
-    let list: Vec<Track> = list
-        .into_iter()
-        .filter(|t| !unwanted_version(q, &t.title) && (asks_cover || !cover_act(&t.artist.name)))
-        .collect();
+    let list: Vec<Track> = list.into_iter().filter(|t| !unwanted_version(q, &t.title) && (asks_cover || !cover_act(&t.artist.name))).collect();
     // One per (song, artist): keep the most played full-length version, at the place the
     // first one was.
     let mut out: Vec<Track> = vec![];
@@ -1090,10 +905,7 @@ pub fn rank_songs(q: &str, list: Vec<Track>) -> Vec<Track> {
     // Stable: Deezer's own order among equals.
     out.sort_by_key(|t| {
         let tr = tier(t);
-        (
-            std::cmp::Reverse(tr),
-            std::cmp::Reverse(if tr == 2 { t.rank } else { 0 }),
-        )
+        (std::cmp::Reverse(tr), std::cmp::Reverse(if tr == 2 { t.rank } else { 0 }))
     });
     out
 }
@@ -1105,16 +917,7 @@ pub fn search(q: &str) -> Result<SearchResults, String> {
     }
     // Nothing found: try again more loosely (no punctuation, then without the last word,
     // which is often half-typed or misspelled).
-    let loose: String = q
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c.is_whitespace() {
-                c
-            } else {
-                ' '
-            }
-        })
-        .collect();
+    let loose: String = q.chars().map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' }).collect();
     let loose = loose.split_whitespace().collect::<Vec<_>>().join(" ");
     if !loose.is_empty() && loose != q {
         let r = search_once(&loose)?;
@@ -1132,51 +935,30 @@ pub fn search(q: &str) -> Result<SearchResults, String> {
 fn search_once(q: &str) -> Result<SearchResults, String> {
     let (t, artists, albums, playlists, users) = std::thread::scope(|s| {
         // More than are shown, so the best known one is among them (see `rank_artists`).
-        let artists = s.spawn(|| {
-            get::<List<DzArtist>>("/search/artist", &[("q", q), ("limit", "30")])
-                .unwrap_or_default()
-        });
-        let albums = s.spawn(|| {
-            get::<List<DzAlbum>>("/search/album", &[("q", q), ("limit", "24")]).unwrap_or_default()
-        });
-        let playlists = s.spawn(|| {
-            get::<List<DzPlaylist>>("/search/playlist", &[("q", q), ("limit", "12")])
-                .unwrap_or_default()
-        });
+        let artists = s.spawn(|| get::<List<DzArtist>>("/search/artist", &[("q", q), ("limit", "30")]).unwrap_or_default());
+        let albums = s.spawn(|| get::<List<DzAlbum>>("/search/album", &[("q", q), ("limit", "24")]).unwrap_or_default());
+        let playlists = s.spawn(|| get::<List<DzPlaylist>>("/search/playlist", &[("q", q), ("limit", "12")]).unwrap_or_default());
         let users = s.spawn(|| crate::account::search(q));
         let t = get::<List<DzTrack>>("/search/track", &[("q", q), ("limit", "40")]);
-        (
-            t,
-            artists.join().unwrap_or_default(),
-            albums.join().unwrap_or_default(),
-            playlists.join().unwrap_or_default(),
-            users.join().unwrap_or_default(),
-        )
+        (t, artists.join().unwrap_or_default(), albums.join().unwrap_or_default(), playlists.join().unwrap_or_default(), users.join().unwrap_or_default())
     });
     let mut ranked = rank_artists(q, artists.data.into_iter().map(ArtistInfo::from).collect());
     ranked.truncate(12);
     // Searched for an artist: also who their listeners play, and songs like theirs.
-    let around = ranked
-        .first()
-        .filter(|a| name_match(&a.name, q) >= 2)
-        .map(|a| {
-            let (related, songs) = std::thread::scope(|s| {
-                let related = s.spawn(|| related_artists(&a.id, 12));
-                let songs = songs_like_artist(&a.id, &a.name);
-                (related.join().unwrap_or_default(), songs)
-            });
-            (a.name.clone(), related, songs)
+    let around = ranked.first().filter(|a| name_match(&a.name, q) >= 2).map(|a| {
+        let (related, songs) = std::thread::scope(|s| {
+            let related = s.spawn(|| related_artists(&a.id, 12));
+            let songs = songs_like_artist(&a.id, &a.name);
+            (related.join().unwrap_or_default(), songs)
         });
+        (a.name.clone(), related, songs)
+    });
     Ok(SearchResults {
         tracks: without_tributes(q, rank_songs(q, tracks(t?)), &ranked),
         artists: ranked,
         around,
         users,
-        albums: albums
-            .data
-            .into_iter()
-            .map(|a| album_info(a, None))
-            .collect(),
+        albums: albums.data.into_iter().map(|a| album_info(a, None)).collect(),
         playlists: playlists.data.iter().map(playlist_info).collect(),
     })
 }
@@ -1186,12 +968,7 @@ fn search_once(q: &str) -> Result<SearchResults, String> {
 /// 0 neither (Deezer's looser matches).
 pub fn name_match(name: &str, typed: &str) -> u8 {
     // Lowercase, no accents, letters and digits only: "Beyoncé" and "beyonce" are the same.
-    let key = |s: &str| {
-        crate::app::fold(s)
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .collect::<String>()
-    };
+    let key = |s: &str| crate::app::fold(s).chars().filter(|c| c.is_alphanumeric()).collect::<String>();
     let (n, q) = (key(name), key(typed));
     if q.is_empty() {
         return 0;
@@ -1199,10 +976,7 @@ pub fn name_match(name: &str, typed: &str) -> u8 {
     if n == q || n.strip_prefix("the").is_some_and(|rest| rest == q) {
         return 3;
     }
-    if n.starts_with(&q)
-        || n.strip_prefix("the")
-            .is_some_and(|rest| rest.starts_with(&q))
-    {
+    if n.starts_with(&q) || n.strip_prefix("the").is_some_and(|rest| rest.starts_with(&q)) {
         return 2;
     }
     let words = crate::app::fold(name);
@@ -1244,68 +1018,35 @@ pub fn find_artist(name: &str) -> Result<Option<String>, String> {
         return Ok(None);
     }
     let found: List<DzArtist> = get("/search/artist", &[("q", &clean), ("limit", "10")])?;
-    let ranked = rank_artists(
-        &clean,
-        found.data.into_iter().map(ArtistInfo::from).collect(),
-    );
-    Ok(ranked
-        .into_iter()
-        .find(|a| name_match(&a.name, &clean) >= 2)
-        .map(|a| a.id))
+    let ranked = rank_artists(&clean, found.data.into_iter().map(ArtistInfo::from).collect());
+    Ok(ranked.into_iter().find(|a| name_match(&a.name, &clean) >= 2).map(|a| a.id))
 }
 
 impl SearchResults {
     pub fn is_empty(&self) -> bool {
-        self.tracks.is_empty()
-            && self.artists.is_empty()
-            && self.albums.is_empty()
-            && self.playlists.is_empty()
+        self.tracks.is_empty() && self.artists.is_empty() && self.albums.is_empty() && self.playlists.is_empty()
     }
 }
 
 pub fn artist_page(id: &str) -> Result<ArtistPage, String> {
     let artist: DzArtist = get(&format!("/artist/{id}"), &[])?;
     let me = artist_ref(&artist);
-    let top: List<DzTrack> =
-        get(&format!("/artist/{id}/top"), &[("limit", "50")]).unwrap_or_default();
-    let albums: List<DzAlbum> =
-        get(&format!("/artist/{id}/albums"), &[("limit", "100")]).unwrap_or_default();
+    let top: List<DzTrack> = get(&format!("/artist/{id}/top"), &[("limit", "50")]).unwrap_or_default();
+    let albums: List<DzAlbum> = get(&format!("/artist/{id}/albums"), &[("limit", "100")]).unwrap_or_default();
     // Pulse's server, at the same time as the rest: what Deezer filed under a namesake.
-    let titles: Vec<String> = top
-        .data
-        .iter()
-        .map(|t| t.title.clone())
-        .chain(albums.data.iter().map(|a| a.title.clone()))
-        .collect();
+    let titles: Vec<String> = top.data.iter().map(|t| t.title.clone()).chain(albums.data.iter().map(|a| a.title.clone())).collect();
     let (related, songs_like, extra) = std::thread::scope(|s| {
         let extra = s.spawn(|| crate::account::artist_extra(id, &artist.name, &titles));
         let related = related_artists(id, 12);
         let songs_like = songs_like_artist(id, &artist.name);
-        (
-            related,
-            songs_like,
-            extra.join().ok().and_then(Result::ok).unwrap_or_default(),
-        )
+        (related, songs_like, extra.join().ok().and_then(Result::ok).unwrap_or_default())
     });
-    let top_albums: std::collections::HashSet<u64> = top
-        .data
-        .iter()
-        .filter_map(|t| t.album.as_ref().map(|a| a.id))
-        .collect();
+    let top_albums: std::collections::HashSet<u64> = top.data.iter().filter_map(|t| t.album.as_ref().map(|a| a.id)).collect();
     // What TIDAL lists for this artist is theirs, even with few fans on Deezer.
-    let on_tidal: std::collections::HashSet<String> = extra
-        .albums
-        .iter()
-        .map(|a| &a.title)
-        .chain(extra.tracks.iter().map(|t| &t.title))
-        .map(|t| crate::youtube::norm(&crate::youtube::core_title(t)))
-        .collect();
+    let on_tidal: std::collections::HashSet<String> = extra.albums.iter().map(|a| &a.title).chain(extra.tracks.iter().map(|t| &t.title)).map(|t| crate::youtube::norm(&crate::youtube::core_title(t))).collect();
     let (own, others) = split_namesakes(albums.data, &top_albums, &on_tidal, &recent_cutoff());
     let mut releases: Vec<AlbumInfo> = own.into_iter().map(|a| album_info(a, Some(&me))).collect();
-    let mut namesakes: Vec<AlbumInfo> = others
-        .into_iter()
-        .map(|a| album_info(a, Some(&me)))
-        .collect();
+    let mut namesakes: Vec<AlbumInfo> = others.into_iter().map(|a| album_info(a, Some(&me))).collect();
     sort_newest_first(&mut releases);
     sort_newest_first(&mut namesakes);
     // The 10 most popular songs, most popular first (by Deezer's popularity score).
@@ -1321,15 +1062,7 @@ pub fn artist_page(id: &str) -> Result<ArtistPage, String> {
     {
         latest.nb_tracks = full.nb_tracks;
     }
-    Ok(ArtistPage {
-        artist: artist.into(),
-        top,
-        releases,
-        namesakes,
-        related,
-        songs_like,
-        same_as,
-    })
+    Ok(ArtistPage { artist: artist.into(), top, releases, namesakes, related, songs_like, same_as })
 }
 
 /// Puts back on an artist's page what Deezer filed under another artist with the same
@@ -1342,88 +1075,38 @@ pub fn artist_page(id: &str) -> Result<ArtistPage, String> {
 ///
 /// Returns the Deezer id of this artist's main page when this page is a small copy of it
 /// (see `main_copy`).
-fn fix_artist_page(
-    me: &ArtistRef,
-    extra: &crate::account::ArtistExtra,
-    top: &mut Vec<Track>,
-    releases: &mut Vec<AlbumInfo>,
-    namesakes: &mut Vec<AlbumInfo>,
-) -> Option<String> {
+fn fix_artist_page(me: &ArtistRef, extra: &crate::account::ArtistExtra, top: &mut Vec<Track>, releases: &mut Vec<AlbumInfo>, namesakes: &mut Vec<AlbumInfo>) -> Option<String> {
     use crate::youtube::{core_title, norm};
     let key = |title: &str| norm(&core_title(title));
-    let numbers = |prefix: &str, list: &[String]| -> Vec<String> {
-        list.iter()
-            .filter_map(|x| x.strip_prefix(prefix))
-            .map(str::to_string)
-            .collect()
-    };
+    let numbers = |prefix: &str, list: &[String]| -> Vec<String> { list.iter().filter_map(|x| x.strip_prefix(prefix)).map(str::to_string).collect() };
 
-    let (hide_tracks, hide_albums) = (
-        numbers("track:", &extra.hide),
-        numbers("album:", &extra.hide),
-    );
+    let (hide_tracks, hide_albums) = (numbers("track:", &extra.hide), numbers("album:", &extra.hide));
     top.retain(|t| !hide_tracks.iter().any(|n| t.id == format!("dz:{n}")));
     releases.retain(|a| !hide_albums.contains(&a.id));
     namesakes.retain(|a| !hide_albums.contains(&a.id));
 
-    let shown: std::collections::HashSet<String> = top
-        .iter()
-        .map(|t| key(&t.title))
-        .chain(releases.iter().map(|a| key(&a.title)))
-        .collect();
-    let mut track_paths: Vec<String> = numbers("track:", &extra.add)
-        .into_iter()
-        .filter(|n| !top.iter().any(|t| t.id == format!("dz:{n}")))
-        .map(|n| format!("/track/{n}"))
-        .collect();
-    let mut album_paths: Vec<String> = numbers("album:", &extra.add)
-        .into_iter()
-        .filter(|n| !releases.iter().any(|a| a.id == *n))
-        .map(|n| format!("/album/{n}"))
-        .collect();
+    let shown: std::collections::HashSet<String> = top.iter().map(|t| key(&t.title)).chain(releases.iter().map(|a| key(&a.title))).collect();
+    let mut track_paths: Vec<String> = numbers("track:", &extra.add).into_iter().filter(|n| !top.iter().any(|t| t.id == format!("dz:{n}"))).map(|n| format!("/track/{n}")).collect();
+    let mut album_paths: Vec<String> = numbers("album:", &extra.add).into_iter().filter(|n| !releases.iter().any(|a| a.id == *n)).map(|n| format!("/album/{n}")).collect();
     let (by_hand_tracks, by_hand_albums) = (track_paths.len(), album_paths.len());
     if namesakes.is_empty() {
         let isrc_ok = |s: &str| s.len() == 12 && s.chars().all(|c| c.is_ascii_alphanumeric());
         let upc_ok = |s: &str| (8..=14).contains(&s.len()) && s.chars().all(|c| c.is_ascii_digit());
-        track_paths.extend(
-            extra
-                .tracks
-                .iter()
-                .filter(|t| isrc_ok(&t.isrc) && !shown.contains(&key(&t.title)))
-                .take(10)
-                .map(|t| format!("/track/isrc:{}", t.isrc)),
-        );
-        album_paths.extend(
-            extra
-                .albums
-                .iter()
-                .filter(|a| upc_ok(&a.upc) && !shown.contains(&key(&a.title)))
-                .take(10)
-                .map(|a| format!("/album/upc:{}", a.upc)),
-        );
+        track_paths.extend(extra.tracks.iter().filter(|t| isrc_ok(&t.isrc) && !shown.contains(&key(&t.title))).take(10).map(|t| format!("/track/isrc:{}", t.isrc)));
+        album_paths.extend(extra.albums.iter().filter(|a| upc_ok(&a.upc) && !shown.contains(&key(&a.title))).take(10).map(|a| format!("/album/upc:{}", a.upc)));
     }
     if track_paths.is_empty() && album_paths.is_empty() {
         return None;
     }
     let (found_tracks, found_albums) = std::thread::scope(|s| {
-        let t: Vec<_> = track_paths
-            .iter()
-            .map(|p| s.spawn(move || get::<DzTrack>(p, &[]).ok()))
-            .collect();
-        let a: Vec<_> = album_paths
-            .iter()
-            .map(|p| s.spawn(move || get::<DzAlbum>(p, &[]).ok()))
-            .collect();
+        let t: Vec<_> = track_paths.iter().map(|p| s.spawn(move || get::<DzTrack>(p, &[]).ok())).collect();
+        let a: Vec<_> = album_paths.iter().map(|p| s.spawn(move || get::<DzAlbum>(p, &[]).ok())).collect();
         let t: Vec<Option<DzTrack>> = t.into_iter().map(|h| h.join().ok().flatten()).collect();
         let a: Vec<Option<DzAlbum>> = a.into_iter().map(|h| h.join().ok().flatten()).collect();
         (t, a)
     });
     let my_name = norm(&me.name);
-    let credits_me = |people: Vec<&DzArtist>| {
-        people
-            .iter()
-            .any(|p| p.id.to_string() == me.id || norm(&p.name) == my_name)
-    };
+    let credits_me = |people: Vec<&DzArtist>| people.iter().any(|p| p.id.to_string() == me.id || norm(&p.name) == my_name);
 
     // Who Deezer credits for what TIDAL lists and this page doesn't show: (Deezer id, name).
     let mut credited: Vec<Vec<(String, String)>> = Vec::new();
@@ -1432,23 +1115,14 @@ fn fix_artist_page(
         let Some(t) = t else { continue };
         let by_hand = i < by_hand_tracks;
         if !by_hand {
-            credited.push(
-                std::iter::once(&t.artist)
-                    .chain(&t.contributors)
-                    .map(|p| (p.id.to_string(), p.name.clone()))
-                    .collect(),
-            );
+            credited.push(std::iter::once(&t.artist).chain(&t.contributors).map(|p| (p.id.to_string(), p.name.clone())).collect());
         }
         if !by_hand && !credits_me(std::iter::once(&t.artist).chain(&t.contributors).collect()) {
             continue;
         }
         let t = track(t, None);
         let k = key(&t.title);
-        if top
-            .iter()
-            .chain(&added)
-            .any(|x: &Track| x.id == t.id || (!by_hand && key(&x.title) == k))
-        {
+        if top.iter().chain(&added).any(|x: &Track| x.id == t.id || (!by_hand && key(&x.title) == k)) {
             continue;
         }
         added.push(t);
@@ -1460,13 +1134,7 @@ fn fix_artist_page(
         let Some(mut a) = a else { continue };
         let by_hand = i < by_hand_albums;
         if !by_hand {
-            credited.push(
-                a.artist
-                    .iter()
-                    .chain(&a.contributors)
-                    .map(|p| (p.id.to_string(), p.name.clone()))
-                    .collect(),
-            );
+            credited.push(a.artist.iter().chain(&a.contributors).map(|p| (p.id.to_string(), p.name.clone())).collect());
         }
         if !by_hand && !credits_me(a.artist.iter().chain(&a.contributors).collect()) {
             continue;
@@ -1474,23 +1142,13 @@ fn fix_artist_page(
         let songs = std::mem::take(&mut a.tracks.data);
         let compilation = a.record_type.as_deref() == Some("compile");
         let a = album_info(a, Some(me));
-        if releases
-            .iter()
-            .any(|x| x.id == a.id || (!by_hand && key(&x.title) == key(&a.title)))
-        {
+        if releases.iter().any(|x| x.id == a.id || (!by_hand && key(&x.title) == key(&a.title))) {
             continue;
         }
         // Its songs can be among the most popular ("Matches" on "RichPhønks"): they compete
         // for the Popular list by Deezer's popularity score. Not a compilation's.
         if !compilation {
-            let mut new: Vec<Track> = songs
-                .into_iter()
-                .map(|t| track(t, Some(&a)))
-                .filter(|t| {
-                    !top.iter()
-                        .any(|x| x.id == t.id || key(&x.title) == key(&t.title))
-                })
-                .collect();
+            let mut new: Vec<Track> = songs.into_iter().map(|t| track(t, Some(&a))).filter(|t| !top.iter().any(|x| x.id == t.id || key(&x.title) == key(&t.title))).collect();
             crate::fixes::apply(&mut new);
             top.extend(new);
         }
@@ -1498,18 +1156,8 @@ fn fix_artist_page(
         releases.push(a);
     }
     sort_newest_first(releases);
-    let on_tidal: std::collections::HashSet<String> = extra
-        .albums
-        .iter()
-        .map(|a| key(&a.title))
-        .chain(extra.tracks.iter().map(|t| key(&t.title)))
-        .collect();
-    main_copy(
-        me,
-        on_tidal.len(),
-        on_tidal.intersection(&shown).count(),
-        &credited,
-    )
+    let on_tidal: std::collections::HashSet<String> = extra.albums.iter().map(|a| key(&a.title)).chain(extra.tracks.iter().map(|t| key(&t.title))).collect();
+    main_copy(me, on_tidal.len(), on_tidal.intersection(&shown).count(), &credited)
 }
 
 /// Is this page a small copy of another Deezer page for the same artist? (Deezer lists
@@ -1518,12 +1166,7 @@ fn fix_artist_page(
 /// mostly credited on Deezer to one other artist with the same name (at least 3 songs or
 /// releases, and two thirds of those found). The real che, whose page shows most of what
 /// TIDAL lists, never moves to the pile of other "Che"s that some of his songs sit under.
-fn main_copy(
-    me: &ArtistRef,
-    on_tidal: usize,
-    shown_of_those: usize,
-    credited: &[Vec<(String, String)>],
-) -> Option<String> {
+fn main_copy(me: &ArtistRef, on_tidal: usize, shown_of_those: usize, credited: &[Vec<(String, String)>]) -> Option<String> {
     use crate::youtube::norm;
     if on_tidal < 8 || shown_of_those * 4 >= on_tidal {
         return None;
@@ -1549,17 +1192,8 @@ fn main_copy(
 /// TIDAL lists for this artist (`on_tidal`, by title), or out since `recent_from`
 /// ("YYYY-MM-DD": a new release hasn't had time to get fans).
 /// An ordinary artist (a few genres) keeps everything.
-fn split_namesakes(
-    albums: Vec<DzAlbum>,
-    top_albums: &std::collections::HashSet<u64>,
-    on_tidal: &std::collections::HashSet<String>,
-    recent_from: &str,
-) -> (Vec<DzAlbum>, Vec<DzAlbum>) {
-    let genres: std::collections::HashSet<i64> = albums
-        .iter()
-        .map(|a| a.genre_id)
-        .filter(|g| *g > 0)
-        .collect();
+fn split_namesakes(albums: Vec<DzAlbum>, top_albums: &std::collections::HashSet<u64>, on_tidal: &std::collections::HashSet<String>, recent_from: &str) -> (Vec<DzAlbum>, Vec<DzAlbum>) {
+    let genres: std::collections::HashSet<i64> = albums.iter().map(|a| a.genre_id).filter(|g| *g > 0).collect();
     if albums.len() < 12 || genres.len() < 5 {
         return (albums, Vec::new());
     }
@@ -1572,11 +1206,7 @@ fn split_namesakes(
             || a.release_date.as_deref().is_some_and(|d| d >= recent_from)
     };
     let (own, others): (Vec<_>, Vec<_>) = albums.into_iter().partition(|a| keep(a));
-    if own.is_empty() {
-        (others, Vec::new())
-    } else {
-        (own, others)
-    }
+    if own.is_empty() { (others, Vec::new()) } else { (own, others) }
 }
 
 /// Releases out on or after this date ("YYYY-MM-DD", about 3 months ago) count as new.
@@ -1652,10 +1282,7 @@ pub fn track_by_id(id: u64) -> Result<Track, String> {
 
 /// An artist's most popular songs.
 pub fn artist_top(artist_id: &str, limit: usize) -> Result<Vec<Track>, String> {
-    let top: List<DzTrack> = get(
-        &format!("/artist/{artist_id}/top"),
-        &[("limit", &limit.to_string())],
-    )?;
+    let top: List<DzTrack> = get(&format!("/artist/{artist_id}/top"), &[("limit", &limit.to_string())])?;
     Ok(tracks(top))
 }
 
@@ -1673,38 +1300,18 @@ pub fn song_page(id: u64) -> Result<SongPage, String> {
     // The album and the artist's songs at the same time; then the credits, whose song and
     // album replies are already in memory by then.
     let (album, artist_top) = std::thread::scope(|s| {
-        let al = s.spawn(|| {
-            track
-                .album
-                .as_ref()
-                .filter(|a| is_deezer_id(&a.id))
-                .and_then(|a| album(&a.id).ok())
-        });
-        let top = if is_deezer_id(&track.artist.id) {
-            artist_top(&track.artist.id, 6).unwrap_or_default()
-        } else {
-            vec![]
-        };
+        let al = s.spawn(|| track.album.as_ref().filter(|a| is_deezer_id(&a.id)).and_then(|a| album(&a.id).ok()));
+        let top = if is_deezer_id(&track.artist.id) { artist_top(&track.artist.id, 6).unwrap_or_default() } else { vec![] };
         (al.join().ok().flatten(), top)
     });
     let credits = credits(id).unwrap_or_default();
-    Ok(SongPage {
-        track,
-        credits,
-        album,
-        artist_top,
-    })
+    Ok(SongPage { track, credits, album, artist_top })
 }
 
 /// An album's genres.
 pub fn album_genres(id: &str) -> Result<Vec<String>, String> {
     let a: DzAlbumLabel = get(&format!("/album/{id}"), &[])?;
-    Ok(a.genres
-        .data
-        .into_iter()
-        .map(|g| g.name)
-        .filter(|g| !g.is_empty())
-        .collect())
+    Ok(a.genres.data.into_iter().map(|g| g.name).filter(|g| !g.is_empty()).collect())
 }
 
 /// Song credits: artists and their roles, label, release date, genres.
@@ -1724,9 +1331,7 @@ pub fn credits(track_id: u64) -> Result<Credits, String> {
             .collect(),
         isrc: t.isrc.filter(|s| !s.is_empty()),
         bpm: t.bpm.filter(|b| *b > 0.0),
-        release_date: t
-            .release_date
-            .filter(|s| !s.is_empty() && s != "0000-00-00"),
+        release_date: t.release_date.filter(|s| !s.is_empty() && s != "0000-00-00"),
         ..Default::default()
     };
     if let Some(al) = t.album {
@@ -1789,8 +1394,7 @@ pub fn playlist(id: &str) -> Result<(PlaylistInfo, Vec<Track>), String> {
 /// An Orbit: songs like an artist's (their radio) mixed with their own hits,
 /// shuffled the same way all day so the mix stays put until tomorrow.
 pub fn mix(artist_id: &str) -> Result<Vec<Track>, String> {
-    let radio: List<DzTrack> =
-        get(&format!("/artist/{artist_id}/radio"), &[("limit", "40")]).unwrap_or_default();
+    let radio: List<DzTrack> = get(&format!("/artist/{artist_id}/radio"), &[("limit", "40")]).unwrap_or_default();
     let top: List<DzTrack> = get(&format!("/artist/{artist_id}/top"), &[("limit", "10")])?;
     let (mut radio, top) = (tracks(radio), tracks(top));
     if radio.is_empty() {
@@ -1811,23 +1415,12 @@ pub fn mix(artist_id: &str) -> Result<Vec<Track>, String> {
     // No song twice, even as a second copy of the same recording (same title and artist).
     let mut seen = std::collections::HashSet::new();
     let mut seen_names = std::collections::HashSet::new();
-    out.retain(|t| {
-        seen.insert(t.id.clone())
-            && seen_names.insert((crate::youtube::norm(&t.title), t.artist.id.clone()))
-    });
+    out.retain(|t| seen.insert(t.id.clone()) && seen_names.insert((crate::youtube::norm(&t.title), t.artist.id.clone())));
     // Shuffle with today's date as the seed.
-    let day = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() / 86_400)
-        .unwrap_or(0);
-    let mut seed = day
-        ^ artist_id
-            .bytes()
-            .fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
+    let day = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() / 86_400).unwrap_or(0);
+    let mut seed = day ^ artist_id.bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
     for i in (1..out.len()).rev() {
-        seed = seed
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         out.swap(i, (seed >> 33) as usize % (i + 1));
     }
     Ok(out)
@@ -1839,47 +1432,24 @@ pub fn top_songs_of(artist_ids: &[String], each: usize) -> Vec<Track> {
     let each = each.to_string();
     let each = each.as_str();
     std::thread::scope(|s| {
-        let jobs: Vec<_> = artist_ids
-            .iter()
-            .map(|id| {
-                s.spawn(move || {
-                    get::<List<DzTrack>>(&format!("/artist/{id}/top"), &[("limit", each)])
-                        .map(tracks)
-                        .unwrap_or_default()
-                })
-            })
-            .collect();
-        jobs.into_iter()
-            .filter_map(|j| j.join().ok())
-            .flatten()
-            .collect()
+        let jobs: Vec<_> = artist_ids.iter().map(|id| s.spawn(move || get::<List<DzTrack>>(&format!("/artist/{id}/top"), &[("limit", each)]).map(tracks).unwrap_or_default())).collect();
+        jobs.into_iter().filter_map(|j| j.join().ok()).flatten().collect()
     })
 }
 
 /// Fallback radio: a few songs from each of the artist's similar artists.
 fn similar_artists_songs(artist_id: &str) -> Vec<Track> {
-    let Ok(related) =
-        get::<List<DzArtist>>(&format!("/artist/{artist_id}/related"), &[("limit", "5")])
-    else {
+    let Ok(related) = get::<List<DzArtist>>(&format!("/artist/{artist_id}/related"), &[("limit", "5")]) else {
         return vec![];
     };
-    related
-        .data
-        .iter()
-        .take(5)
-        .filter_map(|a| {
-            get::<List<DzTrack>>(&format!("/artist/{}/top", a.id), &[("limit", "6")]).ok()
-        })
-        .flat_map(tracks)
-        .collect()
+    related.data.iter().take(5).filter_map(|a| get::<List<DzTrack>>(&format!("/artist/{}/top", a.id), &[("limit", "6")]).ok()).flat_map(tracks).collect()
 }
 
 pub fn similar_to(t: &Track) -> Result<Vec<Track>, String> {
     let artist_id = if t.has_artist_page() {
         t.artist.id.clone()
     } else {
-        let found: List<DzArtist> =
-            get("/search/artist", &[("q", &t.artist.name), ("limit", "1")])?;
+        let found: List<DzArtist> = get("/search/artist", &[("q", &t.artist.name), ("limit", "1")])?;
         match found.data.first() {
             Some(a) => a.id.to_string(),
             None => return Ok(vec![]),
@@ -1893,8 +1463,7 @@ pub fn similar_to(t: &Track) -> Result<Vec<Track>, String> {
     let related: List<DzArtist> = get(&format!("/artist/{artist_id}/related"), &[("limit", "5")])?;
     let mut out = vec![];
     for a in related.data {
-        let top: List<DzTrack> =
-            get(&format!("/artist/{}/top", a.id), &[("limit", "5")]).unwrap_or_default();
+        let top: List<DzTrack> = get(&format!("/artist/{}/top", a.id), &[("limit", "5")]).unwrap_or_default();
         out.extend(tracks(top));
     }
     Ok(out)
@@ -1905,37 +1474,20 @@ mod tests {
     #[test]
     fn names_with_letters_that_change_length_dont_break() {
         // "İ" is 2 bytes but lowercases to 3: positions from to_lowercase() would be off.
-        assert_eq!(
-            split_artists("İrem Derici, ẞtar feat. ÖZİL"),
-            (
-                "İrem Derici".to_string(),
-                vec!["ẞtar".to_string(), "ÖZİL".to_string()]
-            )
-        );
+        assert_eq!(split_artists("İrem Derici, ẞtar feat. ÖZİL"), ("İrem Derici".to_string(), vec!["ẞtar".to_string(), "ÖZİL".to_string()]));
         assert_eq!(featured_in_title("İİİİ Song (feat. ÇAĞRI)"), ["ÇAĞRI"]);
-        assert_eq!(
-            crate::youtube::core_title("İİİİİİ Şarkı (feat. Biri)"),
-            "İİİİİİ Şarkı"
-        );
+        assert_eq!(crate::youtube::core_title("İİİİİİ Şarkı (feat. Biri)"), "İİİİİİ Şarkı");
     }
 
     fn release(id: u64, fans: u64, genre: i64) -> DzAlbum {
-        DzAlbum {
-            id,
-            fans,
-            genre_id: genre,
-            ..Default::default()
-        }
+        DzAlbum { id, fans, genre_id: genre, ..Default::default() }
     }
 
     #[test]
     fn keeps_namesakes_apart() {
         // One "Che" on Deezer: the real one (lots of fans) plus strangers in other genres.
         let mut albums = vec![release(1, 98, 116), release(2, 83, 116), release(3, 7, 113)];
-        for (i, g) in [165, 106, 85, 132, 152, 144, 165, 106, 85, 132]
-            .into_iter()
-            .enumerate()
-        {
+        for (i, g) in [165, 106, 85, 132, 152, 144, 165, 106, 85, 132].into_iter().enumerate() {
             albums.push(release(10 + i as u64, i as u64 % 2, g));
         }
         let top = std::collections::HashSet::from([3]);
@@ -1944,9 +1496,7 @@ mod tests {
         assert_eq!(own.iter().map(|a| a.id).collect::<Vec<_>>(), [1, 2, 3]);
         assert_eq!(others.len(), 10);
         // An ordinary artist: one or two genres, everything stays.
-        let albums: Vec<DzAlbum> = (0..30)
-            .map(|i| release(i, i % 3, if i % 4 == 0 { 132 } else { 116 }))
-            .collect();
+        let albums: Vec<DzAlbum> = (0..30).map(|i| release(i, i % 3, if i % 4 == 0 { 132 } else { 116 })).collect();
         let (own, others) = split_namesakes(albums, &top, &none, "2026-08-14");
         assert_eq!((own.len(), others.len()), (30, 0));
     }
@@ -1956,58 +1506,26 @@ mod tests {
         // ericdoa: many genres, so Deezer's list looks like a pile of namesakes. "Música
         // Divino" came out yesterday (few fans yet); "badgirlsclub" is on TIDAL.
         let mut albums = vec![release(1, 693, 132), release(2, 400, 116)];
-        for (i, g) in [85, 106, 173, 165, 85, 106, 173, 165, 132, 116]
-            .into_iter()
-            .enumerate()
-        {
+        for (i, g) in [85, 106, 173, 165, 85, 106, 173, 165, 132, 116].into_iter().enumerate() {
             albums.push(release(10 + i as u64, 2, g));
         }
-        albums.push(DzAlbum {
-            id: 50,
-            title: "Música Divino".into(),
-            fans: 22,
-            genre_id: 132,
-            release_date: Some("2026-11-13".into()),
-            ..Default::default()
-        });
-        albums.push(DzAlbum {
-            id: 51,
-            title: "badgirlsclub".into(),
-            fans: 9,
-            genre_id: 116,
-            release_date: Some("2020-05-29".into()),
-            ..Default::default()
-        });
+        albums.push(DzAlbum { id: 50, title: "Música Divino".into(), fans: 22, genre_id: 132, release_date: Some("2026-11-13".into()), ..Default::default() });
+        albums.push(DzAlbum { id: 51, title: "badgirlsclub".into(), fans: 9, genre_id: 116, release_date: Some("2020-05-29".into()), ..Default::default() });
         let on_tidal = std::collections::HashSet::from(["badgirlsclub".to_string()]);
-        let (own, _) = split_namesakes(
-            albums,
-            &std::collections::HashSet::new(),
-            &on_tidal,
-            "2026-08-14",
-        );
+        let (own, _) = split_namesakes(albums, &std::collections::HashSet::new(), &on_tidal, "2026-08-14");
         let ids: Vec<u64> = own.iter().map(|a| a.id).collect();
         assert!(ids.contains(&50) && ids.contains(&51), "{ids:?}");
         assert!(!ids.contains(&10));
     }
 
     fn artist(name: &str, fans: u64) -> ArtistInfo {
-        ArtistInfo {
-            id: name.into(),
-            name: name.into(),
-            picture: None,
-            picture_xl: None,
-            fans,
-            albums: 0,
-        }
+        ArtistInfo { id: name.into(), name: name.into(), picture: None, picture_xl: None, fans, albums: 0 }
     }
 
     #[test]
     fn songs_like_leave_out_the_artist_and_spread_the_rest() {
         let t = |id: &str, artist_id: &str, name: &str| {
-            let mut t = Track {
-                id: id.into(),
-                ..Default::default()
-            };
+            let mut t = Track { id: id.into(), ..Default::default() };
             t.artist.id = artist_id.into();
             t.artist.name = name.into();
             t
@@ -2023,23 +1541,9 @@ mod tests {
         ];
         other_artists_only(&mut radio, "9", "OsamaSon");
         let ids: Vec<&str> = radio.iter().map(|t| t.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            ["2", "3", "5"],
-            "no OsamaSon, no repeats, two per artist"
-        );
-        let merged = one_per_name(vec![
-            artist("che", 9_000),
-            artist("Nettspend", 50_000),
-            artist("Che", 120_000),
-        ]);
-        assert_eq!(
-            merged
-                .iter()
-                .map(|a| (a.name.as_str(), a.fans))
-                .collect::<Vec<_>>(),
-            [("Che", 120_000), ("Nettspend", 50_000)]
-        );
+        assert_eq!(ids, ["2", "3", "5"], "no OsamaSon, no repeats, two per artist");
+        let merged = one_per_name(vec![artist("che", 9_000), artist("Nettspend", 50_000), artist("Che", 120_000)]);
+        assert_eq!(merged.iter().map(|a| (a.name.as_str(), a.fans)).collect::<Vec<_>>(), [("Che", 120_000), ("Nettspend", 50_000)]);
     }
 
     #[test]
@@ -2057,14 +1561,7 @@ mod tests {
         let ranked = rank_artists("tyler", found.iter().map(|(n, f)| artist(n, *f)).collect());
         assert_eq!(ranked[0].name, "Tyler, The Creator");
         assert!(name_match(&ranked[0].name, "tyler") >= 2);
-        let ranked = rank_artists(
-            "taylor",
-            vec![
-                artist("Taylor", 90),
-                artist("Taylor Swift", 12_777_520),
-                artist("James Taylor", 300_000),
-            ],
-        );
+        let ranked = rank_artists("taylor", vec![artist("Taylor", 90), artist("Taylor Swift", 12_777_520), artist("James Taylor", 300_000)]);
         assert_eq!(ranked[0].name, "Taylor Swift");
         assert_eq!(name_match("Beyoncé", "beyonce"), 3);
         assert_eq!(name_match("The Weeknd", "weeknd"), 3);
@@ -2097,11 +1594,7 @@ mod tests {
         let full: DzAlbumFull = parse(json).unwrap();
         let list = full.tracks.unwrap_or_default();
         let info = album_info(full.album, None);
-        let t: Vec<Track> = list
-            .data
-            .into_iter()
-            .map(|t| track(t, Some(&info)))
-            .collect();
+        let t: Vec<Track> = list.data.into_iter().map(|t| track(t, Some(&info))).collect();
         assert_eq!(info.kind(), "Single");
         assert_eq!(info.year(), Some("2026"));
         assert_eq!(t[0].art_small(), Some("s.jpg"));
@@ -2110,16 +1603,8 @@ mod tests {
 
     #[test]
     fn newest_release_first() {
-        let mk = |t: &str, d: &str| AlbumInfo {
-            title: t.into(),
-            release_date: Some(d.into()),
-            ..Default::default()
-        };
-        let mut r = vec![
-            mk("things with wings", "2022-05-20"),
-            mk("Tengo Algo Para Ti", "2026-11-06"),
-            mk("Backdoor", "2026-04-10"),
-        ];
+        let mk = |t: &str, d: &str| AlbumInfo { title: t.into(), release_date: Some(d.into()), ..Default::default() };
+        let mut r = vec![mk("things with wings", "2022-05-20"), mk("Tengo Algo Para Ti", "2026-11-06"), mk("Backdoor", "2026-04-10")];
         sort_newest_first(&mut r);
         assert_eq!(r[0].title, "Tengo Algo Para Ti");
         assert_eq!(r[2].title, "things with wings");
@@ -2127,15 +1612,9 @@ mod tests {
 
     #[test]
     fn deezer_errors_become_messages() {
-        let e = parse::<DzArtist>(
-            r#"{"error":{"type":"DataException","message":"no data","code":800}}"#,
-        )
-        .unwrap_err();
+        let e = parse::<DzArtist>(r#"{"error":{"type":"DataException","message":"no data","code":800}}"#).unwrap_err();
         assert_eq!(e, "Not found on Deezer.");
-        let e = parse::<DzArtist>(
-            r#"{"error":{"type":"Exception","message":"Quota limit exceeded","code":4}}"#,
-        )
-        .unwrap_err();
+        let e = parse::<DzArtist>(r#"{"error":{"type":"Exception","message":"Quota limit exceeded","code":4}}"#).unwrap_err();
         assert!(e.contains("busy"));
     }
 
@@ -2156,12 +1635,7 @@ mod artist_ranking_tests {
     use super::*;
 
     fn a(name: &str, fans: u64) -> ArtistInfo {
-        ArtistInfo {
-            id: name.to_string(),
-            name: name.to_string(),
-            fans,
-            ..Default::default()
-        }
+        ArtistInfo { id: name.to_string(), name: name.to_string(), fans, ..Default::default() }
     }
 
     fn names(v: &[ArtistInfo]) -> Vec<&str> {
@@ -2171,41 +1645,20 @@ mod artist_ranking_tests {
     #[test]
     fn the_artist_you_most_likely_mean_comes_first() {
         // The order Deezer might send them in.
-        let tyler = vec![
-            a("Tyler", 2_100),
-            a("Tyler Childers", 400_000),
-            a("Steven Tyler", 90_000),
-            a("Tyler, The Creator", 6_800_000),
-            a("Bonnie Tyler", 1_200_000),
-        ];
+        let tyler =
+            vec![a("Tyler", 2_100), a("Tyler Childers", 400_000), a("Steven Tyler", 90_000), a("Tyler, The Creator", 6_800_000), a("Bonnie Tyler", 1_200_000)];
         assert_eq!(rank_artists("tyler", tyler)[0].name, "Tyler, The Creator");
 
-        let taylor = vec![
-            a("Taylor", 900),
-            a("Taylor Swift", 31_000_000),
-            a("James Taylor", 700_000),
-            a("Taylor Swift Tribute Band", 1_200),
-        ];
+        let taylor = vec![a("Taylor", 900), a("Taylor Swift", 31_000_000), a("James Taylor", 700_000), a("Taylor Swift Tribute Band", 1_200)];
         let r = rank_artists("taylor", taylor);
         assert_eq!(names(&r)[..2], ["Taylor Swift", "James Taylor"]);
 
         // A full name typed exactly still wins over a bigger artist that only starts with it.
-        let drake = vec![
-            a("Drake Bell", 900_000),
-            a("Drake", 25_000_000),
-            a("Drake White", 50_000),
-        ];
+        let drake = vec![a("Drake Bell", 900_000), a("Drake", 25_000_000), a("Drake White", 50_000)];
         assert_eq!(rank_artists("drake", drake)[0].name, "Drake");
         let weeknd = vec![a("The Weeknd Tribute", 300), a("The Weeknd", 40_000_000)];
         assert_eq!(rank_artists("the weeknd", weeknd)[0].name, "The Weeknd");
-        assert_eq!(
-            rank_artists(
-                "weeknd",
-                vec![a("Weekend", 3_000), a("The Weeknd", 40_000_000)]
-            )[0]
-            .name,
-            "The Weeknd"
-        );
+        assert_eq!(rank_artists("weeknd", vec![a("Weekend", 3_000), a("The Weeknd", 40_000_000)])[0].name, "The Weeknd");
 
         // A small artist with exactly the name typed beats a famous one that doesn't match.
         let r = rank_artists("Ivy", vec![a("Ariana Grande", 30_000_000), a("Ivy", 5_000)]);
@@ -2234,55 +1687,27 @@ mod matching_tests {
             title: title.into(),
             duration,
             rank,
-            artist: ArtistRef {
-                id: artist_id.into(),
-                name: artist.into(),
-                picture: None,
-            },
+            artist: ArtistRef { id: artist_id.into(), name: artist.into(), picture: None },
             ..Default::default()
         }
     }
 
     #[test]
     fn splits_artist_lists() {
-        assert_eq!(
-            split_artists("Nelly, City Spud"),
-            ("Nelly".into(), vec!["City Spud".into()])
-        );
-        assert_eq!(
-            split_artists("Nelly feat. City Spud"),
-            ("Nelly".into(), vec!["City Spud".into()])
-        );
-        assert_eq!(
-            split_artists("Simon & Garfunkel"),
-            ("Simon & Garfunkel".into(), vec![])
-        );
-        assert_eq!(
-            featured_in_title("Ride Wit Me (feat. City Spud)"),
-            vec!["City Spud".to_string()]
-        );
+        assert_eq!(split_artists("Nelly, City Spud"), ("Nelly".into(), vec!["City Spud".into()]));
+        assert_eq!(split_artists("Nelly feat. City Spud"), ("Nelly".into(), vec!["City Spud".into()]));
+        assert_eq!(split_artists("Simon & Garfunkel"), ("Simon & Garfunkel".into(), vec![]));
+        assert_eq!(featured_in_title("Ride Wit Me (feat. City Spud)"), vec!["City Spud".to_string()]);
         assert!(featured_in_title("Firework").is_empty());
     }
 
     #[test]
     fn unicode_credits_keep_the_original_names_and_boundaries() {
         for name in ["İ", "İİİ", "Ⱥ", "ȺȺȺ", "K東京", "Beyoncé", "東京"] {
-            assert_eq!(
-                split_artists(&format!("{name}, Guest")),
-                (name.into(), vec!["Guest".into()])
-            );
-            assert_eq!(
-                split_artists(&format!("{name} FEAT. Guest, Other")),
-                (name.into(), vec!["Guest".into(), "Other".into()])
-            );
-            assert_eq!(
-                featured_in_title(&format!("{name}(FEAT. Guest)")),
-                vec!["Guest".to_string()]
-            );
-            assert_eq!(
-                crate::youtube::core_title(&format!("{name}(FEAT. Guest)")),
-                name
-            );
+            assert_eq!(split_artists(&format!("{name}, Guest")), (name.into(), vec!["Guest".into()]));
+            assert_eq!(split_artists(&format!("{name} FEAT. Guest, Other")), (name.into(), vec!["Guest".into(), "Other".into()]));
+            assert_eq!(featured_in_title(&format!("{name}(FEAT. Guest)")), vec!["Guest".to_string()]);
+            assert_eq!(crate::youtube::core_title(&format!("{name}(FEAT. Guest)")), name);
             assert_eq!(crate::youtube::core_title(name), name);
         }
     }
@@ -2292,103 +1717,39 @@ mod matching_tests {
         let list = vec![
             t(1, "Ride Wit Me (Instrumental)", "Nelly", "1", 291, 300_000),
             t(2, "Ride Wit Me", "Nelly", "1", 291, 700_000),
-            t(
-                3,
-                "Ride Wit Me (feat. City Spud)",
-                "Nelly",
-                "1",
-                291,
-                650_000,
-            ),
+            t(3, "Ride Wit Me (feat. City Spud)", "Nelly", "1", 291, 650_000),
             t(4, "Ride Wit Me", "Karaoke Hits", "9", 290, 1_000),
         ];
         // The featured version wins over the bare title; never the instrumental.
-        assert_eq!(
-            best_match(list, "Nelly, City Spud", "Ride Wit Me", 291)
-                .unwrap()
-                .id,
-            "dz:3"
-        );
+        assert_eq!(best_match(list, "Nelly, City Spud", "Ride Wit Me", 291).unwrap().id, "dz:3");
         // Explicit wanted (the default): the uncensored version, even if less played.
         let list = vec![
-            Track {
-                explicit: false,
-                ..t(9, "Ride Wit Me", "Nelly", "1", 291, 900_000)
-            },
-            Track {
-                explicit: true,
-                ..t(10, "Ride Wit Me", "Nelly", "1", 291, 600_000)
-            },
+            Track { explicit: false, ..t(9, "Ride Wit Me", "Nelly", "1", 291, 900_000) },
+            Track { explicit: true, ..t(10, "Ride Wit Me", "Nelly", "1", 291, 600_000) },
         ];
         let _turn = EXPLICIT_TEST.lock().unwrap_or_else(|e| e.into_inner());
         set_prefer_explicit(true);
-        assert_eq!(
-            best_match(list.clone(), "Nelly", "Ride Wit Me", 291)
-                .unwrap()
-                .id,
-            "dz:10"
-        );
+        assert_eq!(best_match(list.clone(), "Nelly", "Ride Wit Me", 291).unwrap().id, "dz:10");
         set_prefer_explicit(false);
-        assert_eq!(
-            best_match(list, "Nelly", "Ride Wit Me", 291).unwrap().id,
-            "dz:9"
-        );
+        assert_eq!(best_match(list, "Nelly", "Ride Wit Me", 291).unwrap().id, "dz:9");
         set_prefer_explicit(true);
         // A 30-second clip isn't the song.
-        let list = vec![
-            t(5, "Firework", "Katy Perry", "2", 30, 900_000),
-            t(6, "Firework", "Katy Perry", "2", 227, 800_000),
-        ];
-        assert_eq!(
-            best_match(list, "Katy Perry", "Firework", 228).unwrap().id,
-            "dz:6"
-        );
+        let list = vec![t(5, "Firework", "Katy Perry", "2", 30, 900_000), t(6, "Firework", "Katy Perry", "2", 227, 800_000)];
+        assert_eq!(best_match(list, "Katy Perry", "Firework", 228).unwrap().id, "dz:6");
         // Same length: the most played version.
-        let list = vec![
-            t(7, "Meet Me Halfway", "Black Eyed Peas", "3", 284, 10_000),
-            t(8, "Meet Me Halfway", "Black Eyed Peas", "3", 284, 800_000),
-        ];
-        assert_eq!(
-            best_match(list, "Black Eyed Peas", "Meet Me Halfway", 284)
-                .unwrap()
-                .id,
-            "dz:8"
-        );
+        let list = vec![t(7, "Meet Me Halfway", "Black Eyed Peas", "3", 284, 10_000), t(8, "Meet Me Halfway", "Black Eyed Peas", "3", 284, 800_000)];
+        assert_eq!(best_match(list, "Black Eyed Peas", "Meet Me Halfway", 284).unwrap().id, "dz:8");
         // Asked for the instrumental: it's allowed.
-        let list = vec![t(
-            1,
-            "Ride Wit Me (Instrumental)",
-            "Nelly",
-            "1",
-            291,
-            300_000,
-        )];
+        let list = vec![t(1, "Ride Wit Me (Instrumental)", "Nelly", "1", 291, 300_000)];
         assert!(best_match(list, "Nelly", "Ride Wit Me (Instrumental)", 291).is_some());
     }
 
     #[test]
     fn rejects_karaoke_labels_and_lookalike_titles() {
         // What Deezer really offered for these (the friend's playlist).
-        let list = vec![
-            t(
-                1,
-                "Fireworks",
-                "Made famous by Katy Perry",
-                "5",
-                229,
-                65_960,
-            ),
-            t(2, "Firework", "Katy Perry", "2", 30, 240_754),
-        ];
+        let list = vec![t(1, "Fireworks", "Made famous by Katy Perry", "5", 229, 65_960), t(2, "Firework", "Katy Perry", "2", 30, 240_754)];
         assert!(best_match(list, "Katy Perry", "Firework", 227).is_none());
-        let list = vec![t(
-            3,
-            "We Found Love (feat. Calvin Harris)",
-            "Rihanna Cover Band",
-            "6",
-            214,
-            226_265,
-        )];
+        let list = vec![t(3, "We Found Love (feat. Calvin Harris)", "Rihanna Cover Band", "6", 214, 226_265)];
         assert!(best_match(list, "Rihanna, Calvin Harris", "We Found Love", 215).is_none());
         // Spelled differently, still the same artist.
         let list = vec![t(4, "TiK ToK", "Ke$ha", "7", 199, 900_000)];
@@ -2401,36 +1762,21 @@ mod matching_tests {
 
     #[test]
     fn only_the_same_recording() {
-        assert!(same_recording(
-            "Firework",
-            "Katy Perry",
-            "Firework (2010 Remaster)"
-        ));
+        assert!(same_recording("Firework", "Katy Perry", "Firework (2010 Remaster)"));
         assert!(same_recording(
             "Get Lucky (Radio Edit) [feat. Pharrell Williams and Nile Rodgers]",
             "Daft Punk",
             "Get Lucky (Radio Edit - feat. Pharrell Williams and Nile Rodgers)"
         ));
-        assert!(!same_recording(
-            "Die Young",
-            "Kesha",
-            "Die Young (Dallas K Radio Edit)"
-        ));
-        assert!(!same_recording(
-            "Hips Don't Lie (feat. Wyclef Jean)",
-            "Shakira, Wyclef Jean",
-            "Hips Don't Lie - Bamboo (feat. Wyclef Jean)"
-        ));
+        assert!(!same_recording("Die Young", "Kesha", "Die Young (Dallas K Radio Edit)"));
+        assert!(!same_recording("Hips Don't Lie (feat. Wyclef Jean)", "Shakira, Wyclef Jean", "Hips Don't Lie - Bamboo (feat. Wyclef Jean)"));
         let artists = vec![];
         let list = vec![
             t(1, "Katy Perry Firework", "Electronaut", "1", 209, 1),
             t(2, "Firework", "Katy Perry", "2", 227, 2),
             t(3, "Low (feat. Katy Perry)", "Flo Rida", "3", 200, 3),
         ];
-        let ids: Vec<String> = without_tributes("firework katy perry", list, &artists)
-            .into_iter()
-            .map(|t| t.id)
-            .collect();
+        let ids: Vec<String> = without_tributes("firework katy perry", list, &artists).into_iter().map(|t| t.id).collect();
         assert_eq!(ids, vec!["dz:2", "dz:3"]);
     }
 
@@ -2456,77 +1802,35 @@ mod artist_fix_tests {
     use crate::account::{ArtistExtra, ExtraTrack};
 
     fn song(id: &str, title: &str) -> Track {
-        Track {
-            id: id.into(),
-            title: title.into(),
-            ..Default::default()
-        }
+        Track { id: id.into(), title: title.into(), ..Default::default() }
     }
     fn release(id: &str, title: &str) -> AlbumInfo {
-        AlbumInfo {
-            id: id.into(),
-            title: title.into(),
-            ..Default::default()
-        }
+        AlbumInfo { id: id.into(), title: title.into(), ..Default::default() }
     }
 
     #[test]
     fn hidden_by_hand_goes() {
-        let me = ArtistRef {
-            id: "1".into(),
-            name: "che".into(),
-            picture: None,
-        };
-        let extra = ArtistExtra {
-            hide: vec!["track:5".into(), "album:6".into()],
-            ..Default::default()
-        };
-        let (mut top, mut rel, mut other) = (
-            vec![song("dz:5", "Matches"), song("dz:7", "Gourmet")],
-            vec![release("6", "RichPhonks"), release("8", "KickAss")],
-            vec![release("6", "RichPhonks")],
-        );
+        let me = ArtistRef { id: "1".into(), name: "che".into(), picture: None };
+        let extra = ArtistExtra { hide: vec!["track:5".into(), "album:6".into()], ..Default::default() };
+        let (mut top, mut rel, mut other) = (vec![song("dz:5", "Matches"), song("dz:7", "Gourmet")], vec![release("6", "RichPhonks"), release("8", "KickAss")], vec![release("6", "RichPhonks")]);
         fix_artist_page(&me, &extra, &mut top, &mut rel, &mut other);
-        assert_eq!(
-            top.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
-            ["dz:7"]
-        );
+        assert_eq!(top.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["dz:7"]);
         assert_eq!(rel.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["8"]);
         assert!(other.is_empty());
     }
 
     #[test]
     fn tidal_songs_skip_a_pile_of_namesakes_and_songs_already_shown() {
-        let me = ArtistRef {
-            id: "1".into(),
-            name: "Che".into(),
-            picture: None,
-        };
+        let me = ArtistRef { id: "1".into(), name: "Che".into(), picture: None };
         // Already on the page (the title matches, feat. or not): nothing to look up, so no
         // network call is made here.
-        let extra = ArtistExtra {
-            tracks: vec![ExtraTrack {
-                isrc: "USAAA2600001".into(),
-                title: "Matches (feat. Tezzus)".into(),
-            }],
-            ..Default::default()
-        };
+        let extra = ArtistExtra { tracks: vec![ExtraTrack { isrc: "USAAA2600001".into(), title: "Matches (feat. Tezzus)".into() }], ..Default::default() };
         let (mut top, mut rel, mut other) = (vec![song("dz:5", "Matches")], vec![], vec![]);
         fix_artist_page(&me, &extra, &mut top, &mut rel, &mut other);
         assert_eq!(top.len(), 1);
         // A pile of namesakes: TIDAL's songs aren't added, so nothing is looked up either.
-        let extra = ArtistExtra {
-            tracks: vec![ExtraTrack {
-                isrc: "USAAA2600002".into(),
-                title: "Gourmet".into(),
-            }],
-            ..Default::default()
-        };
-        let (mut top, mut rel, mut other) = (
-            vec![song("dz:5", "Matches")],
-            vec![],
-            vec![release("9", "Polka")],
-        );
+        let extra = ArtistExtra { tracks: vec![ExtraTrack { isrc: "USAAA2600002".into(), title: "Gourmet".into() }], ..Default::default() };
+        let (mut top, mut rel, mut other) = (vec![song("dz:5", "Matches")], vec![], vec![release("9", "Polka")]);
         fix_artist_page(&me, &extra, &mut top, &mut rel, &mut other);
         assert_eq!(top.len(), 1);
     }
@@ -2537,66 +1841,30 @@ mod main_copy_tests {
     use super::*;
 
     fn credit(list: &[(&str, &str)]) -> Vec<(String, String)> {
-        list.iter()
-            .map(|(i, n)| (i.to_string(), n.to_string()))
-            .collect()
+        list.iter().map(|(i, n)| (i.to_string(), n.to_string())).collect()
     }
 
     #[test]
     fn a_small_copy_points_to_the_main_page() {
         // The small OsamaSon page: 2 of ~70 TIDAL titles; what's missing is credited to the
         // main OsamaSon (sometimes with someone featured).
-        let me = ArtistRef {
-            id: "395053441".into(),
-            name: "OsamaSon".into(),
-            picture: None,
-        };
-        let mut credited: Vec<_> = (0..15)
-            .map(|_| credit(&[("141771412", "OsamaSon")]))
-            .collect();
+        let me = ArtistRef { id: "395053441".into(), name: "OsamaSon".into(), picture: None };
+        let mut credited: Vec<_> = (0..15).map(|_| credit(&[("141771412", "OsamaSon")])).collect();
         credited.push(credit(&[("1", "Ken Carson"), ("141771412", "OsamaSon")]));
         credited.push(credit(&[("2", "Someone Else")]));
-        assert_eq!(
-            main_copy(&me, 70, 2, &credited).as_deref(),
-            Some("141771412")
-        );
+        assert_eq!(main_copy(&me, 70, 2, &credited).as_deref(), Some("141771412"));
     }
 
     #[test]
     fn a_real_page_never_moves() {
-        let me = ArtistRef {
-            id: "399574001".into(),
-            name: "che".into(),
-            picture: None,
-        };
+        let me = ArtistRef { id: "399574001".into(), name: "che".into(), picture: None };
         // The real che: most of TIDAL's titles are on the page; RichPhønks is credited to
         // the other "Che".
-        assert_eq!(
-            main_copy(
-                &me,
-                60,
-                40,
-                &[credit(&[("14244529", "Tezzus"), ("234701081", "Che")])]
-            ),
-            None
-        );
+        assert_eq!(main_copy(&me, 60, 40, &[credit(&[("14244529", "Tezzus"), ("234701081", "Che")])]), None);
         // Too few to be sure.
-        assert_eq!(
-            main_copy(
-                &me,
-                60,
-                2,
-                &[
-                    credit(&[("234701081", "Che")]),
-                    credit(&[("234701081", "Che")])
-                ]
-            ),
-            None
-        );
+        assert_eq!(main_copy(&me, 60, 2, &[credit(&[("234701081", "Che")]), credit(&[("234701081", "Che")])]), None);
         // Split between several namesakes: no clear main page.
-        let mixed: Vec<_> = (0..6)
-            .map(|i| credit(&[(if i % 2 == 0 { "7" } else { "8" }, "Che")]))
-            .collect();
+        let mixed: Vec<_> = (0..6).map(|i| credit(&[(if i % 2 == 0 { "7" } else { "8" }, "Che")])).collect();
         assert_eq!(main_copy(&me, 60, 2, &mixed), None);
     }
 }

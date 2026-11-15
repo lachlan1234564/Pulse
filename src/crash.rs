@@ -18,10 +18,7 @@ fn seen_marker() -> PathBuf {
 
 /// Seconds since 1970.
 pub fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 /// "2026-11-09 13:05 UTC" for a time in seconds since 1970.
@@ -38,21 +35,12 @@ pub fn utc(secs: u64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!(
-        "{y:04}-{m:02}-{d:02} {:02}:{:02} UTC",
-        rem / 3600,
-        rem % 3600 / 60
-    )
+    format!("{y:04}-{m:02}-{d:02} {:02}:{:02} UTC", rem / 3600, rem % 3600 / 60)
 }
 
 /// What the report says about this copy of Pulse and the PC.
 pub fn about() -> String {
-    format!(
-        "Pulse {} on {} ({})",
-        env!("CARGO_PKG_VERSION"),
-        std::env::consts::OS,
-        std::env::consts::ARCH
-    )
+    format!("Pulse {} on {} ({})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH)
 }
 
 /// Writes a report when Pulse crashes (a panic on the window's thread). A problem on
@@ -68,10 +56,7 @@ pub fn install() {
             .map(|s| s.to_string())
             .or_else(|| info.payload().downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "unknown problem".into());
-        let place = info
-            .location()
-            .map(|l| format!("{}:{}", l.file(), l.line()))
-            .unwrap_or_default();
+        let place = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
         note(&format!("Problem in {name}: {what} ({place})"));
         if name == "main" {
             let report = format!(
@@ -99,16 +84,7 @@ fn prune() {
 /// Crash reports, oldest first.
 pub fn reports() -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir())
-        .map(|rd| {
-            rd.flatten()
-                .map(|e| e.path())
-                .filter(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.starts_with("crash-") && n.ends_with(".txt"))
-                })
-                .collect()
-        })
+        .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("crash-") && n.ends_with(".txt"))).collect())
         .unwrap_or_default();
     files.sort();
     files
@@ -149,10 +125,7 @@ pub fn note(msg: &str) {
 }
 
 pub fn recent() -> Vec<String> {
-    RECENT
-        .lock()
-        .map(|r| r.iter().cloned().collect())
-        .unwrap_or_default()
+    RECENT.lock().map(|r| r.iter().cloned().collect()).unwrap_or_default()
 }
 
 #[cfg(test)]

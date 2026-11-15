@@ -1,9 +1,6 @@
 //! Online pages and windows: signing in, public playlists, public profiles.
 
-use super::{
-    Hero, action_row, dialog_button, dialog_frame, hero, playlist_grid, save_heart, tracks_block,
-    with_remote,
-};
+use super::{Hero, action_row, dialog_button, dialog_frame, hero, playlist_grid, save_heart, tracks_block, with_remote};
 use crate::account;
 use crate::app::{AccountDialog, AccountDone, AccountMode, App, Page, Route};
 use crate::i18n::tr;
@@ -24,9 +21,7 @@ fn month_year(unix: u64) -> String {
     let mp = (5 * doy + 2) / 153;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
-    const M: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
+    const M: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     format!("{} {y}", tr(M[(m - 1) as usize]))
 }
 
@@ -37,46 +32,21 @@ pub fn month_first() -> bool {
 }
 
 pub fn birthday_hint() -> &'static str {
-    if month_first() {
-        "MM/DD/YYYY"
-    } else {
-        tr("DD/MM/YYYY")
-    }
+    if month_first() { "MM/DD/YYYY" } else { tr("DD/MM/YYYY") }
 }
 
-fn field(
-    ui: &mut Ui,
-    label: &str,
-    text: &mut String,
-    password: bool,
-    id: &str,
-    hint: &str,
-) -> egui::Response {
-    ui.label(
-        RichText::new(tr(label))
-            .font(semi(12.5))
-            .color(pal().text_muted),
-    );
+fn field(ui: &mut Ui, label: &str, text: &mut String, password: bool, id: &str, hint: &str) -> egui::Response {
+    ui.label(RichText::new(tr(label)).font(semi(12.5)).color(pal().text_muted));
     ui.add_space(6.0);
     let fid = egui::Id::new(("account_field", id));
     let focused = ui.memory(|m| m.has_focus(fid));
     let r = Frame::new()
         .fill(pal().bg)
-        .stroke(Stroke::new(
-            if focused { 1.5 } else { 1.0 },
-            if focused { pal().accent } else { pal().border },
-        ))
+        .stroke(Stroke::new(if focused { 1.5 } else { 1.0 }, if focused { pal().accent } else { pal().border }))
         .corner_radius(CornerRadius::same(10))
         .inner_margin(Margin::symmetric(12, 9))
         .show(ui, |ui| {
-            ui.add(
-                egui::TextEdit::singleline(text)
-                    .id(fid)
-                    .password(password)
-                    .frame(egui::Frame::NONE)
-                    .hint_text(tr(hint))
-                    .desired_width(f32::INFINITY),
-            )
+            ui.add(egui::TextEdit::singleline(text).id(fid).password(password).frame(egui::Frame::NONE).hint_text(tr(hint)).desired_width(f32::INFINITY))
         })
         .inner;
     ui.add_space(14.0);
@@ -85,9 +55,7 @@ fn field(
 
 /// The sign-in / create-account window (and change password, delete account, edit bio).
 pub fn account_dialog(app: &mut App, ctx: &egui::Context) {
-    let Some(d) = &mut app.account_dialog else {
-        return;
-    };
+    let Some(d) = &mut app.account_dialog else { return };
     let busy = app.account_busy > 0;
     let mut close = false;
     let mut submit = false;
@@ -295,24 +263,14 @@ pub fn account_dialog(app: &mut App, ctx: &egui::Context) {
         app.account_dialog = None;
         // "Not now" on the welcome: the profile window (name, picture) comes next, as before.
         if welcome && app.saved.profile.created == 0 && !app.saved.profile.skipped {
-            app.profile_editing = Some(crate::ui::ProfileForm {
-                welcome: true,
-                ..Default::default()
-            });
+            app.profile_editing = Some(crate::ui::ProfileForm { welcome: true, ..Default::default() });
         }
     }
 }
 
 fn submit_dialog(app: &mut App, ctx: &egui::Context) {
-    let Some(d) = &mut app.account_dialog else {
-        return;
-    };
-    let (user, pass, pass2, bio) = (
-        d.username.trim().to_lowercase(),
-        d.password.clone(),
-        d.password2.clone(),
-        d.bio.trim().to_string(),
-    );
+    let Some(d) = &mut app.account_dialog else { return };
+    let (user, pass, pass2, bio) = (d.username.trim().to_lowercase(), d.password.clone(), d.password2.clone(), d.bio.trim().to_string());
     let (email, code) = (d.email.trim().to_lowercase(), d.code.clone());
     d.note = None;
     let birthdate = if d.mode == AccountMode::SignUp {
@@ -328,36 +286,17 @@ fn submit_dialog(app: &mut App, ctx: &egui::Context) {
     };
     // Checks the server would make anyway, said straight away.
     let local_error = match d.mode {
-        AccountMode::SignIn if user.is_empty() || pass.is_empty() => {
-            Some("Enter your username or email, and your password.")
-        }
+        AccountMode::SignIn if user.is_empty() || pass.is_empty() => Some("Enter your username or email, and your password."),
         AccountMode::SignUp if user.len() < 3 => Some("Usernames are 3 to 20 characters."),
-        AccountMode::SignUp if !account::valid_username(&user) => {
-            Some("Usernames can use letters, numbers, _ and . only.")
-        }
-        AccountMode::SignUp | AccountMode::Email if email.is_empty() => {
-            Some("Enter your email address.")
-        }
-        AccountMode::SignUp | AccountMode::Email if !account::valid_email(&email) => {
-            Some("That email address doesn't look right.")
-        }
+        AccountMode::SignUp if !account::valid_username(&user) => Some("Usernames can use letters, numbers, _ and . only."),
+        AccountMode::SignUp | AccountMode::Email if email.is_empty() => Some("Enter your email address."),
+        AccountMode::SignUp | AccountMode::Email if !account::valid_email(&email) => Some("That email address doesn't look right."),
         AccountMode::Email if pass.is_empty() => Some("Enter your password."),
         AccountMode::Forgot if user.is_empty() => Some("Enter your username or email address."),
         AccountMode::Reset if code.len() != 6 => Some("Enter the 6-digit code from the email."),
-        AccountMode::Reset if pass.chars().count() < 8 => {
-            Some("Passwords need at least 8 characters.")
-        }
+        AccountMode::Reset if pass.chars().count() < 8 => Some("Passwords need at least 8 characters."),
         AccountMode::Reset if pass != pass2 => Some("The two passwords don't match."),
-        AccountMode::SignUp | AccountMode::Password
-            if (if d.mode == AccountMode::SignUp {
-                &pass
-            } else {
-                &pass2
-            })
-            .chars()
-            .count()
-                < 8 =>
-        {
+        AccountMode::SignUp | AccountMode::Password if (if d.mode == AccountMode::SignUp { &pass } else { &pass2 }).chars().count() < 8 => {
             Some("Passwords need at least 8 characters.")
         }
         AccountMode::SignUp if pass != pass2 => Some("The two passwords don't match."),
@@ -370,39 +309,20 @@ fn submit_dialog(app: &mut App, ctx: &egui::Context) {
     }
     let reload = account::session().map(|s| format!("user:{}", s.username));
     match d.mode {
-        AccountMode::SignIn => app.account_job(ctx, move || {
-            account::sign_in(&user, &pass).map(AccountDone::SignedIn)
-        }),
-        AccountMode::SignUp => app.account_job(ctx, move || {
-            account::sign_up(&user, &email, &pass, &birthdate).map(AccountDone::SignedIn)
-        }),
-        AccountMode::Forgot => app.account_job(ctx, move || {
-            account::reset_start(&user).map(AccountDone::CodeSent)
-        }),
-        AccountMode::Reset => app.account_job(ctx, move || {
-            account::reset_finish(&user, &code, &pass).map(AccountDone::SignedIn)
-        }),
-        AccountMode::Email => app.account_job(ctx, move || {
-            account::set_email(&email, &pass).map(|_| AccountDone::Done {
-                message: tr("Email saved").to_string(),
-                reload: None,
-            })
-        }),
+        AccountMode::SignIn => app.account_job(ctx, move || account::sign_in(&user, &pass).map(AccountDone::SignedIn)),
+        AccountMode::SignUp => app.account_job(ctx, move || account::sign_up(&user, &email, &pass, &birthdate).map(AccountDone::SignedIn)),
+        AccountMode::Forgot => app.account_job(ctx, move || account::reset_start(&user).map(AccountDone::CodeSent)),
+        AccountMode::Reset => app.account_job(ctx, move || account::reset_finish(&user, &code, &pass).map(AccountDone::SignedIn)),
+        AccountMode::Email => {
+            app.account_job(ctx, move || account::set_email(&email, &pass).map(|_| AccountDone::Done { message: tr("Email saved").to_string(), reload: None }))
+        }
         AccountMode::Password => app.account_job(ctx, move || {
-            account::change_password(&pass, &pass2).map(|_| AccountDone::Done {
-                message: tr("Password changed").to_string(),
-                reload: None,
-            })
+            account::change_password(&pass, &pass2).map(|_| AccountDone::Done { message: tr("Password changed").to_string(), reload: None })
         }),
-        AccountMode::Delete => app.account_job(ctx, move || {
-            account::delete_account(&pass).map(|_| AccountDone::Deleted)
-        }),
-        AccountMode::Bio => app.account_job(ctx, move || {
-            account::set_bio(&bio).map(|_| AccountDone::Done {
-                message: tr("Profile saved").to_string(),
-                reload,
-            })
-        }),
+        AccountMode::Delete => app.account_job(ctx, move || account::delete_account(&pass).map(|_| AccountDone::Deleted)),
+        AccountMode::Bio => {
+            app.account_job(ctx, move || account::set_bio(&bio).map(|_| AccountDone::Done { message: tr("Profile saved").to_string(), reload }))
+        }
     }
 }
 
@@ -412,9 +332,7 @@ pub fn publish_row(app: &mut App, ui: &mut Ui, i: usize) {
         return;
     }
     let ctx = ui.ctx().clone();
-    let Some(p) = app.saved.playlists.get(i) else {
-        return;
-    };
+    let Some(p) = app.saved.playlists.get(i) else { return };
     let public = p.public_id.clone();
     let shareable = account::shareable(&p.tracks).len();
     ui.horizontal(|ui| {
@@ -422,39 +340,20 @@ pub fn publish_row(app: &mut App, ui: &mut Ui, i: usize) {
         match &public {
             None => {
                 let ok = shareable > 0 && app.account_busy == 0;
-                if ui
-                    .add_enabled_ui(ok, |ui| {
-                        ghost_button(ui, icon::GLOBE_HEMISPHERE_WEST, "Make public")
-                    })
-                    .inner
-                    .clicked()
-                {
+                if ui.add_enabled_ui(ok, |ui| ghost_button(ui, icon::GLOBE_HEMISPHERE_WEST, "Make public")).inner.clicked() {
                     app.publish_playlist(i, &ctx);
                 }
                 if shareable == 0 && !app.saved.playlists[i].tracks.is_empty() {
-                    ui.label(
-                        RichText::new(tr("Songs from your computer can't be shared."))
-                            .font(regular(12.0))
-                            .color(pal().text_faint),
-                    );
+                    ui.label(RichText::new(tr("Songs from your computer can't be shared.")).font(regular(12.0)).color(pal().text_faint));
                 }
             }
             Some(id) => {
-                Frame::new()
-                    .fill(pal().accent.gamma_multiply(0.18))
-                    .corner_radius(CornerRadius::same(12))
-                    .inner_margin(Margin::symmetric(10, 4))
-                    .show(ui, |ui| {
-                        ui.label(
-                            RichText::new(format!(
-                                "{}  {}",
-                                icon::GLOBE_HEMISPHERE_WEST,
-                                tr("Public")
-                            ))
-                            .font(semi(12.0))
-                            .color(pal().accent_soft),
-                        );
-                    });
+                Frame::new().fill(pal().accent.gamma_multiply(0.18)).corner_radius(CornerRadius::same(12)).inner_margin(Margin::symmetric(10, 4)).show(
+                    ui,
+                    |ui| {
+                        ui.label(RichText::new(format!("{}  {}", icon::GLOBE_HEMISPHERE_WEST, tr("Public"))).font(semi(12.0)).color(pal().accent_soft));
+                    },
+                );
                 if ghost_button(ui, icon::LINK, "Copy link").clicked() {
                     ctx.copy_text(account::playlist_link(id));
                     app.toast(tr("Link copied"), &ctx);
@@ -467,14 +366,7 @@ pub fn publish_row(app: &mut App, ui: &mut Ui, i: usize) {
                 }
                 let local = app.saved.playlists[i].tracks.len() - shareable;
                 if local > 0 {
-                    ui.label(
-                        RichText::new(format!(
-                            "{local} {}",
-                            tr("songs from your computer aren't shared")
-                        ))
-                        .font(regular(12.0))
-                        .color(pal().text_faint),
-                    );
+                    ui.label(RichText::new(format!("{local} {}", tr("songs from your computer aren't shared"))).font(regular(12.0)).color(pal().text_faint));
                 }
             }
         }
@@ -488,11 +380,7 @@ pub fn public_page(app: &mut App, ui: &mut Ui) {
         let Page::Public(p) = page else { return };
         let ctx = ui.ctx().clone();
         // The header shows the owner's name (a link) before this.
-        let sub = format!(
-            " · {} {}",
-            p.tracks.len(),
-            tr(if p.tracks.len() == 1 { "song" } else { "songs" })
-        );
+        let sub = format!(" · {} {}", p.tracks.len(), tr(if p.tracks.len() == 1 { "song" } else { "songs" }));
         let clicks = hero(
             ui,
             &Hero {
@@ -511,11 +399,7 @@ pub fn public_page(app: &mut App, ui: &mut Ui) {
             app.navigate(Route::User(p.username.clone()), &ctx);
         }
         if !p.description.is_empty() {
-            ui.label(
-                RichText::new(&p.description)
-                    .font(regular(13.5))
-                    .color(pal().text_muted),
-            );
+            ui.label(RichText::new(&p.description).font(regular(13.5)).color(pal().text_muted));
             ui.add_space(8.0);
         }
         let mine = account::session().is_some_and(|s| s.username == p.username);
@@ -543,10 +427,8 @@ pub fn public_page(app: &mut App, ui: &mut Ui) {
                     menu_begin(ui);
                     if menu_item(ui, icon::FLAG, "Report playlist") {
                         app.account_job(&ctx, move || {
-                            account::report(&id, "Reported from Pulse").map(|_| AccountDone::Done {
-                                message: tr("Thanks. We'll take a look.").to_string(),
-                                reload: None,
-                            })
+                            account::report(&id, "Reported from Pulse")
+                                .map(|_| AccountDone::Done { message: tr("Thanks. We'll take a look.").to_string(), reload: None })
                         });
                     }
                 });
@@ -562,17 +444,7 @@ pub fn user_page(app: &mut App, ui: &mut Ui) {
         let Page::User(p) = page else { return };
         let ctx = ui.ctx().clone();
         let n = p.playlists.len();
-        let mut sub = format!(
-            "{} {} · {} {}",
-            n,
-            tr(if n == 1 {
-                "public playlist"
-            } else {
-                "public playlists"
-            }),
-            tr("Joined"),
-            month_year(p.user.created)
-        );
+        let mut sub = format!("{} {} · {} {}", n, tr(if n == 1 { "public playlist" } else { "public playlists" }), tr("Joined"), month_year(p.user.created));
         if !p.user.bio.is_empty() {
             sub = format!("{} · {sub}", p.user.bio);
         }
@@ -603,11 +475,7 @@ pub fn user_page(app: &mut App, ui: &mut Ui) {
             // The profile on the website. Your own also makes the site greet you by name.
             if ghost_button(ui, icon::GLOBE, "Open on the website").clicked() {
                 let link = account::profile_link(&p.user.username);
-                ctx.open_url(egui::OpenUrl::new_tab(if mine {
-                    format!("{link}&me=1")
-                } else {
-                    link
-                }));
+                ctx.open_url(egui::OpenUrl::new_tab(if mine { format!("{link}&me=1") } else { link }));
             }
             if mine && ghost_button(ui, icon::PENCIL_SIMPLE, "Edit profile").clicked() {
                 let mut d = AccountDialog::new(AccountMode::Bio);
@@ -617,19 +485,11 @@ pub fn user_page(app: &mut App, ui: &mut Ui) {
         });
         ui.add_space(8.0);
         if p.playlists.is_empty() {
-            let body = if mine {
-                "Open one of your playlists and press “Make public”."
-            } else {
-                "Nothing public yet."
-            };
+            let body = if mine { "Open one of your playlists and press “Make public”." } else { "Nothing public yet." };
             empty_state(ui, icon::PLAYLIST, "No public playlists", body, None);
         } else {
             section_title(ui, "Public playlists", None);
-            let cards: Vec<_> = p
-                .playlists
-                .iter()
-                .map(|l| l.info(&p.user.username))
-                .collect();
+            let cards: Vec<_> = p.playlists.iter().map(|l| l.info(&p.user.username)).collect();
             playlist_grid(app, ui, &cards, None);
         }
     });
@@ -649,9 +509,7 @@ pub fn account_settings(app: &mut App, ui: &mut Ui, row: Row) {
             row(
                 ui,
                 tr("Pulse account"),
-                tr(
-                    "Make playlists public and have a profile people can find. Optional: everything else works without one.",
-                ),
+                tr("Make playlists public and have a profile people can find. Optional: everything else works without one."),
                 &mut |ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     if ui.button(tr("Create account")).clicked() {
@@ -665,73 +523,37 @@ pub fn account_settings(app: &mut App, ui: &mut Ui, row: Row) {
         }
         Some(s) => {
             let who = format!("{} @{}", tr("Signed in as"), s.username);
-            row(
-                ui,
-                &who,
-                tr(
-                    "Your library stays on this computer. Only playlists you make public are online.",
-                ),
-                &mut |ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    if ui.button(tr("Sign out")).clicked() {
-                        app.account_job(&ctx, || {
-                            account::sign_out();
-                            Ok(AccountDone::SignedOut)
-                        });
-                    }
-                    if ui.button(tr("Your profile")).clicked() {
-                        app.navigate(Route::Profile, &ctx);
-                    }
-                },
-            );
-            let email = if s.email.is_empty() {
-                tr("None yet. Add one so you can reset your password.").to_string()
-            } else {
-                s.email.clone()
-            };
+            row(ui, &who, tr("Your library stays on this computer. Only playlists you make public are online."), &mut |ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                if ui.button(tr("Sign out")).clicked() {
+                    app.account_job(&ctx, || {
+                        account::sign_out();
+                        Ok(AccountDone::SignedOut)
+                    });
+                }
+                if ui.button(tr("Your profile")).clicked() {
+                    app.navigate(Route::Profile, &ctx);
+                }
+            });
+            let email = if s.email.is_empty() { tr("None yet. Add one so you can reset your password.").to_string() } else { s.email.clone() };
             row(ui, tr("Email"), &email, &mut |ui| {
-                if ui
-                    .button(tr(if s.email.is_empty() {
-                        "Add email"
-                    } else {
-                        "Change email"
-                    }))
-                    .clicked()
-                {
+                if ui.button(tr(if s.email.is_empty() { "Add email" } else { "Change email" })).clicked() {
                     let mut d = AccountDialog::new(AccountMode::Email);
                     d.email = s.email.clone();
                     d.required = false;
                     app.account_dialog = Some(d);
                 }
             });
-            row(
-                ui,
-                tr("Password"),
-                tr("Change the password you sign in with."),
-                &mut |ui| {
-                    if ui.button(tr("Change password")).clicked() {
-                        app.account_dialog = Some(AccountDialog::new(AccountMode::Password));
-                    }
-                },
-            );
-            row(
-                ui,
-                tr("Delete account"),
-                tr(
-                    "Deletes your account and everything you made public. Your library on this computer stays.",
-                ),
-                &mut |ui| {
-                    if ui
-                        .button(
-                            RichText::new(tr("Delete account"))
-                                .color(Color32::from_rgb(255, 140, 160)),
-                        )
-                        .clicked()
-                    {
-                        app.account_dialog = Some(AccountDialog::new(AccountMode::Delete));
-                    }
-                },
-            );
+            row(ui, tr("Password"), tr("Change the password you sign in with."), &mut |ui| {
+                if ui.button(tr("Change password")).clicked() {
+                    app.account_dialog = Some(AccountDialog::new(AccountMode::Password));
+                }
+            });
+            row(ui, tr("Delete account"), tr("Deletes your account and everything you made public. Your library on this computer stays."), &mut |ui| {
+                if ui.button(RichText::new(tr("Delete account")).color(Color32::from_rgb(255, 140, 160))).clicked() {
+                    app.account_dialog = Some(AccountDialog::new(AccountMode::Delete));
+                }
+            });
         }
     }
 }

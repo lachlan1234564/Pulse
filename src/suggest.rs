@@ -45,21 +45,12 @@ impl Pick {
 
 /// Lowercase with single spaces, for comparing searches.
 fn key(s: &str) -> String {
-    crate::app::fold(s)
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    crate::app::fold(s).split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Up to `max` searches that finish what was typed. What you typed comes first, then your
 /// own past searches, then popular ones, then ones made from the best results.
-pub fn completions(
-    typed: &str,
-    recent: &[String],
-    popular: &[String],
-    results: Option<&SearchResults>,
-    max: usize,
-) -> Vec<String> {
+pub fn completions(typed: &str, recent: &[String], popular: &[String], results: Option<&SearchResults>, max: usize) -> Vec<String> {
     let q = key(typed);
     if q.is_empty() {
         return vec![];
@@ -80,10 +71,7 @@ pub fn completions(
     }
     // From the results: the artist's name, then the artist with their best-known albums and songs.
     if let Some(r) = results
-        && let Some(a) = r
-            .artists
-            .first()
-            .filter(|a| name_match(&a.name, typed) >= 2)
+        && let Some(a) = r.artists.first().filter(|a| name_match(&a.name, typed) >= 2)
     {
         let name = a.name.to_lowercase();
         add(name.clone(), &mut out);
@@ -103,21 +91,11 @@ pub fn completions(
 pub fn parse_popular(body: &str) -> Vec<String> {
     let start = body.find('[');
     let end = body.rfind(']');
-    let (Some(a), Some(b)) = (start, end) else {
-        return vec![];
-    };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&body[a..=b]) else {
-        return vec![];
-    };
-    let Some(list) = v.get(1).and_then(|l| l.as_array()) else {
-        return vec![];
-    };
+    let (Some(a), Some(b)) = (start, end) else { return vec![] };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&body[a..=b]) else { return vec![] };
+    let Some(list) = v.get(1).and_then(|l| l.as_array()) else { return vec![] };
     list.iter()
-        .filter_map(|x| {
-            x.as_str()
-                .map(str::to_owned)
-                .or_else(|| x.get(0).and_then(|y| y.as_str()).map(str::to_owned))
-        })
+        .filter_map(|x| x.as_str().map(str::to_owned).or_else(|| x.get(0).and_then(|y| y.as_str()).map(str::to_owned)))
         .filter(|s| !s.trim().is_empty())
         .take(10)
         .collect()
@@ -126,13 +104,8 @@ pub fn parse_popular(body: &str) -> Vec<String> {
 /// What other people search for that starts with `typed` (YouTube's public suggestions).
 /// Empty if the service can't be reached.
 pub fn popular(typed: &str) -> Vec<String> {
-    let url = format!(
-        "https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&hl=en&q={}",
-        crate::net::encode(typed.trim())
-    );
-    crate::net::get_page(&url)
-        .map(|b| parse_popular(&b))
-        .unwrap_or_default()
+    let url = format!("https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&hl=en&q={}", crate::net::encode(typed.trim()));
+    crate::net::get_page(&url).map(|b| parse_popular(&b)).unwrap_or_default()
 }
 
 /// The rows under the completions: the artist you most likely mean, then up to `max - 1`
@@ -140,11 +113,7 @@ pub fn popular(typed: &str) -> Vec<String> {
 pub fn picks(typed: &str, r: &SearchResults, lib: &Library, max: usize) -> Vec<Pick> {
     let mut out = vec![];
     // The top artist: ranked by name and fans already; artists you follow or play win ties.
-    let mut artists: Vec<&ArtistInfo> = r
-        .artists
-        .iter()
-        .filter(|a| name_match(&a.name, typed) >= 2)
-        .collect();
+    let mut artists: Vec<&ArtistInfo> = r.artists.iter().filter(|a| name_match(&a.name, typed) >= 2).collect();
     let artist_score = |a: &ArtistInfo| {
         let mut s = ((a.fans + 1) as f64).log10();
         if lib.followed.contains(a.id.as_str()) {
@@ -169,8 +138,7 @@ pub fn picks(typed: &str, r: &SearchResults, lib: &Library, max: usize) -> Vec<P
         if m == 0 && !by_top {
             continue;
         }
-        let mut s =
-            m as f64 + if by_top { 3.0 } else { 0.0 } + (1.0 - i as f64 / 30.0).max(0.0) * 1.5;
+        let mut s = m as f64 + if by_top { 3.0 } else { 0.0 } + (1.0 - i as f64 / 30.0).max(0.0) * 1.5;
         if al.record_type == "album" {
             s += 0.5;
         }
@@ -234,33 +202,19 @@ mod tests {
     use crate::deezer::ArtistRef;
 
     fn artist(id: &str, name: &str, fans: u64) -> ArtistInfo {
-        ArtistInfo {
-            id: id.into(),
-            name: name.into(),
-            fans,
-            ..Default::default()
-        }
+        ArtistInfo { id: id.into(), name: name.into(), fans, ..Default::default() }
     }
     fn album(id: &str, title: &str, by: &ArtistInfo, kind: &str) -> AlbumInfo {
         AlbumInfo {
             id: id.into(),
             title: title.into(),
-            artist: ArtistRef {
-                id: by.id.clone(),
-                name: by.name.clone(),
-                picture: None,
-            },
+            artist: ArtistRef { id: by.id.clone(), name: by.name.clone(), picture: None },
             record_type: kind.into(),
             ..Default::default()
         }
     }
     fn song(id: &str, title: &str, by: &ArtistInfo, rank: u64) -> Track {
-        let mut t = Track {
-            id: id.into(),
-            title: title.into(),
-            rank,
-            ..Default::default()
-        };
+        let mut t = Track { id: id.into(), title: title.into(), rank, ..Default::default() };
         t.artist.id = by.id.clone();
         t.artist.name = by.name.clone();
         t
@@ -277,15 +231,8 @@ mod tests {
                 album("a3", "Flex Musix", &osama, "album"),
                 album("a4", "Osama", &kifoh, "single"),
             ],
-            tracks: vec![
-                song("t1", "Lil O", &osama, 181_336),
-                song("t2", "Troops", &osama, 291_182),
-            ],
-            playlists: vec![PlaylistInfo {
-                id: "p1".into(),
-                title: "OsamaSon mix".into(),
-                ..Default::default()
-            }],
+            tracks: vec![song("t1", "Lil O", &osama, 181_336), song("t2", "Troops", &osama, 291_182)],
+            playlists: vec![PlaylistInfo { id: "p1".into(), title: "OsamaSon mix".into(), ..Default::default() }],
             ..Default::default()
         }
     }
@@ -297,26 +244,15 @@ mod tests {
         assert!(matches!(&picks[0], Pick::Artist(a) if a.name == "OsamaSon"));
         let albums = picks.iter().filter(|p| matches!(p, Pick::Album(_))).count();
         assert!(albums <= 3);
-        assert!(
-            picks
-                .iter()
-                .all(|p| !matches!(p, Pick::Album(a) if a.artist.name == "kifoh")),
-            "kifoh's 'Osama' doesn't match 'osamason'"
-        );
+        assert!(picks.iter().all(|p| !matches!(p, Pick::Album(a) if a.artist.name == "kifoh")), "kifoh's 'Osama' doesn't match 'osamason'");
     }
 
     #[test]
     fn your_library_comes_first() {
         let r = results();
-        let lib = Library {
-            liked_songs: HashSet::from(["t1"]),
-            ..Default::default()
-        };
+        let lib = Library { liked_songs: HashSet::from(["t1"]), ..Default::default() };
         let picks = picks("osamason", &r, &lib, 6);
-        assert!(
-            matches!(&picks[1], Pick::Song(t) if t.id == "t1"),
-            "the liked song is right after the artist: {picks:?}"
-        );
+        assert!(matches!(&picks[1], Pick::Song(t) if t.id == "t1"), "the liked song is right after the artist: {picks:?}");
         assert!(picks[1].saved(&lib));
     }
 
@@ -324,34 +260,20 @@ mod tests {
     fn completions_put_yours_first_then_popular_then_the_artists_music() {
         let r = results();
         let recent = vec!["osamason setlist".to_string(), "drake".to_string()];
-        let popular = vec![
-            "osamason unreleased".to_string(),
-            "OsamaSon Setlist".to_string(),
-            "something else".to_string(),
-        ];
+        let popular = vec!["osamason unreleased".to_string(), "OsamaSon Setlist".to_string(), "something else".to_string()];
         let c = completions("osamason", &recent, &popular, Some(&r), 6);
         assert_eq!(c[0], "osamason");
         assert_eq!(c[1], "osamason setlist");
         assert_eq!(c[2], "osamason unreleased");
         assert!(c.contains(&"osamason psykotic".to_string()));
-        assert_eq!(
-            c.iter().filter(|s| s.contains("setlist")).count(),
-            1,
-            "no repeats"
-        );
+        assert_eq!(c.iter().filter(|s| s.contains("setlist")).count(), 1, "no repeats");
         assert!(completions("  ", &recent, &popular, None, 4).is_empty());
     }
 
     #[test]
     fn reads_the_popular_searches_reply() {
-        assert_eq!(
-            parse_popular(r#"["yeat",["yeat bell","yeat unreleased"],[],{}]"#),
-            ["yeat bell", "yeat unreleased"]
-        );
-        assert_eq!(
-            parse_popular(r#"window.google.ac.h(["hxg",[["hxg 5g",0],["hxg lifestyle",0]],{}])"#),
-            ["hxg 5g", "hxg lifestyle"]
-        );
+        assert_eq!(parse_popular(r#"["yeat",["yeat bell","yeat unreleased"],[],{}]"#), ["yeat bell", "yeat unreleased"]);
+        assert_eq!(parse_popular(r#"window.google.ac.h(["hxg",[["hxg 5g",0],["hxg lifestyle",0]],{}])"#), ["hxg 5g", "hxg lifestyle"]);
         assert!(parse_popular("<html>blocked</html>").is_empty());
     }
 }

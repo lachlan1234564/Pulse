@@ -9,9 +9,7 @@ use crate::deezer::{self, ArtistInfo};
 use crate::i18n::tr;
 use crate::theme::*;
 use crate::widgets::*;
-use egui::{
-    Align, Color32, CornerRadius, Key, Layout, Rect, RichText, Sense, Stroke, Ui, pos2, vec2,
-};
+use egui::{Align, Color32, CornerRadius, Key, Layout, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
 use egui_phosphor::regular as icon;
 use std::sync::mpsc::{Receiver, channel};
 
@@ -47,11 +45,7 @@ impl Picker {
 
     fn load(&mut self, ctx: &egui::Context) {
         self.asked += 1;
-        let (n, q, genres) = (
-            self.asked,
-            self.query.trim().to_string(),
-            self.genres.clone(),
-        );
+        let (n, q, genres) = (self.asked, self.query.trim().to_string(), self.genres.clone());
         let (tx, rx) = channel();
         self.rx = Some(rx);
         self.loading = true;
@@ -64,11 +58,7 @@ impl Picker {
                 deezer::popular_artists(0, 36)
             } else {
                 // A few from each chosen genre, taking turns, so one genre doesn't fill the grid.
-                let lists: Vec<Vec<ArtistInfo>> = genres
-                    .iter()
-                    .take(4)
-                    .map(|g| deezer::popular_artists(*g, 24).unwrap_or_default())
-                    .collect();
+                let lists: Vec<Vec<ArtistInfo>> = genres.iter().take(4).map(|g| deezer::popular_artists(*g, 24).unwrap_or_default()).collect();
                 let mut out: Vec<ArtistInfo> = vec![];
                 for i in 0..24 {
                     for l in &lists {
@@ -79,11 +69,7 @@ impl Picker {
                         }
                     }
                 }
-                if out.is_empty() {
-                    Err("Couldn't load artists. Check your connection.".into())
-                } else {
-                    Ok(out)
-                }
+                if out.is_empty() { Err("Couldn't load artists. Check your connection.".into()) } else { Ok(out) }
             };
             let _ = tx.send((n, found));
             ctx.request_repaint();
@@ -178,19 +164,10 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
 /// Call `p.tick(ctx)` once per frame before this.
 pub(crate) fn body(p: &mut Picker, ui: &mut Ui, now: f64, grid_h: f32) {
     // Search.
-    let r = egui::Frame::new()
-        .fill(pal().surface_hover)
-        .corner_radius(CornerRadius::same(18))
-        .inner_margin(egui::Margin::symmetric(14, 9))
-        .show(ui, |ui| {
+    let r =
+        egui::Frame::new().fill(pal().surface_hover).corner_radius(CornerRadius::same(18)).inner_margin(egui::Margin::symmetric(14, 9)).show(ui, |ui| {
             ui.horizontal(|ui| {
-                paint_icon(
-                    ui.painter(),
-                    ui.cursor().min + vec2(8.0, 9.0),
-                    icon::MAGNIFYING_GLASS,
-                    regular(16.0),
-                    pal().text_muted,
-                );
+                paint_icon(ui.painter(), ui.cursor().min + vec2(8.0, 9.0), icon::MAGNIFYING_GLASS, regular(16.0), pal().text_muted);
                 ui.add_space(22.0);
                 ui.add(
                     egui::TextEdit::singleline(&mut p.query)
@@ -211,9 +188,7 @@ pub(crate) fn body(p: &mut Picker, ui: &mut Ui, now: f64, grid_h: f32) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
         for g in OFFERED {
-            let Some((_, name)) = deezer::GENRES.iter().find(|(id, _)| *id == g) else {
-                continue;
-            };
+            let Some((_, name)) = deezer::GENRES.iter().find(|(id, _)| *id == g) else { continue };
             let on = p.genres.contains(&g);
             if pill(ui, name, on).clicked() {
                 if on {
@@ -230,76 +205,54 @@ pub(crate) fn body(p: &mut Picker, ui: &mut Ui, now: f64, grid_h: f32) {
     ui.add_space(14.0);
 
     // Artists.
-    egui::ScrollArea::vertical()
-        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-        .max_height(grid_h)
-        .min_scrolled_height(grid_h)
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            if let Some(e) = &p.error {
-                ui.add_space(30.0);
-                ui.vertical_centered(|ui| {
-                    ui.label(
-                        RichText::new(tr(e))
-                            .font(regular(13.5))
-                            .color(pal().text_muted),
-                    )
-                });
-                return;
-            }
-            if p.loading {
-                ui.add_space(40.0);
-                ui.vertical_centered(|ui| {
-                    ui.spinner();
-                    ui.add_space(8.0);
-                    ui.label(
-                        RichText::new(tr("Loading artists…"))
-                            .font(regular(13.5))
-                            .color(pal().text_muted),
-                    );
-                });
-                return;
-            }
-            if p.shown.is_empty() {
-                ui.add_space(40.0);
-                ui.vertical_centered(|ui| {
-                    ui.label(
-                        RichText::new(tr("No artists found"))
-                            .font(semi(16.0))
-                            .color(pal().text),
-                    );
-                    ui.add_space(6.0);
-                    ui.label(
-                        RichText::new(tr("Try another name or genre."))
-                            .font(regular(13.5))
-                            .color(pal().text_muted),
-                    );
-                });
-                return;
-            }
-            // As many columns as fit, then widened to fill the row.
-            let avail = ui.available_width() - 4.0;
-            let cols = ((avail + 12.0) / 130.0).floor().max(2.0) as usize;
-            let cell = (avail - 12.0 * (cols as f32 - 1.0)) / cols as f32;
-            let list = p.shown.clone();
-            for row in list.chunks(cols) {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 12.0;
-                    for a in row {
-                        let picked = p.picked.iter().any(|x| x.id == a.id);
-                        if artist(ui, a, picked, cell).clicked() {
-                            if picked {
-                                p.picked.retain(|x| x.id != a.id);
-                            } else {
-                                p.picked.push(a.clone());
-                            }
+    egui::ScrollArea::vertical().scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).max_height(grid_h).min_scrolled_height(grid_h).auto_shrink([false, false]).show(ui, |ui| {
+        if let Some(e) = &p.error {
+            ui.add_space(30.0);
+            ui.vertical_centered(|ui| ui.label(RichText::new(tr(e)).font(regular(13.5)).color(pal().text_muted)));
+            return;
+        }
+        if p.loading {
+            ui.add_space(40.0);
+            ui.vertical_centered(|ui| {
+                ui.spinner();
+                ui.add_space(8.0);
+                ui.label(RichText::new(tr("Loading artists…")).font(regular(13.5)).color(pal().text_muted));
+            });
+            return;
+        }
+        if p.shown.is_empty() {
+            ui.add_space(40.0);
+            ui.vertical_centered(|ui| {
+                ui.label(RichText::new(tr("No artists found")).font(semi(16.0)).color(pal().text));
+                ui.add_space(6.0);
+                ui.label(RichText::new(tr("Try another name or genre.")).font(regular(13.5)).color(pal().text_muted));
+            });
+            return;
+        }
+        // As many columns as fit, then widened to fill the row.
+        let avail = ui.available_width() - 4.0;
+        let cols = ((avail + 12.0) / 130.0).floor().max(2.0) as usize;
+        let cell = (avail - 12.0 * (cols as f32 - 1.0)) / cols as f32;
+        let list = p.shown.clone();
+        for row in list.chunks(cols) {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 12.0;
+                for a in row {
+                    let picked = p.picked.iter().any(|x| x.id == a.id);
+                    if artist(ui, a, picked, cell).clicked() {
+                        if picked {
+                            p.picked.retain(|x| x.id != a.id);
+                        } else {
+                            p.picked.push(a.clone());
                         }
                     }
-                });
-                ui.add_space(14.0);
-            }
-        });
+                }
+            });
+            ui.add_space(14.0);
+        }
+    });
     ui.add_space(14.0);
+
 }
 
 impl Picker {
@@ -321,46 +274,26 @@ impl Picker {
 /// One artist: a round picture with the name under it; a ring and a check when picked.
 fn artist(ui: &mut Ui, a: &ArtistInfo, picked: bool, w: f32) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(w, w + 26.0), Sense::click());
-    resp.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, picked, &a.name)
-    });
-    let pic = Rect::from_center_size(
-        pos2(rect.center().x, rect.min.y + w / 2.0),
-        vec2(w - 14.0, w - 14.0),
-    );
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, picked, &a.name));
+    let pic = Rect::from_center_size(pos2(rect.center().x, rect.min.y + w / 2.0), vec2(w - 14.0, w - 14.0));
     if ui.is_rect_visible(rect) {
         let round = CornerRadius::same((pic.width() / 2.0) as u8);
         artwork(ui, pic, a.picture.as_deref(), round);
         let p = ui.painter();
         if picked {
-            p.circle_stroke(
-                pic.center(),
-                pic.width() / 2.0 + 3.0,
-                Stroke::new(3.0, pal().accent_soft),
-            );
+            p.circle_stroke(pic.center(), pic.width() / 2.0 + 3.0, Stroke::new(3.0, pal().accent_soft));
             let badge = pic.right_bottom() - vec2(14.0, 14.0);
             p.circle_filled(badge, 14.0, pal().accent);
             p.circle_stroke(badge, 14.0, Stroke::new(3.0, pal().surface));
             paint_icon(p, badge, icon::CHECK, regular(15.0), Color32::WHITE);
         } else if resp.hovered() {
-            p.circle_filled(
-                pic.center(),
-                pic.width() / 2.0,
-                Color32::from_black_alpha(60),
-            );
+            p.circle_filled(pic.center(), pic.width() / 2.0, Color32::from_black_alpha(60));
         }
         if resp.has_focus() {
-            p.circle_stroke(
-                pic.center(),
-                pic.width() / 2.0 + 6.0,
-                Stroke::new(2.0, pal().text),
-            );
+            p.circle_stroke(pic.center(), pic.width() / 2.0 + 6.0, Stroke::new(2.0, pal().text));
         }
         let name = p.layout(a.name.clone(), semi(13.0), pal().text, w);
-        let name_pos = pos2(
-            rect.center().x - name.size().x.min(w) / 2.0,
-            pic.max.y + 8.0,
-        );
+        let name_pos = pos2(rect.center().x - name.size().x.min(w) / 2.0, pic.max.y + 8.0);
         p.with_clip_rect(rect).galley(name_pos, name, pal().text);
     }
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)

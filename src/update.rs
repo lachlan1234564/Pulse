@@ -17,8 +17,8 @@ pub const RELEASES_PAGE: &str = "https://github.com/mercy123xz/Pulse/releases/la
 /// The public half of Pulse's release signing key (Ed25519). Same key as
 /// installer/update-key.pub.pem, which the release workflow checks signatures with.
 const PUBLIC_KEY: [u8; 32] = [
-    0x84, 0x90, 0x2c, 0x74, 0x7e, 0xd6, 0x58, 0x25, 0x85, 0xe7, 0x38, 0x2b, 0x43, 0xd4, 0x1a, 0xa0,
-    0x09, 0xa4, 0x94, 0x37, 0xf9, 0x72, 0x27, 0xa4, 0x29, 0x97, 0xab, 0x84, 0xc9, 0x99, 0x45, 0x05,
+    0x84, 0x90, 0x2c, 0x74, 0x7e, 0xd6, 0x58, 0x25, 0x85, 0xe7, 0x38, 0x2b, 0x43, 0xd4, 0x1a, 0xa0, 0x09, 0xa4, 0x94, 0x37, 0xf9, 0x72, 0x27, 0xa4,
+    0x29, 0x97, 0xab, 0x84, 0xc9, 0x99, 0x45, 0x05,
 ];
 
 /// Where the release workflow puts the signature: a comment in the release notes,
@@ -76,11 +76,7 @@ pub struct Updater {
 
 impl Default for Updater {
     fn default() -> Self {
-        Self {
-            status: Status::Idle,
-            rx: None,
-            banner_closed: false,
-        }
+        Self { status: Status::Idle, rx: None, banner_closed: false }
     }
 }
 
@@ -98,10 +94,7 @@ impl Updater {
         let (tx, rx) = channel();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let _ =
-                tx.send(Msg::Checked(latest().map(|r| {
-                    r.filter(|r| is_newer(&r.version, env!("CARGO_PKG_VERSION")))
-                })));
+            let _ = tx.send(Msg::Checked(latest().map(|r| r.filter(|r| is_newer(&r.version, env!("CARGO_PKG_VERSION"))))));
             ctx.request_repaint();
         });
         self.rx = Some(rx);
@@ -109,10 +102,7 @@ impl Updater {
 
     /// Downloads and checks the installer; `poll` runs it once it's ready.
     pub fn install(&mut self, ctx: &egui::Context) {
-        let (Status::Available(release) | Status::InstallFailed(release, _)) = self.status.clone()
-        else {
-            return;
-        };
+        let (Status::Available(release) | Status::InstallFailed(release, _)) = self.status.clone() else { return };
         if self.busy() {
             return;
         }
@@ -180,45 +170,22 @@ fn latest() -> Result<Option<Release>, String> {
     if let Some(file) = std::env::var_os("PULSE_DEBUG_RELEASE") {
         return parse_release(&std::fs::read_to_string(file).map_err(|e| e.to_string())?);
     }
-    let mut resp = crate::net::api()
-        .get(LATEST)
-        .header("Accept", "application/vnd.github+json")
-        .call()
-        .map_err(crate::net::friendly_error)?;
-    let body = resp
-        .body_mut()
-        .with_config()
-        .limit(4 * 1024 * 1024)
-        .read_to_string()
-        .map_err(|e| format!("Couldn't read GitHub's answer ({e})"))?;
+    let mut resp = crate::net::api().get(LATEST).header("Accept", "application/vnd.github+json").call().map_err(crate::net::friendly_error)?;
+    let body = resp.body_mut().with_config().limit(4 * 1024 * 1024).read_to_string().map_err(|e| format!("Couldn't read GitHub's answer ({e})"))?;
     parse_release(&body)
 }
 
 fn parse_release(json: &str) -> Result<Option<Release>, String> {
-    let v: serde_json::Value =
-        serde_json::from_str(json).map_err(|_| "GitHub's answer didn't make sense".to_string())?;
-    let version = v["tag_name"]
-        .as_str()
-        .unwrap_or_default()
-        .trim_start_matches('v')
-        .to_string();
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|_| "GitHub's answer didn't make sense".to_string())?;
+    let version = v["tag_name"].as_str().unwrap_or_default().trim_start_matches('v').to_string();
     let assets = v["assets"].as_array().cloned().unwrap_or_default();
-    let installer = assets.iter().find(|a| {
-        a["name"]
-            .as_str()
-            .is_some_and(|n| n.starts_with("PulseSetup-") && n.ends_with(".exe"))
-    });
-    let Some(installer) = installer else {
-        return Ok(None);
-    };
+    let installer = assets.iter().find(|a| a["name"].as_str().is_some_and(|n| n.starts_with("PulseSetup-") && n.ends_with(".exe")));
+    let Some(installer) = installer else { return Ok(None) };
     let notes = v["body"].as_str().unwrap_or_default();
     Ok(Some(Release {
         version,
         page: v["html_url"].as_str().unwrap_or(RELEASES_PAGE).to_string(),
-        installer_url: installer["browser_download_url"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
+        installer_url: installer["browser_download_url"].as_str().unwrap_or_default().to_string(),
         installer_name: installer["name"].as_str().unwrap_or_default().to_string(),
         size: installer["size"].as_u64().unwrap_or(0),
         digest: installer["digest"].as_str().map(str::to_owned),
@@ -231,10 +198,7 @@ fn signature_in(notes: &str) -> Option<Vec<u8>> {
     use base64::Engine;
     let start = notes.find(SIGNATURE_TAG)? + SIGNATURE_TAG.len();
     let b64 = notes[start..].split("-->").next()?.trim();
-    base64::engine::general_purpose::STANDARD
-        .decode(b64)
-        .ok()
-        .filter(|s| s.len() == 64)
+    base64::engine::general_purpose::STANDARD.decode(b64).ok().filter(|s| s.len() == 64)
 }
 
 /// "0.4.1" newer than "0.4.0"? Anything after a "-" or "+" is ignored.
@@ -250,28 +214,17 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
 
 /// Whether `signature` is Pulse's release key's signature of `bytes`.
 fn signature_ok(bytes: &[u8], signature: &[u8]) -> bool {
-    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, PUBLIC_KEY)
-        .verify(bytes, signature)
-        .is_ok()
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, PUBLIC_KEY).verify(bytes, signature).is_ok()
 }
 
 /// Downloads the installer, checks it, and saves it in the temp folder.
 fn download_checked(r: &Release, progress: &dyn Fn(f32)) -> Result<PathBuf, String> {
     if r.signature.is_none() {
-        return Err(crate::i18n::tr(
-            "This release isn't signed, so Pulse won't install it by itself.",
-        )
-        .to_string());
+        return Err(crate::i18n::tr("This release isn't signed, so Pulse won't install it by itself.").to_string());
     }
     // Only GitHub's own addresses: the file must come from the release.
-    if !r
-        .installer_url
-        .starts_with("https://github.com/mercy123xz/Pulse/releases/download/")
-    {
-        return Err(crate::i18n::tr(
-            "The installer isn't on Pulse's release page, so Pulse won't run it.",
-        )
-        .to_string());
+    if !r.installer_url.starts_with("https://github.com/mercy123xz/Pulse/releases/download/") {
+        return Err(crate::i18n::tr("The installer isn't on Pulse's release page, so Pulse won't run it.").to_string());
     }
     let bytes = crate::net::download(&r.installer_url, |done, total| {
         let total = total.unwrap_or(r.size).max(1);
@@ -282,16 +235,8 @@ fn download_checked(r: &Release, progress: &dyn Fn(f32)) -> Result<PathBuf, Stri
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't save the update ({e})"))?;
     // The name comes from GitHub: keep only plain characters.
-    let name: String = r
-        .installer_name
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
-        .collect();
-    let path = dir.join(if name.ends_with(".exe") {
-        name
-    } else {
-        "PulseSetup.exe".into()
-    });
+    let name: String = r.installer_name.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')).collect();
+    let path = dir.join(if name.ends_with(".exe") { name } else { "PulseSetup.exe".into() });
     std::fs::write(&path, &bytes).map_err(|e| format!("Couldn't save the update ({e})"))?;
     Ok(path)
 }
@@ -301,25 +246,15 @@ fn download_checked(r: &Release, progress: &dyn Fn(f32)) -> Result<PathBuf, Stri
 fn check_installer(r: &Release, bytes: &[u8]) -> Result<(), String> {
     use sha2::{Digest, Sha256};
     let tr = crate::i18n::tr;
-    let signature = r.signature.as_deref().ok_or_else(|| {
-        tr("This release isn't signed, so Pulse won't install it by itself.").to_string()
-    })?;
+    let signature = r.signature.as_deref().ok_or_else(|| tr("This release isn't signed, so Pulse won't install it by itself.").to_string())?;
     if r.size > 0 && bytes.len() as u64 != r.size {
         return Err(tr("The download was incomplete. Try again.").to_string());
     }
     if let Some(digest) = &r.digest {
-        let expected = digest
-            .strip_prefix("sha256:")
-            .unwrap_or(digest)
-            .to_ascii_lowercase();
-        let got: String = Sha256::digest(bytes)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let expected = digest.strip_prefix("sha256:").unwrap_or(digest).to_ascii_lowercase();
+        let got: String = Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect();
         if got != expected {
-            return Err(
-                tr("The download doesn't match the release. It was not installed.").to_string(),
-            );
+            return Err(tr("The download doesn't match the release. It was not installed.").to_string());
         }
     }
     if !signature_ok(bytes, signature) {
@@ -331,25 +266,15 @@ fn check_installer(r: &Release, bytes: &[u8]) -> Result<(), String> {
 /// Whether this copy of Pulse came from the installer (its uninstaller sits next to it).
 /// A copy run from anywhere else is left alone: updating it means downloading again.
 pub fn installed() -> bool {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("unins000.exe").is_file()))
-        .unwrap_or(false)
+    std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("unins000.exe").is_file())).unwrap_or(false)
 }
 
 /// Runs the installer without its windows. It closes Pulse if needed, replaces it,
 /// and starts the new version.
 fn run_installer(path: &Path) -> Result<(), String> {
     let mut cmd = std::process::Command::new(path);
-    cmd.args([
-        "/VERYSILENT",
-        "/SUPPRESSMSGBOXES",
-        "/NORESTART",
-        "/CLOSEAPPLICATIONS",
-    ]);
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|e| format!("Couldn't start the installer ({e})"))
+    cmd.args(["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"]);
+    cmd.spawn().map(|_| ()).map_err(|e| format!("Couldn't start the installer ({e})"))
 }
 
 #[cfg(test)]
@@ -372,33 +297,22 @@ mod tests {
         // Signed with the release key by `openssl pkeyutl -sign -rawin`, as the workflow does.
         let sig = test_signature();
         assert!(signature_ok(b"Pulse update signature test", &sig));
-        assert!(
-            !signature_ok(b"Pulse update signature test!", &sig),
-            "a changed file fails"
-        );
+        assert!(!signature_ok(b"Pulse update signature test!", &sig), "a changed file fails");
         let mut bad = sig.clone();
         bad[0] ^= 1;
-        assert!(
-            !signature_ok(b"Pulse update signature test", &bad),
-            "a changed signature fails"
-        );
+        assert!(!signature_ok(b"Pulse update signature test", &bad), "a changed signature fails");
     }
 
     fn test_signature() -> Vec<u8> {
         let hex = "64504ff71a066e50e2deb401d05b6cc7ad6c6cde149ac9e7468547e9bdc42278dcf644190e9556894d4941c2b67f84931a98e1212435a8297efac7b61237e708";
-        (0..64)
-            .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).unwrap())
-            .collect()
+        (0..64).map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).unwrap()).collect()
     }
 
     #[test]
     fn only_an_untouched_signed_installer_passes() {
         use sha2::{Digest, Sha256};
         let file = b"Pulse update signature test";
-        let digest: String = Sha256::digest(file)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let digest: String = Sha256::digest(file).iter().map(|b| format!("{b:02x}")).collect();
         let release = Release {
             version: "9.9.9".into(),
             page: String::new(),
@@ -409,36 +323,15 @@ mod tests {
             signature: Some(test_signature()),
         };
         assert!(check_installer(&release, file).is_ok());
-        assert!(
-            check_installer(&release, b"Pulse update signature tes").is_err(),
-            "wrong size"
-        );
-        assert!(
-            check_installer(&release, b"Pulse update signature tesT").is_err(),
-            "changed file, same size"
-        );
-        let no_digest = Release {
-            digest: None,
-            ..release.clone()
-        };
+        assert!(check_installer(&release, b"Pulse update signature tes").is_err(), "wrong size");
+        assert!(check_installer(&release, b"Pulse update signature tesT").is_err(), "changed file, same size");
+        let no_digest = Release { digest: None, ..release.clone() };
         assert!(check_installer(&no_digest, file).is_ok());
-        assert!(
-            check_installer(&no_digest, b"Pulse update signature tesT").is_err(),
-            "the signature alone catches it"
-        );
-        let wrong_digest = Release {
-            digest: Some("sha256:00".into()),
-            ..release.clone()
-        };
+        assert!(check_installer(&no_digest, b"Pulse update signature tesT").is_err(), "the signature alone catches it");
+        let wrong_digest = Release { digest: Some("sha256:00".into()), ..release.clone() };
         assert!(check_installer(&wrong_digest, file).is_err());
-        let unsigned = Release {
-            signature: None,
-            ..release
-        };
-        assert!(
-            check_installer(&unsigned, file).is_err(),
-            "never run an unsigned file"
-        );
+        let unsigned = Release { signature: None, ..release };
+        assert!(check_installer(&unsigned, file).is_err(), "never run an unsigned file");
     }
 
     #[test]
@@ -454,15 +347,8 @@ mod tests {
         assert_eq!(r.version, "0.4.0");
         assert!(r.signed());
         assert_eq!(r.size, 123);
-        let unsigned = parse_release(&json.replace(SIGNATURE_TAG, "<!-- "))
-            .unwrap()
-            .unwrap();
+        let unsigned = parse_release(&json.replace(SIGNATURE_TAG, "<!-- ")).unwrap().unwrap();
         assert!(!unsigned.signed());
-        assert!(
-            parse_release(r#"{"tag_name":"v1.0.0","assets":[]}"#)
-                .unwrap()
-                .is_none(),
-            "no installer, nothing to offer"
-        );
+        assert!(parse_release(r#"{"tag_name":"v1.0.0","assets":[]}"#).unwrap().is_none(), "no installer, nothing to offer");
     }
 }

@@ -6,9 +6,7 @@ use crate::app::{App, Page, Place, Route, Visit, now_unix, top_artists};
 use crate::i18n::tr;
 use crate::theme::*;
 use crate::widgets::*;
-use egui::{
-    Align, Color32, CornerRadius, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2, pos2, vec2,
-};
+use egui::{Align, Color32, CornerRadius, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2, pos2, vec2};
 use egui_phosphor::regular as icon;
 
 /// "Good evening, tacent" by the time of day.
@@ -20,11 +18,7 @@ fn greeting(name: &str) -> String {
         12..=17 => "Good afternoon",
         _ => "Good evening",
     };
-    if name.is_empty() {
-        tr(part).to_string()
-    } else {
-        format!("{}, {name}", tr(part))
-    }
+    if name.is_empty() { tr(part).to_string() } else { format!("{}, {name}", tr(part)) }
 }
 
 /// The local hour (0–23), from Windows when possible.
@@ -45,16 +39,7 @@ fn chrono_hour() -> u32 {
         unsafe extern "system" {
             fn GetLocalTime(t: *mut SystemTime);
         }
-        let mut t = SystemTime {
-            year: 0,
-            month: 0,
-            dow: 0,
-            day: 0,
-            hour: 12,
-            minute: 0,
-            second: 0,
-            ms: 0,
-        };
+        let mut t = SystemTime { year: 0, month: 0, dow: 0, day: 0, hour: 12, minute: 0, second: 0, ms: 0 };
         // SAFETY: GetLocalTime only writes the struct we pass.
         unsafe { GetLocalTime(&mut t) };
         t.hour as u32
@@ -67,43 +52,27 @@ fn chrono_hour() -> u32 {
 
 /// True when there's enough listening history to make the home page personal.
 pub fn has_history(app: &App) -> bool {
-    !app.saved.played_artists.is_empty()
-        || !app.saved.liked.is_empty()
-        || !app.saved.playlists.is_empty()
+    !app.saved.played_artists.is_empty() || !app.saved.liked.is_empty() || !app.saved.playlists.is_empty()
 }
 
 /// The home page: your shortcuts, Orbits, recent albums and pages, then discovery.
 pub fn home(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     ui.add_space(12.0);
-    ui.label(
-        RichText::new(greeting(&app.saved.profile.name))
-            .font(heavy(28.0))
-            .color(pal().text),
-    );
+    ui.label(RichText::new(greeting(&app.saved.profile.name)).font(heavy(28.0)).color(pal().text));
     ui.add_space(12.0);
 
     // ---- Quick tiles: Liked Songs, your playlists, recent albums (up to 8)
     let mut tiles: Vec<(Place, String, Option<String>, &'static str)> = vec![];
     if !app.saved.liked.is_empty() {
-        tiles.push((
-            Place::Liked,
-            tr("Liked Songs").to_string(),
-            Some(LIKED_ART.to_owned()),
-            icon::HEART,
-        ));
+        tiles.push((Place::Liked, tr("Liked Songs").to_string(), Some(LIKED_ART.to_owned()), icon::HEART));
     }
     for v in &app.saved.visits {
         if tiles.len() >= 8 {
             break;
         }
         if v.place != Place::Liked && !tiles.iter().any(|t| t.0 == v.place) {
-            tiles.push((
-                v.place.clone(),
-                v.title.clone(),
-                v.image.clone(),
-                icon::MUSIC_NOTES,
-            ));
+            tiles.push((v.place.clone(), v.title.clone(), v.image.clone(), icon::MUSIC_NOTES));
         }
     }
     for (i, p) in app.saved.playlists.iter().enumerate() {
@@ -122,12 +91,7 @@ pub fn home(app: &mut App, ui: &mut Ui) {
     }
     for a in &app.saved.played_albums {
         if tiles.len() < 8 && !tiles.iter().any(|t| t.0 == a.place) {
-            tiles.push((
-                a.place.clone(),
-                a.title.clone(),
-                a.image.clone(),
-                icon::VINYL_RECORD,
-            ));
+            tiles.push((a.place.clone(), a.title.clone(), a.image.clone(), icon::VINYL_RECORD));
         }
     }
     if !tiles.is_empty() {
@@ -140,14 +104,7 @@ pub fn home(app: &mut App, ui: &mut Ui) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = gap;
                 for (place, title, art, glyph) in row {
-                    match quick_tile(
-                        ui,
-                        w,
-                        art.as_deref(),
-                        glyph,
-                        title,
-                        egui::Id::new(("tile", format!("{place:?}"))),
-                    ) {
+                    match quick_tile(ui, w, art.as_deref(), glyph, title, egui::Id::new(("tile", format!("{place:?}")))) {
                         CardClick::Open => action = Some((place.clone(), false)),
                         CardClick::Play => action = Some((place.clone(), true)),
                         CardClick::Preview => preview = Some(place.clone()),
@@ -163,28 +120,16 @@ pub fn home(app: &mut App, ui: &mut Ui) {
         if let Some((place, play)) = action
             && let Some(route) = app.route_for(&place)
         {
-            if play {
-                open_and_play(app, route, &ctx)
-            } else {
-                app.navigate(route, &ctx)
-            }
+            if play { open_and_play(app, route, &ctx) } else { app.navigate(route, &ctx) }
         }
     }
 
     // ---- Orbits: a mix around each of the artists you play most
-    let top: Vec<Visit> = top_artists(&app.saved.played_artists, now_unix())
-        .into_iter()
-        .take(6)
-        .cloned()
-        .collect();
+    let top: Vec<Visit> = top_artists(&app.saved.played_artists, now_unix()).into_iter().take(6).cloned().collect();
     if !top.is_empty() {
         ui.add_space(12.0);
         section_title(ui, "Your Orbits", None);
-        ui.label(
-            RichText::new(tr("Mixes that circle the artists you play most"))
-                .font(regular(12.5))
-                .color(pal().text_muted),
-        );
+        ui.label(RichText::new(tr("Mixes that circle the artists you play most")).font(regular(12.5)).color(pal().text_muted));
         ui.add_space(4.0);
         let mut action = None;
         let mut preview = None;
@@ -192,14 +137,8 @@ pub fn home(app: &mut App, ui: &mut Ui) {
         let items: Vec<(usize, &Visit)> = top.iter().enumerate().collect();
         card_grid(ui, &items, Some(1), |ui, w, (i, a)| {
             let sub = format!("{} {}", a.title, tr("and similar artists"));
-            let info = CardInfo {
-                id: egui::Id::new(("mix", *i)),
-                art: a.image.as_deref(),
-                title: &labels[*i],
-                subtitle: sub,
-                round: false,
-                badge: Some(tr("Orbit")),
-            };
+            let info =
+                CardInfo { id: egui::Id::new(("mix", *i)), art: a.image.as_deref(), title: &labels[*i], subtitle: sub, round: false, badge: Some(tr("Orbit")) };
             if let Place::Artist(id) = &a.place {
                 match card(ui, w, &info) {
                     CardClick::Open => action = Some((id.clone(), false)),
@@ -221,10 +160,7 @@ pub fn home(app: &mut App, ui: &mut Ui) {
 
     // ---- Jump back in: albums and artists you played lately
     let mut jump: Vec<Visit> = vec![];
-    let (mut al, mut ar) = (
-        app.saved.played_albums.iter(),
-        app.saved.played_artists.iter(),
-    );
+    let (mut al, mut ar) = (app.saved.played_albums.iter(), app.saved.played_artists.iter());
     while jump.len() < 12 {
         let a = al.next();
         let b = if jump.len() % 3 == 2 { ar.next() } else { None };
@@ -252,59 +188,25 @@ pub fn home(app: &mut App, ui: &mut Ui) {
 }
 
 /// A wide shortcut tile (picture + name), like Spotify's top-of-home grid.
-fn quick_tile(
-    ui: &mut Ui,
-    w: f32,
-    art: Option<&str>,
-    glyph: &str,
-    title: &str,
-    id: egui::Id,
-) -> CardClick {
+fn quick_tile(ui: &mut Ui, w: f32, art: Option<&str>, glyph: &str, title: &str, id: egui::Id) -> CardClick {
     let (rect, resp) = ui.allocate_exact_size(vec2(w, 56.0), Sense::click());
     a11y(ui, &resp, egui::WidgetType::Button, || title.to_owned());
     focus_ring(ui, &resp);
     // Pointing at the play button on top still counts (see `widgets::card`).
     let hovered = resp.hovered() || ui.rect_contains_pointer(rect);
-    let fill = if hovered {
-        pal().surface_active
-    } else {
-        pal().surface_hover
-    };
+    let fill = if hovered { pal().surface_active } else { pal().surface_hover };
     ui.painter().rect_filled(rect, r_md(), fill);
     let art_rect = Rect::from_min_size(rect.min, Vec2::splat(56.0));
-    let r = CornerRadius {
-        nw: r_md().nw,
-        sw: r_md().sw,
-        ne: 0,
-        se: 0,
-    };
+    let r = CornerRadius { nw: r_md().nw, sw: r_md().sw, ne: 0, se: 0 };
     if art.is_some() {
         artwork(ui, art_rect, art, r);
     } else {
         ui.painter().rect_filled(art_rect, r, pal().accent);
-        vgradient(
-            ui,
-            art_rect,
-            Color32::from_white_alpha(40),
-            Color32::TRANSPARENT,
-        );
-        paint_icon(
-            ui.painter(),
-            art_rect.center(),
-            glyph,
-            filled_icon(24.0),
-            Color32::WHITE,
-        );
+        vgradient(ui, art_rect, Color32::from_white_alpha(40), Color32::TRANSPARENT);
+        paint_icon(ui.painter(), art_rect.center(), glyph, filled_icon(24.0), Color32::WHITE);
     }
     let text_w = w - 56.0 - 64.0;
-    paint_line(
-        ui,
-        pos2(art_rect.right() + 12.0, rect.center().y - 9.0),
-        title,
-        semi(13.5),
-        pal().text,
-        text_w,
-    );
+    paint_line(ui, pos2(art_rect.right() + 12.0, rect.center().y - 9.0), title, semi(13.5), pal().text, text_w);
     let mut out = if resp.clicked() {
         CardClick::Open
     } else if hover_intent(ui, id, hovered) {
@@ -315,24 +217,11 @@ fn quick_tile(
     let t = ui.ctx().animate_bool(id.with("hover"), hovered);
     if t > 0.0 {
         let c = pos2(rect.right() - 26.0, rect.center().y);
-        let b = ui
-            .interact(
-                Rect::from_center_size(c, Vec2::splat(36.0)),
-                id.with("play"),
-                Sense::click(),
-            )
-            .on_hover_cursor(egui::CursorIcon::PointingHand);
+        let b = ui.interact(Rect::from_center_size(c, Vec2::splat(36.0)), id.with("play"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
         a11y(ui, &b, egui::WidgetType::Button, || format!("Play {title}"));
         let pb = &parts().play_button;
-        ui.painter()
-            .circle_filled(c, 17.0, pb.fill.unwrap_or(pal().accent).gamma_multiply(t));
-        paint_icon(
-            ui.painter(),
-            c,
-            icon::PLAY,
-            filled_icon(14.0),
-            pb.color.unwrap_or(Color32::WHITE).gamma_multiply(t),
-        );
+        ui.painter().circle_filled(c, 17.0, pb.fill.unwrap_or(pal().accent).gamma_multiply(t));
+        paint_icon(ui.painter(), c, icon::PLAY, filled_icon(14.0), pb.color.unwrap_or(Color32::WHITE).gamma_multiply(t));
         if b.clicked() {
             out = CardClick::Play;
         }
@@ -349,66 +238,24 @@ pub fn orbit_title(artist: &str) -> String {
 /// An Orbit page.
 pub fn mix_page(app: &mut App, ui: &mut Ui, artist_id: &str) {
     let place = Place::Artist(artist_id.to_string());
-    let seed = app
-        .saved
-        .played_artists
-        .iter()
-        .find(|a| a.place == place)
-        .cloned();
+    let seed = app.saved.played_artists.iter().find(|a| a.place == place).cloned();
     // One of the artists you play most: it's their Orbit. Anyone else: their radio.
-    let orbit = top_artists(&app.saved.played_artists, now_unix())
-        .iter()
-        .take(6)
-        .any(|a| a.place == place);
+    let orbit = top_artists(&app.saved.played_artists, now_unix()).iter().take(6).any(|a| a.place == place);
     let artist_id = artist_id.to_string();
     with_remote(app, ui, |app, ui, page| {
         let Page::Tracks(tracks) = page else { return };
         // The artist's name and picture: from your history, else from the songs themselves.
-        let from_songs = tracks
-            .iter()
-            .find(|t| t.artist.id == artist_id)
-            .map(|t| (t.artist.name.clone(), t.artist.picture.clone()));
-        let name = seed
-            .as_ref()
-            .map(|s| s.title.clone())
-            .or_else(|| from_songs.as_ref().map(|f| f.0.clone()))
-            .unwrap_or_default();
-        let image = seed
-            .as_ref()
-            .and_then(|s| s.image.clone())
-            .or_else(|| from_songs.and_then(|f| f.1));
-        let (kind, title) = if orbit {
-            (tr("Orbit"), orbit_title(&name))
-        } else {
-            (tr("Radio"), tr("{} Radio").replace("{}", &name))
-        };
+        let from_songs = tracks.iter().find(|t| t.artist.id == artist_id).map(|t| (t.artist.name.clone(), t.artist.picture.clone()));
+        let name = seed.as_ref().map(|s| s.title.clone()).or_else(|| from_songs.as_ref().map(|f| f.0.clone())).unwrap_or_default();
+        let image = seed.as_ref().and_then(|s| s.image.clone()).or_else(|| from_songs.and_then(|f| f.1));
+        let (kind, title) = if orbit { (tr("Orbit"), orbit_title(&name)) } else { (tr("Radio"), tr("{} Radio").replace("{}", &name)) };
         let n = tracks.len();
-        let sub = format!(
-            "{name} {} · {n} {}",
-            tr("and similar artists"),
-            tr(if n == 1 { "song" } else { "songs" })
-        );
+        let sub = format!("{name} {} · {n} {}", tr("and similar artists"), tr(if n == 1 { "song" } else { "songs" }));
         hero(
             ui,
-            &Hero {
-                editable: false,
-                kind,
-                title: &title,
-                subtitle: &sub,
-                art: image.as_deref(),
-                glyph: icon::PLANET,
-                round: false,
-                banner: None,
-                links: &[],
-            },
+            &Hero { editable: false, kind, title: &title, subtitle: &sub, art: image.as_deref(), glyph: icon::PLANET, round: false, banner: None, links: &[] },
         );
-        app.note_visit(
-            Place::Mix(artist_id.clone()),
-            &title,
-            if orbit { "Orbit" } else { "Radio" },
-            image.as_deref(),
-            false,
-        );
+        app.note_visit(Place::Mix(artist_id.clone()), &title, if orbit { "Orbit" } else { "Radio" }, image.as_deref(), false);
         let ctx = ui.ctx().clone();
         super::autoplay_page(app, &ctx, tracks);
         super::action_row(app, ui, tracks);
@@ -423,19 +270,9 @@ pub fn avatar(ui: &Ui, rect: Rect, app: &App) {
     match &p.picture {
         Some(pic) => artwork(ui, rect, Some(&crate::settings::file_uri(pic)), r),
         None => {
-            ui.painter()
-                .circle_filled(rect.center(), rect.width() / 2.0, pal().accent);
-            let letter = p
-                .name
-                .chars()
-                .next()
-                .map(|c| c.to_uppercase().to_string())
-                .unwrap_or_else(|| icon::USER.to_string());
-            let font = if p.name.is_empty() {
-                regular(rect.width() * 0.5)
-            } else {
-                heavy(rect.width() * 0.45)
-            };
+            ui.painter().circle_filled(rect.center(), rect.width() / 2.0, pal().accent);
+            let letter = p.name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| icon::USER.to_string());
+            let font = if p.name.is_empty() { regular(rect.width() * 0.5) } else { heavy(rect.width() * 0.45) };
             paint_icon(ui.painter(), rect.center(), letter, font, Color32::WHITE);
         }
     }
@@ -446,99 +283,34 @@ pub fn profile_page(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     ui.add_space(8.0);
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 232.0), Sense::hover());
-    ui.painter().rect_filled(
-        rect,
-        r_lg(),
-        Color32::from_rgb(14, 13, 20).lerp_to_gamma(pal().accent, 0.18),
-    );
-    vgradient(
-        ui,
-        rect.shrink(1.0),
-        pal().accent.gamma_multiply(0.25),
-        Color32::TRANSPARENT,
-    );
-    let pic = Rect::from_min_size(
-        pos2(rect.left() + 24.0, rect.center().y - 92.0),
-        Vec2::splat(184.0),
-    );
-    ui.painter().add(
-        egui::Shadow {
-            offset: [0, 10],
-            blur: 28,
-            spread: 0,
-            color: Color32::from_black_alpha(110),
-        }
-        .as_shape(pic, CornerRadius::same(92)),
-    );
+    ui.painter().rect_filled(rect, r_lg(), Color32::from_rgb(14, 13, 20).lerp_to_gamma(pal().accent, 0.18));
+    vgradient(ui, rect.shrink(1.0), pal().accent.gamma_multiply(0.25), Color32::TRANSPARENT);
+    let pic = Rect::from_min_size(pos2(rect.left() + 24.0, rect.center().y - 92.0), Vec2::splat(184.0));
+    ui.painter().add(egui::Shadow { offset: [0, 10], blur: 28, spread: 0, color: Color32::from_black_alpha(110) }.as_shape(pic, CornerRadius::same(92)));
     avatar(ui, pic, app);
-    let edit = ui
-        .interact(pic, egui::Id::new("profile_pic"), Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    let edit = ui.interact(pic, egui::Id::new("profile_pic"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
     if edit.hovered() {
-        ui.painter()
-            .circle_filled(pic.center(), 92.0, Color32::from_black_alpha(140));
-        paint_icon(
-            ui.painter(),
-            pic.center(),
-            icon::PENCIL_SIMPLE,
-            regular(40.0),
-            Color32::WHITE,
-        );
+        ui.painter().circle_filled(pic.center(), 92.0, Color32::from_black_alpha(140));
+        paint_icon(ui.painter(), pic.center(), icon::PENCIL_SIMPLE, regular(40.0), Color32::WHITE);
     }
     let tx = pic.right() + 28.0;
     let tw = rect.right() - tx - 24.0;
     let p = app.saved.profile.clone();
-    paint_line(
-        ui,
-        pos2(tx, pic.bottom() - 112.0),
-        &tr("Profile").to_uppercase(),
-        semi(11.5),
-        ON_DARK_MUTED,
-        tw,
-    );
-    let name = if p.name.is_empty() {
-        tr("Your profile").to_string()
-    } else {
-        p.name.clone()
-    };
+    paint_line(ui, pos2(tx, pic.bottom() - 112.0), &tr("Profile").to_uppercase(), semi(11.5), ON_DARK_MUTED, tw);
+    let name = if p.name.is_empty() { tr("Your profile").to_string() } else { p.name.clone() };
     let g = one_line(ui, &name, heavy(52.0), ON_DARK, tw);
     let name_rect = Rect::from_min_size(pos2(tx, pic.bottom() - 30.0 - g.size().y), g.size());
     ui.painter().galley(name_rect.min, g, ON_DARK);
     let n_pl = app.saved.playlists.len();
     let since = if p.created > 0 {
-        format!(
-            " · {} {}",
-            tr("Member since"),
-            fmt_added(p.created, u64::MAX / 2)
-                .rsplit(' ')
-                .next()
-                .unwrap_or("")
-        )
+        format!(" · {} {}", tr("Member since"), fmt_added(p.created, u64::MAX / 2).rsplit(' ').next().unwrap_or(""))
     } else {
         String::new()
     };
-    let badge = if crate::account::session().is_some_and(|s| s.supporter) {
-        format!(" · {} {}", icon::STAR, tr("Early supporter"))
-    } else {
-        String::new()
-    };
-    let stats = format!(
-        "{n_pl} {} · {} {}{since}{badge}",
-        tr(if n_pl == 1 { "playlist" } else { "playlists" }),
-        app.saved.liked.len(),
-        tr("liked songs")
-    );
-    paint_line(
-        ui,
-        pos2(tx, pic.bottom() - 20.0),
-        &stats,
-        regular(13.5),
-        ON_DARK_MUTED,
-        tw,
-    );
-    let name_click = ui
-        .interact(name_rect, egui::Id::new("profile_name"), Sense::click())
-        .on_hover_cursor(egui::CursorIcon::Text);
+    let badge = if crate::account::session().is_some_and(|s| s.supporter) { format!(" · {} {}", icon::STAR, tr("Early supporter")) } else { String::new() };
+    let stats = format!("{n_pl} {} · {} {}{since}{badge}", tr(if n_pl == 1 { "playlist" } else { "playlists" }), app.saved.liked.len(), tr("liked songs"));
+    paint_line(ui, pos2(tx, pic.bottom() - 20.0), &stats, regular(13.5), ON_DARK_MUTED, tw);
+    let name_click = ui.interact(name_rect, egui::Id::new("profile_name"), Sense::click()).on_hover_cursor(egui::CursorIcon::Text);
     if edit.clicked() || name_click.clicked() {
         app.profile_editing = Some(ProfileForm::from(&p));
     }
@@ -556,40 +328,21 @@ pub fn profile_page(app: &mut App, ui: &mut Ui) {
                 app.toast(tr("Link copied"), &ctx);
             }
             if ghost_button(ui, icon::GLOBE, "Open on the website").clicked() {
-                ctx.open_url(egui::OpenUrl::new_tab(format!(
-                    "{}&me=1",
-                    crate::account::profile_link(&s.username)
-                )));
+                ctx.open_url(egui::OpenUrl::new_tab(format!("{}&me=1", crate::account::profile_link(&s.username))));
             }
-            ui.label(
-                RichText::new(format!("@{}", s.username))
-                    .font(med(13.0))
-                    .color(pal().text_muted),
-            );
+            ui.label(RichText::new(format!("@{}", s.username)).font(med(13.0)).color(pal().text_muted));
         }
     });
     if !p.bio.is_empty() {
         ui.add_space(6.0);
-        ui.label(
-            RichText::new(&p.bio)
-                .font(regular(13.5))
-                .color(pal().text_muted),
-        );
+        ui.label(RichText::new(&p.bio).font(regular(13.5)).color(pal().text_muted));
     }
 
     // Top artists
-    let top: Vec<Visit> = top_artists(&app.saved.played_artists, now_unix())
-        .into_iter()
-        .take(12)
-        .cloned()
-        .collect();
+    let top: Vec<Visit> = top_artists(&app.saved.played_artists, now_unix()).into_iter().take(12).cloned().collect();
     if !top.is_empty() {
         section_title(ui, "Top artists", None);
-        ui.label(
-            RichText::new(tr("Only visible to you"))
-                .font(regular(12.0))
-                .color(pal().text_muted),
-        );
+        ui.label(RichText::new(tr("Only visible to you")).font(regular(12.0)).color(pal().text_muted));
         ui.add_space(4.0);
         album_grid_visits(app, ui, &top, Some(1));
     }
@@ -599,31 +352,16 @@ pub fn profile_page(app: &mut App, ui: &mut Ui) {
         section_title(ui, "Playlists", None);
         let mut share = None;
         let mut open = None;
-        let names: Vec<(usize, String, usize, Option<String>)> = app
-            .saved
-            .playlists
-            .iter()
-            .enumerate()
-            .map(|(i, pl)| (i, pl.name.clone(), pl.tracks.len(), app.playlist_art(i)))
-            .collect();
+        let names: Vec<(usize, String, usize, Option<String>)> =
+            app.saved.playlists.iter().enumerate().map(|(i, pl)| (i, pl.name.clone(), pl.tracks.len(), app.playlist_art(i))).collect();
         for (i, name, n, art) in &names {
             ui.horizontal(|ui| {
                 let (r, resp) = ui.allocate_exact_size(vec2(48.0, 48.0), Sense::click());
                 artwork(ui, r, art.as_deref(), r_sm());
                 ui.vertical(|ui| {
                     ui.add_space(6.0);
-                    let t = ui.add(
-                        egui::Label::new(RichText::new(name).font(semi(14.0)).color(pal().text))
-                            .sense(Sense::click()),
-                    );
-                    ui.label(
-                        RichText::new(format!(
-                            "{n} {}",
-                            tr(if *n == 1 { "song" } else { "songs" })
-                        ))
-                        .font(regular(12.0))
-                        .color(pal().text_muted),
-                    );
+                    let t = ui.add(egui::Label::new(RichText::new(name).font(semi(14.0)).color(pal().text)).sense(Sense::click()));
+                    ui.label(RichText::new(format!("{n} {}", tr(if *n == 1 { "song" } else { "songs" }))).font(regular(12.0)).color(pal().text_muted));
                     if t.clicked() || resp.clicked() {
                         open = Some(*i);
                     }
@@ -650,11 +388,7 @@ pub fn profile_page(app: &mut App, ui: &mut Ui) {
         && !public.playlists.is_empty()
     {
         section_title(ui, "Public playlists", None);
-        let cards: Vec<_> = public
-            .playlists
-            .iter()
-            .map(|l| l.info(&s.username))
-            .collect();
+        let cards: Vec<_> = public.playlists.iter().map(|l| l.info(&s.username)).collect();
         crate::ui::playlist_grid(app, ui, &cards, None);
     }
 
@@ -681,12 +415,7 @@ pub struct ProfileForm {
 
 impl ProfileForm {
     pub fn from(p: &crate::app::Profile) -> Self {
-        Self {
-            name: p.name.clone(),
-            bio: p.bio.clone(),
-            picture: p.picture.clone(),
-            welcome: false,
-        }
+        Self { name: p.name.clone(), bio: p.bio.clone(), picture: p.picture.clone(), welcome: false }
     }
 }
 
@@ -699,10 +428,7 @@ pub fn check_name(name: &str) -> Result<(), &'static str> {
     if n.chars().count() > 30 {
         return Err("Names can be up to 30 characters.");
     }
-    if !n
-        .chars()
-        .all(|c| c.is_alphanumeric() || matches!(c, ' ' | '_' | '.' | '-'))
-    {
+    if !n.chars().all(|c| c.is_alphanumeric() || matches!(c, ' ' | '_' | '.' | '-')) {
         return Err("Use letters, numbers, spaces, _ . or -");
     }
     Ok(())
@@ -710,9 +436,7 @@ pub fn check_name(name: &str) -> Result<(), &'static str> {
 
 /// The "Create your profile" / "Edit profile" window.
 pub fn profile_dialog(app: &mut App, ctx: &egui::Context) {
-    let Some(mut form) = app.profile_editing.take() else {
-        return;
-    };
+    let Some(mut form) = app.profile_editing.take() else { return };
     let mut keep = true;
     let mut save = false;
     egui::Modal::new(egui::Id::new("profile_form")).show(ctx, |ui| {

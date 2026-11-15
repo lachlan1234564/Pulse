@@ -12,9 +12,7 @@
 //! with the same name overrides a built-in theme. Anything missing falls back to
 //! Pulse's defaults, so a half-finished theme still works.
 
-use crate::theme::{
-    Active, DARK, HIGH_CONTRAST, HIGH_CONTRAST_LIGHT, LIGHT, LayoutOpts, Palette, PartStyle, Parts,
-};
+use crate::theme::{Active, DARK, HIGH_CONTRAST, HIGH_CONTRAST_LIGHT, LIGHT, LayoutOpts, Palette, PartStyle, Parts};
 use crate::theme::{HeroStyle, NowPlayingArt, PlayerStyle, SidebarStyle};
 use egui::{Color32, Stroke};
 use serde::Deserialize;
@@ -82,9 +80,7 @@ pub const SUPPORTERS_THEME: &str = "Founders";
 /// Whether this theme shows in the picker: the supporters' theme only for supporters,
 /// the secret one once found (and either for anyone already using it).
 pub fn offered(t: &Theme, supporter: bool, found_secret: bool, current: &str) -> bool {
-    let locked = t.builtin
-        && ((t.name == SUPPORTERS_THEME && !supporter)
-            || (t.name == SECRET_THEME && !found_secret));
+    let locked = t.builtin && ((t.name == SUPPORTERS_THEME && !supporter) || (t.name == SECRET_THEME && !found_secret));
     !locked || t.name == current
 }
 
@@ -118,10 +114,7 @@ pub fn themes_dir() -> PathBuf {
 
 /// All themes: the built-in ones, then those in the themes folder (by name).
 pub fn list() -> Vec<Theme> {
-    let mut out: Vec<Theme> = BUNDLED
-        .iter()
-        .map(|(name, ini, css, toml)| parse(name, ini, css, toml, None, true))
-        .collect();
+    let mut out: Vec<Theme> = BUNDLED.iter().map(|(name, ini, css, toml)| parse(name, ini, css, toml, None, true)).collect();
     let mut user = vec![];
     if let Ok(entries) = std::fs::read_dir(themes_dir()) {
         for e in entries.flatten() {
@@ -133,10 +126,7 @@ pub fn list() -> Vec<Theme> {
     }
     user.sort_by_key(|t| t.name.to_lowercase());
     for t in user {
-        match out
-            .iter_mut()
-            .find(|b| b.name.eq_ignore_ascii_case(&t.name))
-        {
+        match out.iter_mut().find(|b| b.name.eq_ignore_ascii_case(&t.name)) {
             Some(slot) => *slot = t,
             None => out.push(t),
         }
@@ -147,46 +137,20 @@ pub fn list() -> Vec<Theme> {
 /// Reads a theme folder. Missing files are fine.
 pub fn load_folder(dir: &Path) -> Theme {
     let read = |f: &str| std::fs::read_to_string(dir.join(f)).unwrap_or_default();
-    let name = dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("Theme")
-        .to_string();
-    parse(
-        &name,
-        &read("color.ini"),
-        &read("user.css"),
-        &read("theme.toml"),
-        Some(dir.to_path_buf()),
-        false,
-    )
+    let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("Theme").to_string();
+    parse(&name, &read("color.ini"), &read("user.css"), &read("theme.toml"), Some(dir.to_path_buf()), false)
 }
 
 /// Builds a theme from its three files' contents. Never fails: problems become warnings.
-pub fn parse(
-    folder_name: &str,
-    color_ini: &str,
-    user_css: &str,
-    theme_toml: &str,
-    folder: Option<PathBuf>,
-    builtin: bool,
-) -> Theme {
+pub fn parse(folder_name: &str, color_ini: &str, user_css: &str, theme_toml: &str, folder: Option<PathBuf>, builtin: bool) -> Theme {
     let mut warnings = vec![];
     let meta = parse_toml(theme_toml, &mut warnings);
     let mut schemes: Vec<Scheme> = parse_ini(color_ini, &mut warnings)
         .into_iter()
-        .map(|(name, vars)| Scheme {
-            palette: palette_from(&vars),
-            name,
-            vars,
-        })
+        .map(|(name, vars)| Scheme { palette: palette_from(&vars), name, vars })
         .collect();
     if schemes.is_empty() {
-        schemes.push(Scheme {
-            name: "Dark".into(),
-            palette: DARK,
-            vars: HashMap::new(),
-        });
+        schemes.push(Scheme { name: "Dark".into(), palette: DARK, vars: HashMap::new() });
     }
     for s in &schemes {
         for p in crate::theme::readability_problems(&s.palette) {
@@ -195,10 +159,7 @@ pub fn parse(
     }
     let css = parse_css(user_css, &mut warnings);
     Theme {
-        name: meta
-            .name
-            .filter(|n| !n.trim().is_empty())
-            .unwrap_or_else(|| folder_name.to_string()),
+        name: meta.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| folder_name.to_string()),
         author: meta.author.unwrap_or_default(),
         description: meta.description.unwrap_or_default(),
         schemes,
@@ -212,10 +173,7 @@ pub fn parse(
 
 impl Theme {
     pub fn scheme_index(&self, name: &str) -> usize {
-        self.schemes
-            .iter()
-            .position(|s| s.name.eq_ignore_ascii_case(name))
-            .unwrap_or(0)
+        self.schemes.iter().position(|s| s.name.eq_ignore_ascii_case(name)).unwrap_or(0)
     }
 
     /// What the drawing code uses, for one scheme. High contrast keeps the theme's
@@ -225,22 +183,13 @@ impl Theme {
         if high_contrast {
             let light = is_light(&s.palette);
             return Active {
-                palette: if light {
-                    HIGH_CONTRAST_LIGHT
-                } else {
-                    HIGH_CONTRAST
-                },
+                palette: if light { HIGH_CONTRAST_LIGHT } else { HIGH_CONTRAST },
                 parts: Parts::NONE,
                 layout: self.layout,
                 radius: self.css.radius(),
             };
         }
-        Active {
-            palette: s.palette.clone(),
-            parts: self.css.resolve(&s.vars, &s.palette),
-            layout: self.layout,
-            radius: self.css.radius(),
-        }
+        Active { palette: s.palette.clone(), parts: self.css.resolve(&s.vars, &s.palette), layout: self.layout, radius: self.css.radius() }
     }
 }
 
@@ -293,10 +242,7 @@ fn parse_toml(text: &str, warnings: &mut Vec<String>) -> Meta {
         let v = value?.trim().to_lowercase();
         let i = options.iter().position(|o| *o == v);
         if i.is_none() {
-            warnings.push(format!(
-                "theme.toml: {key} = \"{v}\" isn't an option ({})",
-                options.join(", ")
-            ));
+            warnings.push(format!("theme.toml: {key} = \"{v}\" isn't an option ({})", options.join(", ")));
         }
         i
     };
@@ -309,11 +255,7 @@ fn parse_toml(text: &str, warnings: &mut Vec<String>) -> Meta {
     if let Some(i) = pick("player", t.layout.player, &["centered", "controls-left"]) {
         layout.player = [PlayerStyle::Centered, PlayerStyle::ControlsLeft][i];
     }
-    if let Some(i) = pick(
-        "now_playing_art",
-        t.layout.now_playing_art,
-        &["bar", "sidebar-large"],
-    ) {
+    if let Some(i) = pick("now_playing_art", t.layout.now_playing_art, &["bar", "sidebar-large"]) {
         layout.now_playing_art = [NowPlayingArt::Bar, NowPlayingArt::SidebarLarge][i];
     }
     if let Some(b) = t.layout.inset {
@@ -322,12 +264,7 @@ fn parse_toml(text: &str, warnings: &mut Vec<String>) -> Meta {
     if let Some(b) = t.layout.backdrop {
         layout.backdrop = b;
     }
-    Meta {
-        name: t.name,
-        author: t.author,
-        description: t.description,
-        layout,
-    }
+    Meta { name: t.name, author: t.author, description: t.description, layout }
 }
 
 // ---------------------------------------------------------------------------
@@ -361,10 +298,7 @@ fn parse_ini(text: &str, warnings: &mut Vec<String>) -> Vec<(String, HashMap<Str
                 }
                 out.last_mut().unwrap().1.insert(key, c);
             }
-            None => warnings.push(format!(
-                "color.ini line {}: \"{value}\" isn't a color",
-                n + 1
-            )),
+            None => warnings.push(format!("color.ini line {}: \"{value}\" isn't a color", n + 1)),
         }
     }
     out.retain(|(_, vars)| !vars.is_empty());
@@ -401,10 +335,8 @@ fn palette_from(vars: &HashMap<String, Color32>) -> Palette {
         bg: main,
         sidebar,
         surface: get(&["card", "surface"]).unwrap_or_else(|| mix(main, text, 0.05)),
-        surface_hover: get(&["highlight", "surface-hover"])
-            .unwrap_or_else(|| mix(main, text, 0.09)),
-        surface_active: get(&["highlight-elevated", "selected-row", "surface-active"])
-            .unwrap_or_else(|| mix(main, text, 0.14)),
+        surface_hover: get(&["highlight", "surface-hover"]).unwrap_or_else(|| mix(main, text, 0.09)),
+        surface_active: get(&["highlight-elevated", "selected-row", "surface-active"]).unwrap_or_else(|| mix(main, text, 0.14)),
         border: get(&["border", "misc"]).unwrap_or_else(|| mix(main, text, 0.18)),
         text,
         text_muted: muted,
@@ -426,37 +358,18 @@ pub fn parse_color(s: &str) -> Option<Color32> {
         "transparent" => return Some(Color32::TRANSPARENT),
         _ => {}
     }
-    if let Some(inner) = lower
-        .strip_prefix("rgba(")
-        .or_else(|| lower.strip_prefix("rgb("))
-        .and_then(|r| r.strip_suffix(')'))
-    {
-        let parts: Vec<&str> = inner
-            .split([',', ' ', '/'])
-            .filter(|p| !p.is_empty())
-            .collect();
+    if let Some(inner) = lower.strip_prefix("rgba(").or_else(|| lower.strip_prefix("rgb(")).and_then(|r| r.strip_suffix(')')) {
+        let parts: Vec<&str> = inner.split([',', ' ', '/']).filter(|p| !p.is_empty()).collect();
         if parts.len() < 3 {
             return None;
         }
-        let ch = |p: &str| {
-            p.trim()
-                .parse::<f32>()
-                .ok()
-                .map(|v| v.clamp(0.0, 255.0) as u8)
-        };
+        let ch = |p: &str| p.trim().parse::<f32>().ok().map(|v| v.clamp(0.0, 255.0) as u8);
         let a = match parts.get(3) {
-            Some(p) if p.ends_with('%') => {
-                (p.trim_end_matches('%').parse::<f32>().ok()? / 100.0 * 255.0) as u8
-            }
+            Some(p) if p.ends_with('%') => (p.trim_end_matches('%').parse::<f32>().ok()? / 100.0 * 255.0) as u8,
             Some(p) => (p.parse::<f32>().ok()?.clamp(0.0, 1.0) * 255.0) as u8,
             None => 255,
         };
-        return Some(Color32::from_rgba_unmultiplied(
-            ch(parts[0])?,
-            ch(parts[1])?,
-            ch(parts[2])?,
-            a,
-        ));
+        return Some(Color32::from_rgba_unmultiplied(ch(parts[0])?, ch(parts[1])?, ch(parts[2])?, a));
     }
     let hex = lower.trim_start_matches('#');
     if !hex.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -466,19 +379,9 @@ pub fn parse_color(s: &str) -> Option<Color32> {
     let nib = |i: usize| u8::from_str_radix(&hex[i..i + 1], 16).ok().map(|v| v * 17);
     match hex.len() {
         3 => Some(Color32::from_rgb(nib(0)?, nib(1)?, nib(2)?)),
-        4 => Some(Color32::from_rgba_unmultiplied(
-            nib(0)?,
-            nib(1)?,
-            nib(2)?,
-            nib(3)?,
-        )),
+        4 => Some(Color32::from_rgba_unmultiplied(nib(0)?, nib(1)?, nib(2)?, nib(3)?)),
         6 => Some(Color32::from_rgb(byte(0)?, byte(2)?, byte(4)?)),
-        8 => Some(Color32::from_rgba_unmultiplied(
-            byte(0)?,
-            byte(2)?,
-            byte(4)?,
-            byte(6)?,
-        )),
+        8 => Some(Color32::from_rgba_unmultiplied(byte(0)?, byte(2)?, byte(4)?, byte(6)?)),
         _ => None,
     }
 }
@@ -513,15 +416,7 @@ struct Css {
     radius: [Option<f32>; 3],
 }
 
-pub const PART_NAMES: [&str; 7] = [
-    "sidebar",
-    "header",
-    "hero",
-    "player-bar",
-    "card",
-    "track-row",
-    "play-button",
-];
+pub const PART_NAMES: [&str; 7] = ["sidebar", "header", "hero", "player-bar", "card", "track-row", "play-button"];
 
 impl Css {
     fn radius(&self) -> [u8; 3] {
@@ -537,9 +432,7 @@ impl Css {
             }
         };
         let part = |name: &str| -> PartStyle {
-            let Some(r) = self.parts.get(name) else {
-                return PartStyle::NONE;
-            };
+            let Some(r) = self.parts.get(name) else { return PartStyle::NONE };
             let border = match (r.border_width, color(&r.border_color)) {
                 (Some(w), c) if w > 0.0 => Some(Stroke::new(w, c.unwrap_or(p.border))),
                 (None, Some(c)) => Some(Stroke::new(1.0, c)),
@@ -613,11 +506,7 @@ fn parse_css(text: &str, warnings: &mut Vec<String>) -> Css {
         let body = &rest[open + 1..open + close];
         rest = &rest[open + close + 1..];
 
-        for sel in selectors
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
+        for sel in selectors.split(',').map(str::trim).filter(|s| !s.is_empty()) {
             if sel == ":root" {
                 for (prop, value) in declarations(body) {
                     let i = match prop.as_str() {
@@ -626,9 +515,7 @@ fn parse_css(text: &str, warnings: &mut Vec<String>) -> Css {
                         "--radius-lg" => 2,
                         p if p.starts_with("--") => continue, // other variables are fine
                         p => {
-                            warnings.push(format!(
-                                "user.css: :root only takes --radius-sm/md/lg (skipped {p})"
-                            ));
+                            warnings.push(format!("user.css: :root only takes --radius-sm/md/lg (skipped {p})"));
                             continue;
                         }
                     };
@@ -636,14 +523,8 @@ fn parse_css(text: &str, warnings: &mut Vec<String>) -> Css {
                 }
                 continue;
             }
-            let Some(name) = sel
-                .strip_prefix('.')
-                .and_then(|n| PART_NAMES.iter().find(|p| **p == n))
-            else {
-                warnings.push(format!(
-                    "user.css: \"{sel}\" isn't a Pulse part ({})",
-                    PART_NAMES.map(|p| format!(".{p}")).join(" ")
-                ));
+            let Some(name) = sel.strip_prefix('.').and_then(|n| PART_NAMES.iter().find(|p| **p == n)) else {
+                warnings.push(format!("user.css: \"{sel}\" isn't a Pulse part ({})", PART_NAMES.map(|p| format!(".{p}")).join(" ")));
                 continue;
             };
             let part = css.parts.entry(name).or_default();
@@ -658,12 +539,7 @@ fn parse_css(text: &str, warnings: &mut Vec<String>) -> Css {
 fn declarations(body: &str) -> Vec<(String, String)> {
     body.split(';')
         .filter_map(|d| d.split_once(':'))
-        .map(|(k, v)| {
-            (
-                k.trim().to_lowercase(),
-                v.trim().trim_end_matches("!important").trim().to_string(),
-            )
-        })
+        .map(|(k, v)| (k.trim().to_lowercase(), v.trim().trim_end_matches("!important").trim().to_string()))
         .filter(|(k, v)| !k.is_empty() && !v.is_empty())
         .collect()
 }
@@ -677,12 +553,7 @@ fn length(v: &str) -> Option<f32> {
 fn css_color(v: &str) -> Option<CssColor> {
     let v = v.trim();
     if let Some(inner) = v.strip_prefix("var(").and_then(|r| r.strip_suffix(')')) {
-        let name = inner
-            .split(',')
-            .next()
-            .unwrap_or("")
-            .trim()
-            .trim_start_matches("--");
+        let name = inner.split(',').next().unwrap_or("").trim().trim_start_matches("--");
         let name = name.strip_prefix("spice-").unwrap_or(name);
         return Some(CssColor::Var(name.to_lowercase()));
     }
@@ -690,9 +561,7 @@ fn css_color(v: &str) -> Option<CssColor> {
 }
 
 fn apply_property(part: &mut RawPart, prop: &str, value: &str, warnings: &mut Vec<String>) {
-    let bad = |warnings: &mut Vec<String>| {
-        warnings.push(format!("user.css: can't read \"{prop}: {value}\""))
-    };
+    let bad = |warnings: &mut Vec<String>| warnings.push(format!("user.css: can't read \"{prop}: {value}\""));
     match prop {
         "background" | "background-color" => match css_color(value) {
             Some(c) => part.fill = Some(c),
@@ -736,13 +605,10 @@ fn apply_property(part: &mut RawPart, prop: &str, value: &str, warnings: &mut Ve
         },
         "font-weight" => {
             let v = value.trim().to_lowercase();
-            part.bold =
-                Some(v == "bold" || v == "bolder" || v.parse::<u32>().is_ok_and(|n| n >= 600));
+            part.bold = Some(v == "bold" || v == "bolder" || v.parse::<u32>().is_ok_and(|n| n >= 600));
         }
         "text-transform" => part.uppercase = Some(value.trim().eq_ignore_ascii_case("uppercase")),
-        other => warnings.push(format!(
-            "user.css: Pulse doesn't support \"{other}\" (skipped)"
-        )),
+        other => warnings.push(format!("user.css: Pulse doesn't support \"{other}\" (skipped)")),
     }
 }
 
@@ -781,9 +647,7 @@ fn split_css_words(v: &str) -> Vec<String> {
 
 /// Watches the themes folder; the receiver gets a message whenever a file changes,
 /// so theme makers see their edits right away.
-pub fn watch(
-    ctx: &egui::Context,
-) -> Option<(notify::RecommendedWatcher, std::sync::mpsc::Receiver<()>)> {
+pub fn watch(ctx: &egui::Context) -> Option<(notify::RecommendedWatcher, std::sync::mpsc::Receiver<()>)> {
     use notify::Watcher;
     let dir = themes_dir();
     std::fs::create_dir_all(&dir).ok()?;
@@ -812,22 +676,11 @@ fn write_readme(dir: &Path) {
 
 /// Copies a built-in theme into the themes folder so it can be edited.
 pub fn copy_builtin(name: &str) -> Result<PathBuf, String> {
-    let (_, ini, css, toml) = BUNDLED
-        .iter()
-        .find(|b| b.0 == name)
-        .ok_or("Not a built-in theme")?;
+    let (_, ini, css, toml) = BUNDLED.iter().find(|b| b.0 == name).ok_or("Not a built-in theme")?;
     let dir = themes_dir().join(format!("{name} (my copy)"));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let toml = toml.replacen(
-        &format!("name = \"{name}\""),
-        &format!("name = \"{name} (my copy)\""),
-        1,
-    );
-    for (file, text) in [
-        ("color.ini", *ini),
-        ("user.css", *css),
-        ("theme.toml", toml.as_str()),
-    ] {
+    let toml = toml.replacen(&format!("name = \"{name}\""), &format!("name = \"{name} (my copy)\""), 1);
+    for (file, text) in [("color.ini", *ini), ("user.css", *css), ("theme.toml", toml.as_str())] {
         std::fs::write(dir.join(file), text).map_err(|e| e.to_string())?;
     }
     Ok(dir)
@@ -887,23 +740,14 @@ mod tests {
     fn every_bundled_scheme_is_readable() {
         for t in list().into_iter().filter(|t| t.builtin) {
             assert!(t.warnings.is_empty(), "{}: {:?}", t.name, t.warnings);
-            assert!(
-                t.schemes.len() >= 2,
-                "{} should have a dark and a light scheme",
-                t.name
-            );
+            assert!(t.schemes.len() >= 2, "{} should have a dark and a light scheme", t.name);
         }
     }
 
     #[test]
     fn bundled_themes_load_their_layouts() {
         let mut w = vec![];
-        assert_eq!(
-            parse_toml("[layout]\nplayer = \"controls-left\"", &mut w)
-                .layout
-                .player,
-            PlayerStyle::ControlsLeft
-        );
+        assert_eq!(parse_toml("[layout]\nplayer = \"controls-left\"", &mut w).layout.player, PlayerStyle::ControlsLeft);
         let all = list();
         let get = |n: &str| all.iter().find(|t| t.name == n).unwrap();
         assert_eq!(get("Lunar").layout.sidebar, SidebarStyle::Icons);
@@ -913,23 +757,12 @@ mod tests {
         assert!(!get("Dreary Mono").layout.backdrop);
         let founders = get(SUPPORTERS_THEME);
         assert!(founders.layout.inset && founders.builtin);
-        assert!(
-            !offered(founders, false, true, "Default")
-                && offered(founders, true, false, "Default")
-                && offered(founders, false, false, "Founders")
-        );
+        assert!(!offered(founders, false, true, "Default") && offered(founders, true, false, "Default") && offered(founders, false, false, "Founders"));
         let tung = get(SECRET_THEME);
         assert!(!offered(tung, true, false, "Default") && offered(tung, false, true, "Default"));
-        assert!(
-            finds_secret("Tung Tung Tung Sahur")
-                && finds_secret("tungtungtung")
-                && !finds_secret("tung")
-        );
+        assert!(finds_secret("Tung Tung Tung Sahur") && finds_secret("tungtungtung") && !finds_secret("tung"));
         assert!(offered(get("Lunar"), false, false, "Default"));
-        assert_eq!(
-            get("Blossom").layout.now_playing_art,
-            NowPlayingArt::SidebarLarge
-        );
+        assert_eq!(get("Blossom").layout.now_playing_art, NowPlayingArt::SidebarLarge);
         assert_eq!(get("Dreary Mono").layout.player, PlayerStyle::Centered);
         let mono = get("Dreary Mono").active(0, false);
         assert_eq!(mono.radius, [2, 2, 4]);
@@ -963,29 +796,13 @@ mod tests {
         assert_eq!(parts.hero.radius, Some(18));
         assert_eq!(parts.hero.uppercase, Some(true));
         assert_eq!(parts.hero.bold, Some(true));
-        assert_eq!(
-            parts.player_bar.border,
-            Some(Stroke::new(1.0, Color32::from_rgb(10, 20, 30)))
-        );
+        assert_eq!(parts.player_bar.border, Some(Stroke::new(1.0, Color32::from_rgb(10, 20, 30))));
         assert_eq!(w.len(), 3, "box-shadow twice and .nope: {w:?}");
     }
 
     #[test]
     fn broken_files_never_crash() {
-        let junk = [
-            "",
-            "{{{{",
-            "}}}",
-            ".card {",
-            ":root { --radius-sm: -5px }",
-            "[",
-            "=",
-            "main = ",
-            "[x]\nmain = #12",
-            "name = [1, 2",
-            "\u{0}\u{ffff}",
-            ".card { background: var( ; color: rgb(1) }",
-        ];
+        let junk = ["", "{{{{", "}}}", ".card {", ":root { --radius-sm: -5px }", "[", "=", "main = ", "[x]\nmain = #12", "name = [1, 2", "\u{0}\u{ffff}", ".card { background: var( ; color: rgb(1) }"];
         for a in junk {
             for b in junk {
                 let t = parse("x", a, b, a, None, false);
@@ -998,14 +815,8 @@ mod tests {
     #[test]
     fn colors() {
         assert_eq!(parse_color("#fff"), Some(Color32::WHITE));
-        assert_eq!(
-            parse_color("1db954"),
-            Some(Color32::from_rgb(0x1d, 0xb9, 0x54))
-        );
-        assert_eq!(
-            parse_color("rgba(255, 0, 0, 0.5)"),
-            Some(Color32::from_rgba_unmultiplied(255, 0, 0, 127))
-        );
+        assert_eq!(parse_color("1db954"), Some(Color32::from_rgb(0x1d, 0xb9, 0x54)));
+        assert_eq!(parse_color("rgba(255, 0, 0, 0.5)"), Some(Color32::from_rgba_unmultiplied(255, 0, 0, 127)));
         assert_eq!(parse_color("nope"), None);
         assert_eq!(parse_color("#12345"), None);
     }

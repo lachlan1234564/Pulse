@@ -61,10 +61,7 @@ pub struct ArtLoader {
 impl ArtLoader {
     pub fn install(ctx: &egui::Context) -> Arc<ArtLoader> {
         let queue = Arc::new(Queue::default());
-        let loader = Arc::new(ArtLoader {
-            entries: Mutex::default(),
-            queue: queue.clone(),
-        });
+        let loader = Arc::new(ArtLoader { entries: Mutex::default(), queue: queue.clone() });
         for n in 0..WORKERS {
             let queue = queue.clone();
             let weak = Arc::downgrade(&loader);
@@ -85,18 +82,14 @@ impl ArtLoader {
                             continue;
                         }
                         // A broken picture must not take a worker down with it.
-                        let result = std::panic::catch_unwind(|| fetch(&uri))
-                            .unwrap_or_else(|_| Err("unreadable picture".into()));
+                        let result = std::panic::catch_unwind(|| fetch(&uri)).unwrap_or_else(|_| Err("unreadable picture".into()));
                         let mut map = loader.entries();
                         // Forgotten while it downloaded: don't keep it.
                         if map.contains_key(&uri) {
-                            map.insert(
-                                uri,
-                                match result {
-                                    Ok(b) => Entry::Ready(b.into()),
-                                    Err(e) => Entry::Failed(e, Instant::now()),
-                                },
-                            );
+                            map.insert(uri, match result {
+                                Ok(b) => Entry::Ready(b.into()),
+                                Err(e) => Entry::Failed(e, Instant::now()),
+                            });
                         }
                         drop(map);
                         ctx.request_repaint();
@@ -130,10 +123,7 @@ const MAX_PIXELS: u64 = 120_000_000;
 /// A graphics card takes pictures only up to a certain size (8192 pixels a side with
 /// DirectX), and a bigger one used to close Pulse.
 pub fn fit(bytes: Vec<u8>) -> Result<Vec<u8>, String> {
-    let dims = image::ImageReader::new(std::io::Cursor::new(&bytes))
-        .with_guessed_format()
-        .ok()
-        .and_then(|r| r.into_dimensions().ok());
+    let dims = image::ImageReader::new(std::io::Cursor::new(&bytes)).with_guessed_format().ok().and_then(|r| r.into_dimensions().ok());
     let Some((w, h)) = dims else { return Ok(bytes) };
     if w.max(h) <= MAX_SIDE {
         return Ok(bytes);
@@ -141,12 +131,9 @@ pub fn fit(bytes: Vec<u8>) -> Result<Vec<u8>, String> {
     if too_many_pixels(w, h) {
         return Err(format!("picture too large ({w}×{h})"));
     }
-    let img = image::load_from_memory(&bytes)
-        .map_err(|e| e.to_string())?
-        .thumbnail(MAX_SIDE, MAX_SIDE);
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?.thumbnail(MAX_SIDE, MAX_SIDE);
     let mut out = std::io::Cursor::new(Vec::new());
-    img.write_to(&mut out, image::ImageFormat::Png)
-        .map_err(|e| e.to_string())?;
+    img.write_to(&mut out, image::ImageFormat::Png).map_err(|e| e.to_string())?;
     Ok(out.into_inner())
 }
 
@@ -159,11 +146,7 @@ fn local_path(uri: &str) -> Option<PathBuf> {
     let rest = uri.strip_prefix("file://")?;
     let b = rest.as_bytes();
     // "/C:/…": drop the slash before the drive letter.
-    let rest = if b.len() > 2 && b[0] == b'/' && b[1].is_ascii_alphabetic() && b[2] == b':' {
-        &rest[1..]
-    } else {
-        rest
-    };
+    let rest = if b.len() > 2 && b[0] == b'/' && b[1].is_ascii_alphabetic() && b[2] == b':' { &rest[1..] } else { rest };
     Some(PathBuf::from(rest))
 }
 
@@ -213,24 +196,13 @@ impl BytesLoader for ArtLoader {
     }
 
     fn load(&self, ctx: &egui::Context, uri: &str) -> BytesLoadResult {
-        if !(uri.starts_with("https://")
-            || uri.starts_with("http://")
-            || uri.starts_with("file://"))
-        {
+        if !(uri.starts_with("https://") || uri.starts_with("http://") || uri.starts_with("file://")) {
             return Err(LoadError::NotSupported);
         }
         let mut map = self.entries();
         match map.get(uri) {
-            Some(Entry::Ready(b)) => {
-                return Ok(BytesPoll::Ready {
-                    size: None,
-                    bytes: Bytes::Shared(b.clone()),
-                    mime: mime_of(b),
-                });
-            }
-            Some(Entry::Loading(since)) if since.elapsed() < STUCK_AFTER => {
-                return Ok(BytesPoll::Pending { size: None });
-            }
+            Some(Entry::Ready(b)) => return Ok(BytesPoll::Ready { size: None, bytes: Bytes::Shared(b.clone()), mime: mime_of(b) }),
+            Some(Entry::Loading(since)) if since.elapsed() < STUCK_AFTER => return Ok(BytesPoll::Pending { size: None }),
             Some(Entry::Failed(e, at)) if at.elapsed() < RETRY_AFTER => {
                 // Look again once it's time to try again.
                 ctx.request_repaint_after(RETRY_AFTER);
@@ -289,11 +261,7 @@ pub fn drawn(uri: &str) {
 pub fn sweep(ctx: &egui::Context) {
     let stale: Vec<String> = {
         let mut m = last_drawn().lock().unwrap();
-        let stale: Vec<String> = m
-            .iter()
-            .filter(|(_, at)| at.elapsed() > UNUSED_FOR)
-            .map(|(u, _)| u.clone())
-            .collect();
+        let stale: Vec<String> = m.iter().filter(|(_, at)| at.elapsed() > UNUSED_FOR).map(|(u, _)| u.clone()).collect();
         for u in &stale {
             m.remove(u);
         }
@@ -317,28 +285,17 @@ pub fn set_limit_mb(mb: u64) {
 
 /// Keeps the picture folder under the limit.
 pub fn trim_disk() {
-    trim_dir(
-        &dir(),
-        LIMIT_MB.load(std::sync::atomic::Ordering::Relaxed) * 1024 * 1024,
-    );
+    trim_dir(&dir(), LIMIT_MB.load(std::sync::atomic::Ordering::Relaxed) * 1024 * 1024);
 }
 
 /// Removes the least recently used files until the folder is under 80% of `limit` bytes.
 pub fn trim_dir(folder: &std::path::Path, limit: u64) {
-    let Ok(read) = std::fs::read_dir(folder) else {
-        return;
-    };
+    let Ok(read) = std::fs::read_dir(folder) else { return };
     let mut files: Vec<(SystemTime, u64, PathBuf)> = read
         .flatten()
         .filter_map(|e| {
             let m = e.metadata().ok()?;
-            m.is_file().then(|| {
-                (
-                    m.modified().unwrap_or(SystemTime::UNIX_EPOCH),
-                    m.len(),
-                    e.path(),
-                )
-            })
+            m.is_file().then(|| (m.modified().unwrap_or(SystemTime::UNIX_EPOCH), m.len(), e.path()))
         })
         .collect();
     let mut total: u64 = files.iter().map(|f| f.1).sum();
@@ -364,10 +321,7 @@ mod tests {
     fn picture_types_are_recognized() {
         assert_eq!(mime_of(&[0xFF, 0xD8, 0xFF]).as_deref(), Some("image/jpeg"));
         assert_eq!(mime_of(b"\x89PNG\r\n").as_deref(), Some("image/png"));
-        assert_eq!(
-            mime_of(b"RIFF\0\0\0\0WEBPVP8 ").as_deref(),
-            Some("image/webp")
-        );
+        assert_eq!(mime_of(b"RIFF\0\0\0\0WEBPVP8 ").as_deref(), Some("image/webp"));
         assert_eq!(mime_of(b"<html>"), None);
     }
 
@@ -386,8 +340,7 @@ mod tests {
         std::fs::write(&old, vec![0u8; 1200]).unwrap();
         std::fs::write(&new, vec![0u8; 1200]).unwrap();
         let f = std::fs::File::options().append(true).open(&old).unwrap();
-        f.set_modified(SystemTime::now() - Duration::from_secs(3600))
-            .unwrap();
+        f.set_modified(SystemTime::now() - Duration::from_secs(3600)).unwrap();
         trim_dir(&tmp, 2000);
         assert!(!old.exists() && new.exists());
         let _ = std::fs::remove_dir_all(&tmp);
@@ -400,18 +353,12 @@ mod fit_tests {
 
     fn png(w: u32, h: u32) -> Vec<u8> {
         let mut out = std::io::Cursor::new(vec![]);
-        image::RgbImage::new(w, h)
-            .write_to(&mut out, image::ImageFormat::Png)
-            .unwrap();
+        image::RgbImage::new(w, h).write_to(&mut out, image::ImageFormat::Png).unwrap();
         out.into_inner()
     }
 
     fn size(b: &[u8]) -> (u32, u32) {
-        image::ImageReader::new(std::io::Cursor::new(b))
-            .with_guessed_format()
-            .unwrap()
-            .into_dimensions()
-            .unwrap()
+        image::ImageReader::new(std::io::Cursor::new(b)).with_guessed_format().unwrap().into_dimensions().unwrap()
     }
 
     #[test]
@@ -432,14 +379,8 @@ mod fit_tests {
 
     #[test]
     fn file_addresses_become_paths() {
-        assert_eq!(
-            local_path("file:///C:/Users/a/x.png").unwrap(),
-            PathBuf::from("C:/Users/a/x.png")
-        );
-        assert_eq!(
-            local_path("file:///home/a/x.png").unwrap(),
-            PathBuf::from("/home/a/x.png")
-        );
+        assert_eq!(local_path("file:///C:/Users/a/x.png").unwrap(), PathBuf::from("C:/Users/a/x.png"));
+        assert_eq!(local_path("file:///home/a/x.png").unwrap(), PathBuf::from("/home/a/x.png"));
         assert!(local_path("https://x/y.png").is_none());
     }
 }

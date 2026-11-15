@@ -48,10 +48,7 @@ fn set_link(l: Link) {
 
 /// How the connection to Discord is going.
 pub fn link() -> Link {
-    LINK.lock()
-        .ok()
-        .and_then(|g| g.clone())
-        .unwrap_or(Link::Off)
+    LINK.lock().ok().and_then(|g| g.clone()).unwrap_or(Link::Off)
 }
 
 /// Whether this build of Pulse can show a Discord status at all.
@@ -80,10 +77,7 @@ impl Song {
             (None, None) => true,
             _ => false,
         };
-        self.title == other.title
-            && self.artists == other.artists
-            && self.cover == other.cover
-            && times_close
+        self.title == other.title && self.artists == other.artists && self.cover == other.cover && times_close
     }
 }
 
@@ -114,10 +108,7 @@ impl Presence {
         }
         let tx = self.tx.get_or_insert_with(|| {
             let (tx, rx) = channel();
-            std::thread::Builder::new()
-                .name("discord".into())
-                .spawn(move || run(rx))
-                .ok();
+            std::thread::Builder::new().name("discord".into()).spawn(move || run(rx)).ok();
             tx
         });
         if tx.send(want.clone()).is_err() {
@@ -265,10 +256,7 @@ impl Conn {
             return Ok(());
         }
         // Discord closes the connection with a reason ("Invalid Client ID", ...).
-        let why = v["message"]
-            .as_str()
-            .or(v["data"]["message"].as_str())
-            .unwrap_or("it didn't accept the connection");
+        let why = v["message"].as_str().or(v["data"]["message"].as_str()).unwrap_or("it didn't accept the connection");
         crate::crash::note(&format!("Discord: {why}"));
         Err(std::io::Error::other(why.to_string()))
     }
@@ -283,10 +271,7 @@ impl Conn {
             return Err(std::io::Error::other("Discord closed the connection"));
         }
         if v["evt"] == "ERROR" {
-            let why = v["data"]["message"]
-                .as_str()
-                .unwrap_or("unknown reason")
-                .to_string();
+            let why = v["data"]["message"].as_str().unwrap_or("unknown reason").to_string();
             crate::crash::note(&format!("Discord didn't take the status: {why}"));
             return Ok(Some(why));
         }
@@ -355,11 +340,7 @@ fn connect(path: &std::path::Path) -> std::io::Result<Box<dyn Pipe>> {
         const PIPE_BUSY: i32 = 231;
         let mut tries = 0;
         loop {
-            match std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(path)
-            {
+            match std::fs::OpenOptions::new().read(true).write(true).open(path) {
                 Ok(f) => return Ok(Box::new(f) as Box<dyn Pipe>),
                 Err(e) if e.raw_os_error() == Some(PIPE_BUSY) && tries < 10 => {
                     tries += 1;
@@ -379,9 +360,7 @@ fn connect(path: &std::path::Path) -> std::io::Result<Box<dyn Pipe>> {
 
 /// What the player is doing, as a status. `position` is how far into the song it is.
 pub fn song_status(t: &crate::deezer::Track, playing: bool, position: Duration) -> Song {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
     let times = (playing && t.duration > 0).then(|| {
         let start = now - position.as_millis() as i64;
         (start, start + i64::from(t.duration) * 1000)
@@ -389,15 +368,8 @@ pub fn song_status(t: &crate::deezer::Track, playing: bool, position: Duration) 
     Song {
         title: t.title.clone(),
         artists: t.all_artists(),
-        album: t
-            .album
-            .as_ref()
-            .map(|a| a.title.clone())
-            .filter(|a| !a.is_empty()),
-        cover: t
-            .art_big()
-            .filter(|u| u.starts_with("https://"))
-            .map(str::to_owned),
+        album: t.album.as_ref().map(|a| a.title.clone()).filter(|a| !a.is_empty()),
+        cover: t.art_big().filter(|u| u.starts_with("https://")).map(str::to_owned),
         times,
     }
 }
@@ -408,25 +380,10 @@ mod tests {
 
     #[test]
     fn small_drifts_dont_count_as_changes() {
-        let a = Song {
-            title: "Baby".into(),
-            artists: "Lil Baby".into(),
-            album: None,
-            cover: None,
-            times: Some((10_000, 100_000)),
-        };
-        let drift = Song {
-            times: Some((10_400, 100_400)),
-            ..a.clone()
-        };
-        let seek = Song {
-            times: Some((40_000, 130_000)),
-            ..a.clone()
-        };
-        let paused = Song {
-            times: None,
-            ..a.clone()
-        };
+        let a = Song { title: "Baby".into(), artists: "Lil Baby".into(), album: None, cover: None, times: Some((10_000, 100_000)) };
+        let drift = Song { times: Some((10_400, 100_400)), ..a.clone() };
+        let seek = Song { times: Some((40_000, 130_000)), ..a.clone() };
+        let paused = Song { times: None, ..a.clone() };
         assert!(a.same_as(&drift));
         assert!(!a.same_as(&seek));
         assert!(!a.same_as(&paused));
@@ -436,13 +393,7 @@ mod tests {
     fn text_fits_discords_limits() {
         assert_eq!(clip("A").chars().count(), 2);
         assert_eq!(clip(&"x".repeat(300)).chars().count(), 128);
-        let a = activity(&Song {
-            title: "A".into(),
-            artists: "B".into(),
-            album: None,
-            cover: None,
-            times: None,
-        });
+        let a = activity(&Song { title: "A".into(), artists: "B".into(), album: None, cover: None, times: None });
         assert_eq!(a["type"], 2);
         assert_eq!(a["assets"]["small_text"], "Paused");
         assert!(a.get("timestamps").is_none());

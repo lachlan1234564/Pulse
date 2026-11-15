@@ -30,17 +30,7 @@ pub fn path_for(id: &str, ext: &str) -> PathBuf {
 }
 
 fn path_in(dir: &Path, id: &str, ext: &str) -> PathBuf {
-    let safe: String = id
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .take(80)
-        .collect();
+    let safe: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).take(80).collect();
     // Different ids must never share a file, even when their safe names match.
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in id.bytes() {
@@ -59,10 +49,7 @@ pub fn find(id: &str) -> Option<PathBuf> {
 }
 
 fn find_in(dir: &Path, id: &str) -> Option<PathBuf> {
-    let path = ["m4a", "mp3"]
-        .iter()
-        .map(|ext| path_in(dir, id, ext))
-        .find(|p| p.is_file())?;
+    let path = ["m4a", "mp3"].iter().map(|ext| path_in(dir, id, ext)).find(|p| p.is_file())?;
     if let Ok(f) = std::fs::File::options().append(true).open(&path) {
         let _ = f.set_modified(SystemTime::now());
     }
@@ -88,14 +75,8 @@ pub fn store(path: &Path, bytes: &[u8]) {
 pub fn adopt(from: &Path, path: &Path) -> bool {
     let limit = LIMIT_MB.load(Ordering::Relaxed) * 1024 * 1024;
     let size = std::fs::metadata(from).map(|m| m.len()).unwrap_or(0);
-    let Some(folder) = path.parent() else {
-        return false;
-    };
-    let ok = limit > 0
-        && size > 0
-        && size <= limit / 2
-        && std::fs::create_dir_all(folder).is_ok()
-        && std::fs::rename(from, path).is_ok();
+    let Some(folder) = path.parent() else { return false };
+    let ok = limit > 0 && size > 0 && size <= limit / 2 && std::fs::create_dir_all(folder).is_ok() && std::fs::rename(from, path).is_ok();
     if ok {
         crate::artcache::trim_dir(folder, limit);
     } else {
@@ -130,10 +111,7 @@ mod tests {
             store_with_limit(&path_in(&dir, id, "m4a"), &song, 1_000_000);
             // File times can be coarse: make sure "older" really is older.
             let t = SystemTime::now() - std::time::Duration::from_secs(100 - n as u64 * 10);
-            if let Ok(f) = std::fs::File::options()
-                .append(true)
-                .open(path_in(&dir, id, "m4a"))
-            {
+            if let Ok(f) = std::fs::File::options().append(true).open(path_in(&dir, id, "m4a")) {
                 let _ = f.set_modified(t);
             }
         }

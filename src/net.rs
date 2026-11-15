@@ -4,11 +4,7 @@ use std::io::Read;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-pub const USER_AGENT: &str = concat!(
-    "Pulse/",
-    env!("CARGO_PKG_VERSION"),
-    " (https://github.com/mercy123xz/Pulse)"
-);
+pub const USER_AGENT: &str = concat!("Pulse/", env!("CARGO_PKG_VERSION"), " (https://github.com/mercy123xz/Pulse)");
 
 /// Client for small API calls (fails fast if the network is down).
 pub fn api() -> &'static ureq::Agent {
@@ -37,9 +33,7 @@ pub fn downloads() -> &'static ureq::Agent {
 
 pub fn friendly_error(e: ureq::Error) -> String {
     match e {
-        ureq::Error::StatusCode(429) => {
-            "The server is rate-limiting us. Wait a few seconds and try again.".into()
-        }
+        ureq::Error::StatusCode(429) => "The server is rate-limiting us. Wait a few seconds and try again.".into(),
         ureq::Error::StatusCode(code) => format!("The server returned an error (HTTP {code})."),
         ureq::Error::Timeout(_) => "The request timed out. Check your internet connection.".into(),
         ureq::Error::Io(_) | ureq::Error::ConnectionFailed | ureq::Error::HostNotFound => {
@@ -59,12 +53,7 @@ pub struct RangeResponse {
 }
 
 /// Requests bytes `start..=end` (or `start..` if `end` is None) of `url`.
-pub fn get_range(
-    url: &str,
-    headers: &[(String, String)],
-    start: u64,
-    end: Option<u64>,
-) -> Result<RangeResponse, String> {
+pub fn get_range(url: &str, headers: &[(String, String)], start: u64, end: Option<u64>) -> Result<RangeResponse, String> {
     let range = match end {
         Some(e) => format!("bytes={start}-{e}"),
         None => format!("bytes={start}-"),
@@ -81,27 +70,14 @@ pub fn get_range(
     if !partial && start > 0 {
         return Err("The server can't resume this download.".into());
     }
-    let header = |name: &str| {
-        resp.headers()
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned)
-    };
+    let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
     let total = if partial {
-        header("content-range").and_then(|cr| {
-            cr.rsplit('/')
-                .next()
-                .and_then(|t| t.trim().parse::<u64>().ok())
-        })
+        header("content-range").and_then(|cr| cr.rsplit('/').next().and_then(|t| t.trim().parse::<u64>().ok()))
     } else {
         header("content-length").and_then(|v| v.parse::<u64>().ok())
     };
     let body = resp.into_body().into_with_config().limit(u64::MAX).reader();
-    Ok(RangeResponse {
-        body: Box::new(body),
-        total,
-        partial,
-    })
+    Ok(RangeResponse { body: Box::new(body), total, partial })
 }
 
 /// Downloads `url` into memory, reporting progress as (bytes so far, total if known).
@@ -116,9 +92,7 @@ pub fn download(url: &str, mut progress: impl FnMut(u64, Option<u64>)) -> Result
     let mut out = Vec::with_capacity(total.unwrap_or(0) as usize);
     let mut chunk = vec![0u8; 256 * 1024];
     loop {
-        let n = reader
-            .read(&mut chunk)
-            .map_err(|e| format!("Download interrupted ({e})"))?;
+        let n = reader.read(&mut chunk).map_err(|e| format!("Download interrupted ({e})"))?;
         if n == 0 {
             break;
         }
@@ -131,9 +105,7 @@ pub fn download(url: &str, mut progress: impl FnMut(u64, Option<u64>)) -> Result
 /// Downloads a small text file (like a checksum list).
 pub fn get_text(url: &str) -> Result<String, String> {
     let mut resp = downloads().get(url).call().map_err(friendly_error)?;
-    resp.body_mut()
-        .read_to_string()
-        .map_err(|e| format!("Download interrupted ({e})"))
+    resp.body_mut().read_to_string().map_err(|e| format!("Download interrupted ({e})"))
 }
 
 /// Downloads a web page as text, the way a browser asks for it.
@@ -144,20 +116,14 @@ pub fn get_page(url: &str) -> Result<String, String> {
         .header("Accept-Language", "en-US,en;q=0.9")
         .call()
         .map_err(friendly_error)?;
-    resp.body_mut()
-        .with_config()
-        .limit(20 * 1024 * 1024)
-        .read_to_string()
-        .map_err(|e| format!("Download interrupted ({e})"))
+    resp.body_mut().with_config().limit(20 * 1024 * 1024).read_to_string().map_err(|e| format!("Download interrupted ({e})"))
 }
 
 /// Percent-encodes text for use inside a URL.
 pub fn encode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
             _ => format!("%{b:02X}"),
         })
         .collect()

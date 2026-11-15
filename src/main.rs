@@ -4,9 +4,9 @@
 mod account;
 mod app;
 mod artcache;
+mod azlyrics;
 mod audio;
 mod audiocache;
-mod azlyrics;
 mod backdrop;
 mod backup;
 mod crash;
@@ -29,9 +29,9 @@ mod settings;
 mod share;
 mod single;
 mod suggest;
+mod tidal;
 mod theme;
 mod themes;
-mod tidal;
 mod titlebar;
 mod ui;
 mod update;
@@ -54,28 +54,12 @@ fn no_power_throttling() {
     const IGNORE_TIMER_RESOLUTION: u32 = 0x4;
     unsafe extern "system" {
         fn GetCurrentProcess() -> isize;
-        fn SetProcessInformation(
-            process: isize,
-            class: i32,
-            info: *const PowerThrottlingState,
-            size: u32,
-        ) -> i32;
+        fn SetProcessInformation(process: isize, class: i32, info: *const PowerThrottlingState, size: u32) -> i32;
     }
     // Control a setting with its state bit off: throttling turned off for that setting.
-    let state = PowerThrottlingState {
-        version: 1,
-        control_mask: EXECUTION_SPEED | IGNORE_TIMER_RESOLUTION,
-        state_mask: 0,
-    };
+    let state = PowerThrottlingState { version: 1, control_mask: EXECUTION_SPEED | IGNORE_TIMER_RESOLUTION, state_mask: 0 };
     // SAFETY: passes a valid struct of the size we give; a failure (older Windows) is harmless.
-    let ok = unsafe {
-        SetProcessInformation(
-            GetCurrentProcess(),
-            PROCESS_POWER_THROTTLING,
-            &state,
-            std::mem::size_of::<PowerThrottlingState>() as u32,
-        )
-    };
+    let ok = unsafe { SetProcessInformation(GetCurrentProcess(), PROCESS_POWER_THROTTLING, &state, std::mem::size_of::<PowerThrottlingState>() as u32) };
     if ok == 0 {
         crash::note("Couldn't turn off Windows' power throttling for Pulse");
     }
@@ -96,37 +80,19 @@ fn main() -> eframe::Result {
     #[allow(unused_mut)]
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title(if separate {
-                "Pulse (separate profile)"
-            } else {
-                "Pulse"
-            })
+            .with_title(if separate { "Pulse (separate profile)" } else { "Pulse" })
             .with_app_id("pulse-player")
-            .with_inner_size([
-                1280.0,
-                std::env::var("PULSE_DEBUG_HEIGHT")
-                    .ok()
-                    .and_then(|h| h.parse().ok())
-                    .unwrap_or(800.0),
-            ])
+            .with_inner_size([1280.0, std::env::var("PULSE_DEBUG_HEIGHT").ok().and_then(|h| h.parse().ok()).unwrap_or(800.0)])
             .with_min_inner_size([980.0, 620.0])
             .with_icon(app_icon()),
         // eframe otherwise keeps the library in %APPDATA%\pulse-player\data whatever
         // PULSE_DATA_DIR says, so a test copy would read and overwrite the real one.
-        persistence_path: if separate {
-            settings::library_file()
-        } else {
-            None
-        },
+        persistence_path: if separate { settings::library_file() } else { None },
         ..Default::default()
     };
     #[cfg(windows)]
     use_directx(&mut options);
-    eframe::run_native(
-        "Pulse",
-        options,
-        Box::new(|cc| Ok(Box::new(app::App::new(cc)))),
-    )
+    eframe::run_native("Pulse", options, Box::new(|cc| Ok(Box::new(app::App::new(cc)))))
 }
 
 /// Windows only: draw with DirectX 12 instead of OpenGL, so Pulse opens on any
@@ -144,31 +110,22 @@ fn use_directx(options: &mut eframe::NativeOptions) {
     // graphics driver still open.
     setup.instance_descriptor.backends = wgpu::Backends::DX12;
     // The shader compiler built into Windows, so no extra DLL has to ship with the .exe.
-    setup
-        .instance_descriptor
-        .backend_options
-        .dx12
-        .shader_compiler = wgpu::Dx12Compiler::Fxc;
+    setup.instance_descriptor.backend_options.dx12.shader_compiler = wgpu::Dx12Compiler::Fxc;
     if !crate::settings::hardware_acceleration_enabled() {
         // "Hardware acceleration" off: draw with Windows' built-in software renderer (WARP).
-        setup.native_adapter_selector = Some(std::sync::Arc::new(
-            |adapters: &[wgpu::Adapter], _surface: Option<&wgpu::Surface<'_>>| {
-                adapters
-                    .iter()
-                    .find(|a| a.get_info().device_type == wgpu::DeviceType::Cpu)
-                    .or_else(|| adapters.first())
-                    .cloned()
-                    .ok_or_else(|| "No graphics adapter found".to_string())
-            },
-        ));
+        setup.native_adapter_selector = Some(std::sync::Arc::new(|adapters: &[wgpu::Adapter], _surface: Option<&wgpu::Surface<'_>>| {
+            adapters
+                .iter()
+                .find(|a| a.get_info().device_type == wgpu::DeviceType::Cpu)
+                .or_else(|| adapters.first())
+                .cloned()
+                .ok_or_else(|| "No graphics adapter found".to_string())
+        }));
     }
     // Graphics memory sized for a music player, not a game: wgpu otherwise sets aside big
     // blocks of memory up front for speed, which Pulse (some text and a few pictures) never fills.
     let device = setup.device_descriptor.clone();
-    setup.device_descriptor = std::sync::Arc::new(move |adapter| wgpu::DeviceDescriptor {
-        memory_hints: wgpu::MemoryHints::MemoryUsage,
-        ..device(adapter)
-    });
+    setup.device_descriptor = std::sync::Arc::new(move |adapter| wgpu::DeviceDescriptor { memory_hints: wgpu::MemoryHints::MemoryUsage, ..device(adapter) });
     options.wgpu_options.wgpu_setup = WgpuSetup::CreateNew(setup);
 }
 
@@ -178,11 +135,7 @@ fn app_icon() -> egui::IconData {
     match image::load_from_memory(png) {
         Ok(img) => {
             let img = img.into_rgba8();
-            egui::IconData {
-                width: img.width(),
-                height: img.height(),
-                rgba: img.into_raw(),
-            }
+            egui::IconData { width: img.width(), height: img.height(), rgba: img.into_raw() }
         }
         Err(_) => egui::IconData::default(),
     }

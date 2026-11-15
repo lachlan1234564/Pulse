@@ -14,14 +14,11 @@ pub mod mini;
 mod online;
 mod personal;
 pub mod pick_artists;
-mod settings_page;
 pub mod setup;
+mod settings_page;
 mod song_page;
 
-use egui::{
-    Align, Align2, Color32, CornerRadius, Frame, Key, Layout, Margin, Rect, RichText, Sense,
-    Stroke, Ui, Vec2, pos2, vec2,
-};
+use egui::{Align, Align2, Color32, CornerRadius, Frame, Key, Layout, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2, pos2, vec2};
 use egui_phosphor::regular as icon;
 pub use personal::ProfileForm;
 
@@ -36,109 +33,60 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
     let sidebar_fill = pt.sidebar.fill.unwrap_or(pal().sidebar);
     let player = egui::Panel::bottom("player")
         .exact_size(88.0)
-        .frame(
-            Frame::new()
-                .fill(player_fill)
-                .inner_margin(Margin::symmetric(
-                    pt.player_bar.padding.unwrap_or(16.0) as i8,
-                    0,
-                )),
-        )
+        .frame(Frame::new().fill(player_fill).inner_margin(Margin::symmetric(pt.player_bar.padding.unwrap_or(16.0) as i8, 0)))
         .show_separator_line(false)
         .show(ui, |ui| player_bar(app, ui));
-    let top_line = pt
-        .player_bar
-        .border
-        .unwrap_or(Stroke::new(1.0, pal().border));
-    ui.painter().hline(
-        player.response.rect.x_range(),
-        player.response.rect.top(),
-        top_line,
-    );
+    let top_line = pt.player_bar.border.unwrap_or(Stroke::new(1.0, pal().border));
+    ui.painter().hline(player.response.rect.x_range(), player.response.rect.top(), top_line);
 
     let pad = pt.sidebar.padding.unwrap_or(12.0) as i8;
     let side = egui::Panel::left("sidebar")
         .exact_size(if compact { 76.0 } else { 240.0 })
         .resizable(false)
-        .frame(Frame::new().fill(sidebar_fill).inner_margin(Margin {
-            left: pad,
-            right: pad,
-            top: 18,
-            bottom: 12,
-        }))
+        .frame(Frame::new().fill(sidebar_fill).inner_margin(Margin { left: pad, right: pad, top: 18, bottom: 12 }))
         .show_separator_line(false)
         .show(ui, |ui| sidebar(app, ui));
     if let Some(b) = pt.sidebar.border {
-        ui.painter()
-            .vline(side.response.rect.right(), side.response.rect.y_range(), b);
+        ui.painter().vline(side.response.rect.right(), side.response.rect.y_range(), b);
     }
     // Lyrics beside whatever page is open.
     if lyrics_page::panel_open(app, ui.ctx()) {
         let panel = egui::Panel::right("lyrics_panel")
             .exact_size(lyrics_page::PANEL_WIDTH)
             .resizable(false)
-            .frame(Frame::new().fill(sidebar_fill).inner_margin(Margin {
-                left: 16,
-                right: 14,
-                top: 16,
-                bottom: 0,
-            }))
+            .frame(Frame::new().fill(sidebar_fill).inner_margin(Margin { left: 16, right: 14, top: 16, bottom: 0 }))
             .show_separator_line(false)
             .show(ui, |ui| lyrics_page::lyrics_panel(app, ui));
         if !lay.inset {
-            ui.painter().vline(
-                panel.response.rect.left(),
-                panel.response.rect.y_range(),
-                Stroke::new(1.0, pal().border),
-            );
+            ui.painter().vline(panel.response.rect.left(), panel.response.rect.y_range(), Stroke::new(1.0, pal().border));
         }
     }
 
     let header_fill = pt.header.fill.unwrap_or(pal().bg);
     if lay.inset {
         // The main area floats as a rounded panel; the window behind it uses the sidebar color.
-        egui::CentralPanel::default()
-            .frame(Frame::new().fill(sidebar_fill).inner_margin(Margin {
-                left: 0,
-                right: 8,
-                top: 8,
-                bottom: 8,
-            }))
-            .show(ui, |ui| {
-                Frame::new()
-                    .fill(pal().bg)
-                    .corner_radius(r_lg())
-                    .show(ui, |ui| {
-                        ui.set_min_size(ui.available_size());
-                        paint_backdrop(app, ui, ui.max_rect(), r_lg(), Some(sidebar_fill));
-                        Frame::new()
-                            .fill(pt.header.fill.unwrap_or(Color32::TRANSPARENT))
-                            .corner_radius(r_lg())
-                            .inner_margin(Margin::symmetric(24, 0))
-                            .show(ui, |ui| {
-                                ui.set_height(60.0);
-                                ui.set_width(ui.available_width());
-                                top_bar(app, ui);
-                            });
-                        main_scroll(app, ui);
-                    });
+        egui::CentralPanel::default().frame(Frame::new().fill(sidebar_fill).inner_margin(Margin { left: 0, right: 8, top: 8, bottom: 8 })).show(ui, |ui| {
+            Frame::new().fill(pal().bg).corner_radius(r_lg()).show(ui, |ui| {
+                ui.set_min_size(ui.available_size());
+                paint_backdrop(app, ui, ui.max_rect(), r_lg(), Some(sidebar_fill));
+                Frame::new().fill(pt.header.fill.unwrap_or(Color32::TRANSPARENT)).corner_radius(r_lg()).inner_margin(Margin::symmetric(24, 0)).show(ui, |ui| {
+                    ui.set_height(60.0);
+                    ui.set_width(ui.available_width());
+                    top_bar(app, ui);
+                });
+                main_scroll(app, ui);
             });
+        });
     } else {
         egui::Panel::top("topbar")
             .exact_size(60.0)
-            .frame(
-                Frame::new()
-                    .fill(header_fill)
-                    .inner_margin(Margin::symmetric(24, 0)),
-            )
+            .frame(Frame::new().fill(header_fill).inner_margin(Margin::symmetric(24, 0)))
             .show_separator_line(false)
             .show(ui, |ui| top_bar(app, ui));
-        egui::CentralPanel::default()
-            .frame(Frame::new().fill(pal().bg))
-            .show(ui, |ui| {
-                paint_backdrop(app, ui, ui.max_rect(), CornerRadius::ZERO, None);
-                main_scroll(app, ui);
-            });
+        egui::CentralPanel::default().frame(Frame::new().fill(pal().bg)).show(ui, |ui| {
+            paint_backdrop(app, ui, ui.max_rect(), CornerRadius::ZERO, None);
+            main_scroll(app, ui);
+        });
     }
 
     dialogs(app, &ctx);
@@ -156,24 +104,11 @@ fn loading_text(msg: &str) -> String {
 }
 
 /// The song-colored glows behind the main area, for themes that ask for them.
-fn paint_backdrop(
-    app: &mut App,
-    ui: &Ui,
-    rect: Rect,
-    radius: CornerRadius,
-    outside: Option<Color32>,
-) {
-    if !layout().backdrop
-        || !crate::perf::on(crate::perf::Extra::ListArtwork)
-        || crate::perf::software()
-    {
+fn paint_backdrop(app: &mut App, ui: &Ui, rect: Rect, radius: CornerRadius, outside: Option<Color32>) {
+    if !layout().backdrop || !crate::perf::on(crate::perf::Extra::ListArtwork) || crate::perf::software() {
         return;
     }
-    let cover = app
-        .current
-        .as_ref()
-        .and_then(|t| t.art_small())
-        .map(str::to_owned);
+    let cover = app.current.as_ref().and_then(|t| t.art_small()).map(str::to_owned);
     app.backdrop.set_cover(cover.as_deref(), ui.ctx());
     let playing = app.is_playing();
     let moving = playing && app.saved.settings.moving_background && !reduce_motion();
@@ -185,29 +120,12 @@ fn update_banner(app: &mut App, ui: &mut Ui) {
     use crate::update::Status;
     let ctx = ui.ctx().clone();
     let (text, progress, actions) = match &app.updater.status {
-        Status::Available(r) if !app.updater.banner_closed => (
-            format!("{} {} {}", tr("Pulse"), r.version, tr("is available.")),
-            None,
-            true,
-        ),
+        Status::Available(r) if !app.updater.banner_closed => (format!("{} {} {}", tr("Pulse"), r.version, tr("is available.")), None, true),
         Status::Downloading(r, p) => {
             let p = p.lock().map(|v| *v).unwrap_or(0.0);
-            (
-                format!(
-                    "{} {}… {:.0}%",
-                    tr("Downloading Pulse"),
-                    r.version,
-                    p * 100.0
-                ),
-                Some(p),
-                false,
-            )
+            (format!("{} {}… {:.0}%", tr("Downloading Pulse"), r.version, p * 100.0), Some(p), false)
         }
-        Status::Installing => (
-            tr("Installing the update. Pulse restarts in a moment.").to_string(),
-            None,
-            false,
-        ),
+        Status::Installing => (tr("Installing the update. Pulse restarts in a moment.").to_string(), None, false),
         Status::InstallFailed(_, e) if !app.updater.banner_closed => (e.clone(), None, true),
         _ => return,
     };
@@ -217,80 +135,36 @@ fn update_banner(app: &mut App, ui: &mut Ui) {
         .stroke(Stroke::new(1.0, pal().accent.gamma_multiply(0.6)))
         .corner_radius(r_md())
         .inner_margin(Margin::symmetric(14, 8))
-        .outer_margin(Margin {
-            left: 28,
-            right: 28,
-            top: 4,
-            bottom: 6,
-        });
+        .outer_margin(Margin { left: 28, right: 28, top: 4, bottom: 6 });
     frame.show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.allocate_ui_with_layout(
-            vec2(ui.available_width(), 30.0),
-            Layout::left_to_right(Align::Center),
-            |ui| {
-                let glyph = if failed {
-                    egui_phosphor::regular::WARNING
-                } else {
-                    egui_phosphor::regular::ARROW_CIRCLE_UP
-                };
-                ui.label(RichText::new(glyph).size(18.0).color(pal().accent));
-                ui.label(RichText::new(text).font(med(13.5)).color(pal().text));
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if actions {
-                        if icon_button(
-                            ui,
-                            egui_phosphor::regular::X,
-                            16.0,
-                            pal().text_muted,
-                            "Not now",
-                        )
-                        .clicked()
-                        {
-                            app.updater.banner_closed = true;
-                        }
-                        let label = if failed {
-                            tr("Try again")
-                        } else {
-                            tr("Update now")
-                        };
-                        if ui
-                            .add(
-                                egui::Button::new(RichText::new(label).color(Color32::WHITE))
-                                    .fill(pal().accent)
-                                    .corner_radius(14),
-                            )
-                            .clicked()
-                        {
-                            app.start_update(&ctx);
-                        }
-                        let page = match &app.updater.status {
-                            Status::Available(r) | Status::InstallFailed(r, _) => r.page.clone(),
-                            _ => String::new(),
-                        };
-                        if ui
-                            .add(
-                                egui::Button::new(tr("What's new"))
-                                    .frame_when_inactive(false)
-                                    .corner_radius(14),
-                            )
-                            .clicked()
-                        {
-                            ctx.open_url(egui::OpenUrl::new_tab(page));
-                        }
-                    } else if let Some(p) = progress {
-                        ui.add(
-                            egui::ProgressBar::new(p)
-                                .desired_width(160.0)
-                                .desired_height(6.0)
-                                .fill(pal().accent),
-                        );
-                    } else {
-                        ui.add(egui::Spinner::new().size(16.0).color(pal().accent));
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), 30.0), Layout::left_to_right(Align::Center), |ui| {
+            let glyph = if failed { egui_phosphor::regular::WARNING } else { egui_phosphor::regular::ARROW_CIRCLE_UP };
+            ui.label(RichText::new(glyph).size(18.0).color(pal().accent));
+            ui.label(RichText::new(text).font(med(13.5)).color(pal().text));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if actions {
+                    if icon_button(ui, egui_phosphor::regular::X, 16.0, pal().text_muted, "Not now").clicked() {
+                        app.updater.banner_closed = true;
                     }
-                });
-            },
-        );
+                    let label = if failed { tr("Try again") } else { tr("Update now") };
+                    if ui.add(egui::Button::new(RichText::new(label).color(Color32::WHITE)).fill(pal().accent).corner_radius(14)).clicked() {
+                        app.start_update(&ctx);
+                    }
+                    let page = match &app.updater.status {
+                        Status::Available(r) | Status::InstallFailed(r, _) => r.page.clone(),
+                        _ => String::new(),
+                    };
+                    if ui.add(egui::Button::new(tr("What's new")).frame_when_inactive(false).corner_radius(14)).clicked() {
+                        ctx.open_url(egui::OpenUrl::new_tab(page));
+                    }
+                } else if let Some(p) = progress {
+                    ui.add(egui::ProgressBar::new(p).desired_width(160.0).desired_height(6.0).fill(pal().accent));
+                } else {
+                    ui.add(egui::Spinner::new().size(16.0).color(pal().accent));
+                }
+            });
+        });
     });
 }
 
@@ -308,30 +182,19 @@ fn main_scroll(app: &mut App, ui: &mut Ui) {
         });
         if first {
             // Not the page Pulse opens on: the intro has just played.
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(id.with("t"), f64::NEG_INFINITY));
+            ui.ctx().data_mut(|d| d.insert_temp(id.with("t"), f64::NEG_INFINITY));
         }
     }
     let t = crate::theme::appear(ui.ctx(), id.with("t"), 0.2);
-    egui::ScrollArea::vertical()
-        .id_salt(("page", page_key))
-        .auto_shrink(false)
-        .show(ui, |ui| {
-            if t < 1.0 {
-                ui.multiply_opacity(t);
-            }
-            let rise = ((1.0 - t) * 12.0) as i8;
-            Frame::new()
-                .inner_margin(Margin {
-                    left: 28,
-                    right: 28,
-                    top: 4 + rise,
-                    bottom: 32,
-                })
-                .show(ui, |ui| {
-                    page(app, ui);
-                });
+    egui::ScrollArea::vertical().id_salt(("page", page_key)).auto_shrink(false).show(ui, |ui| {
+        if t < 1.0 {
+            ui.multiply_opacity(t);
+        }
+        let rise = ((1.0 - t) * 12.0) as i8;
+        Frame::new().inner_margin(Margin { left: 28, right: 28, top: 4 + rise, bottom: 32 }).show(ui, |ui| {
+            page(app, ui);
         });
+    });
 }
 
 fn shortcuts(app: &mut App, ctx: &egui::Context) {
@@ -401,11 +264,9 @@ fn sidebar(app: &mut App, ui: &mut Ui) {
     sidebar_items(app, ui);
     // The accent bar beside that row, sliding there when you change pages.
     if let Some((x, y)) = ctx.data(|d| d.get_temp::<(f32, f32)>(egui::Id::new("nav_bar"))) {
-        let y =
-            ctx.animate_value_with_time(egui::Id::new("nav_bar_y"), y, crate::theme::motion(0.22));
+        let y = ctx.animate_value_with_time(egui::Id::new("nav_bar_y"), y, crate::theme::motion(0.22));
         let bar = Rect::from_min_size(pos2(x, y - 9.0), vec2(3.0, 18.0));
-        ui.painter()
-            .rect_filled(bar, CornerRadius::same(2), pal().accent_soft);
+        ui.painter().rect_filled(bar, CornerRadius::same(2), pal().accent_soft);
     }
 }
 
@@ -419,25 +280,13 @@ fn sidebar_items(app: &mut App, ui: &mut Ui) {
         let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
         let r = Rect::from_center_size(row.center(), Vec2::splat(30.0));
         vgradient_rounded(ui, r, pal().accent_soft, pal().accent);
-        paint_icon(
-            ui.painter(),
-            r.center(),
-            icon::WAVEFORM,
-            filled_icon(18.0),
-            Color32::WHITE,
-        );
+        paint_icon(ui.painter(), r.center(), icon::WAVEFORM, filled_icon(18.0), Color32::WHITE);
     } else {
         ui.horizontal(|ui| {
             ui.add_space(6.0);
             let (r, _) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::hover());
             vgradient_rounded(ui, r, pal().accent_soft, pal().accent);
-            paint_icon(
-                ui.painter(),
-                r.center(),
-                icon::WAVEFORM,
-                filled_icon(18.0),
-                Color32::WHITE,
-            );
+            paint_icon(ui.painter(), r.center(), icon::WAVEFORM, filled_icon(18.0), Color32::WHITE);
             ui.add_space(4.0);
             ui.label(RichText::new("Pulse").font(heavy(19.0)));
         });
@@ -455,90 +304,30 @@ fn sidebar_items(app: &mut App, ui: &mut Ui) {
     ui.add_space(14.0);
     nav_heading(ui, "Library");
     let liked_n = app.saved.liked.len();
-    if nav_item_art(
-        ui,
-        Some(LIKED_ART),
-        icon::HEART,
-        "Liked Songs",
-        app.route == Route::Liked,
-        Some(liked_n),
-    )
-    .clicked()
-    {
+    if nav_item_art(ui, Some(LIKED_ART), icon::HEART, "Liked Songs", app.route == Route::Liked, Some(liked_n)).clicked() {
         app.navigate(Route::Liked, &ctx);
     }
-    let (albums_n, lists_n) = (
-        app.saved.liked_albums.len(),
-        app.saved.liked_playlists.len(),
-    );
-    if nav_item(
-        ui,
-        icon::VINYL_RECORD,
-        "Liked Albums",
-        app.route == Route::LikedAlbums,
-        Some(albums_n),
-    )
-    .clicked()
-    {
+    let (albums_n, lists_n) = (app.saved.liked_albums.len(), app.saved.liked_playlists.len());
+    if nav_item(ui, icon::VINYL_RECORD, "Liked Albums", app.route == Route::LikedAlbums, Some(albums_n)).clicked() {
         app.navigate(Route::LikedAlbums, &ctx);
     }
-    if nav_item(
-        ui,
-        icon::PLAYLIST,
-        "Liked Playlists",
-        app.route == Route::LikedPlaylists,
-        Some(lists_n),
-    )
-    .clicked()
-    {
+    if nav_item(ui, icon::PLAYLIST, "Liked Playlists", app.route == Route::LikedPlaylists, Some(lists_n)).clicked() {
         app.navigate(Route::LikedPlaylists, &ctx);
     }
     let following_n = app.saved.followed_artists.len();
-    if nav_item(
-        ui,
-        icon::USER,
-        "Your Artists",
-        app.route == Route::FollowedArtists,
-        Some(following_n),
-    )
-    .clicked()
-    {
+    if nav_item(ui, icon::USER, "Your Artists", app.route == Route::FollowedArtists, Some(following_n)).clicked() {
         app.navigate(Route::FollowedArtists, &ctx);
     }
-    if nav_item(
-        ui,
-        icon::CLOCK_COUNTER_CLOCKWISE,
-        "Recently Played",
-        app.route == Route::Recent,
-        None,
-    )
-    .clicked()
-    {
+    if nav_item(ui, icon::CLOCK_COUNTER_CLOCKWISE, "Recently Played", app.route == Route::Recent, None).clicked() {
         app.navigate(Route::Recent, &ctx);
     }
     let upcoming = app.queue.len().saturating_sub(app.queue_pos + 1);
-    if nav_item(
-        ui,
-        icon::QUEUE,
-        "Queue",
-        app.route == Route::Queue,
-        Some(upcoming),
-    )
-    .clicked()
-    {
+    if nav_item(ui, icon::QUEUE, "Queue", app.route == Route::Queue, Some(upcoming)).clicked() {
         app.navigate(Route::Queue, &ctx);
     }
     if app.saved.settings.show_local_files {
         let n = app.local_files.len();
-        if nav_item(
-            ui,
-            icon::FOLDER_SIMPLE,
-            "Local Files",
-            app.route == Route::LocalFiles,
-            Some(n),
-        )
-        .clicked()
-        {
+        if nav_item(ui, icon::FOLDER_SIMPLE, "Local Files", app.route == Route::LocalFiles, Some(n)).clicked() {
             app.navigate(Route::LocalFiles, &ctx);
         }
     }
@@ -547,32 +336,14 @@ fn sidebar_items(app: &mut App, ui: &mut Ui) {
         && !compact
     {
         // One line for everything downloading now: the first song's name and how far along they are together.
-        let p = app
-            .downloading
-            .iter()
-            .map(|(_, p)| *p.lock().unwrap())
-            .sum::<f32>()
-            / app.downloading.len() as f32;
+        let p = app.downloading.iter().map(|(_, p)| *p.lock().unwrap()).sum::<f32>() / app.downloading.len() as f32;
         let left = app.download_queue.len() + app.downloading.len() - 1;
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(12.0);
             ui.spinner();
-            let more = if left > 0 {
-                format!(" (+{left})")
-            } else {
-                String::new()
-            };
-            ui.label(
-                RichText::new(format!(
-                    "{} {:.0}% · {}{more}",
-                    tr("Downloading…"),
-                    p * 100.0,
-                    t.title
-                ))
-                .font(regular(11.5))
-                .color(pal().text_muted),
-            );
+            let more = if left > 0 { format!(" (+{left})") } else { String::new() };
+            ui.label(RichText::new(format!("{} {:.0}% · {}{more}", tr("Downloading…"), p * 100.0, t.title)).font(regular(11.5)).color(pal().text_muted));
         });
     }
 
@@ -589,196 +360,92 @@ fn sidebar_items(app: &mut App, ui: &mut Ui) {
         ui.horizontal(|ui| {
             nav_heading(ui, "Playlists");
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if icon_button(
-                    ui,
-                    icon::PLUS,
-                    14.0,
-                    pal().text_muted,
-                    tr("Create playlist"),
-                )
-                .clicked()
-                {
+                if icon_button(ui, icon::PLUS, 14.0, pal().text_muted, tr("Create playlist")).clicked() {
                     app.new_playlist = Some((String::new(), vec![]));
                 }
-                if icon_button(
-                    ui,
-                    icon::ARROW_SQUARE_IN,
-                    14.0,
-                    pal().text_muted,
-                    tr("Import playlist"),
-                )
-                .clicked()
-                {
+                if icon_button(ui, icon::ARROW_SQUARE_IN, 14.0, pal().text_muted, tr("Import playlist")).clicked() {
                     app.import_open = true;
                 }
             });
         });
     }
     // Blossom-style themes: a big cover of the current song at the bottom of the sidebar.
-    let big_art = !compact
-        && layout().now_playing_art == crate::theme::NowPlayingArt::SidebarLarge
-        && app.current.is_some();
-    let art_h = if big_art {
-        ui.available_width() + 12.0
-    } else {
-        0.0
-    };
+    let big_art = !compact && layout().now_playing_art == crate::theme::NowPlayingArt::SidebarLarge && app.current.is_some();
+    let art_h = if big_art { ui.available_width() + 12.0 } else { 0.0 };
     // Room at the very bottom for the "Music info by Deezer" credit.
     let credit_h = if compact { 44.0 } else { 52.0 };
 
-    egui::ScrollArea::vertical()
-        .id_salt("sidebar_playlists")
-        .auto_shrink([false, true])
-        .max_height((ui.available_height() - art_h - credit_h).max(40.0))
-        .show(ui, |ui| {
-            if app.saved.playlists.is_empty() && !compact {
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(10.0);
-                    ui.label(
-                        RichText::new(tr("Make your first playlist with +"))
-                            .color(pal().text_faint)
-                            .size(12.5),
-                    );
-                });
+    egui::ScrollArea::vertical().id_salt("sidebar_playlists").auto_shrink([false, true]).max_height((ui.available_height() - art_h - credit_h).max(40.0)).show(ui, |ui| {
+        if app.saved.playlists.is_empty() && !compact {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.add_space(10.0);
+                ui.label(RichText::new(tr("Make your first playlist with +")).color(pal().text_faint).size(12.5));
+            });
+        }
+        for i in 0..app.saved.playlists.len() {
+            let name = app.saved.playlists[i].name.clone();
+            let count = app.saved.playlists[i].tracks.len();
+            let art = app.playlist_art(i);
+            let resp = nav_item_art(ui, art.as_deref(), icon::PLAYLIST, &name, app.route == Route::Local(i), Some(count));
+            if resp.clicked() {
+                app.navigate(Route::Local(i), &ctx);
             }
-            for i in 0..app.saved.playlists.len() {
-                let name = app.saved.playlists[i].name.clone();
-                let count = app.saved.playlists[i].tracks.len();
-                let art = app.playlist_art(i);
-                let resp = nav_item_art(
-                    ui,
-                    art.as_deref(),
-                    icon::PLAYLIST,
-                    &name,
-                    app.route == Route::Local(i),
-                    Some(count),
-                );
-                if resp.clicked() {
-                    app.navigate(Route::Local(i), &ctx);
+            resp.context_menu(|ui| {
+                menu_begin(ui);
+                if menu_item(ui, icon::PENCIL_SIMPLE, "Rename") {
+                    app.rename_playlist = Some((i, name.clone()));
                 }
-                resp.context_menu(|ui| {
-                    menu_begin(ui);
-                    if menu_item(ui, icon::PENCIL_SIMPLE, "Rename") {
-                        app.rename_playlist = Some((i, name.clone()));
-                    }
-                    if menu_item(ui, icon::SHARE_FAT, "Copy share code") {
-                        app.share_playlist(i, &ctx);
-                    }
-                    menu_separator(ui);
-                    if menu_item(ui, icon::TRASH, "Delete") {
-                        app.confirm_delete = Some(i);
-                    }
-                });
-            }
-        });
+                if menu_item(ui, icon::SHARE_FAT, "Copy share code") {
+                    app.share_playlist(i, &ctx);
+                }
+                menu_separator(ui);
+                if menu_item(ui, icon::TRASH, "Delete") {
+                    app.confirm_delete = Some(i);
+                }
+            });
+        }
+    });
     ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
         // Where the song info comes from: a footer row under a thin line, lined up with the
         // rows above it (it used to sit in the top bar).
-        let tip = format!(
-            "{}\n{}",
-            tr("Music info by Deezer"),
-            "Song info, artwork and charts from Deezer. Audio from YouTube."
-        );
-        let (row, resp) = ui.allocate_exact_size(
-            vec2(ui.available_width(), if compact { 36.0 } else { 34.0 }),
-            Sense::click(),
-        );
-        a11y(ui, &resp, egui::WidgetType::Link, || {
-            tr("Music info by Deezer").to_owned()
-        });
+        let tip = format!("{}\n{}", tr("Music info by Deezer"), "Song info, artwork and charts from Deezer. Audio from YouTube.");
+        let (row, resp) = ui.allocate_exact_size(vec2(ui.available_width(), if compact { 36.0 } else { 34.0 }), Sense::click());
+        a11y(ui, &resp, egui::WidgetType::Link, || tr("Music info by Deezer").to_owned());
         let hot = resp.hovered();
         if hot {
             ui.painter().rect_filled(row, r_md(), pal().surface_hover);
         }
         if compact {
-            paint_icon(
-                ui.painter(),
-                row.center(),
-                icon::INFO,
-                regular(17.0),
-                if hot { pal().text } else { pal().text_faint },
-            );
+            paint_icon(ui.painter(), row.center(), icon::INFO, regular(17.0), if hot { pal().text } else { pal().text_faint });
         } else {
-            paint_icon(
-                ui.painter(),
-                pos2(row.left() + 22.0, row.center().y),
-                icon::INFO,
-                regular(16.0),
-                if hot {
-                    pal().text_muted
-                } else {
-                    pal().text_faint
-                },
-            );
+            paint_icon(ui.painter(), pos2(row.left() + 22.0, row.center().y), icon::INFO, regular(16.0), if hot { pal().text_muted } else { pal().text_faint });
             // "Music info by" quietly, "Deezer" a step brighter, like a credit.
             let mut job = egui::text::LayoutJob::default();
             let by = tr("Music info by Deezer");
             let (lead, name) = by.rsplit_once(' ').unwrap_or(("", by));
-            job.append(
-                &format!("{lead} "),
-                0.0,
-                egui::TextFormat::simple(
-                    med(12.0),
-                    if hot {
-                        pal().text_muted
-                    } else {
-                        pal().text_faint
-                    },
-                ),
-            );
-            job.append(
-                name,
-                0.0,
-                egui::TextFormat::simple(
-                    semi(12.0),
-                    if hot { pal().text } else { pal().text_muted },
-                ),
-            );
+            job.append(&format!("{lead} "), 0.0, egui::TextFormat::simple(med(12.0), if hot { pal().text_muted } else { pal().text_faint }));
+            job.append(name, 0.0, egui::TextFormat::simple(semi(12.0), if hot { pal().text } else { pal().text_muted }));
             let g = ui.painter().layout_job(job);
-            ui.painter().galley(
-                pos2(row.left() + 44.0, row.center().y - g.size().y / 2.0),
-                g,
-                pal().text,
-            );
+            ui.painter().galley(pos2(row.left() + 44.0, row.center().y - g.size().y / 2.0), g, pal().text);
             if hot {
-                paint_icon(
-                    ui.painter(),
-                    pos2(row.right() - 16.0, row.center().y),
-                    icon::ARROW_UP_RIGHT,
-                    regular(13.0),
-                    pal().text_muted,
-                );
+                paint_icon(ui.painter(), pos2(row.right() - 16.0, row.center().y), icon::ARROW_UP_RIGHT, regular(13.0), pal().text_muted);
             }
         }
         // A thin line above it, like the edge of a footer.
         ui.add_space(8.0);
         let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
-        ui.painter().hline(
-            line.x_range().shrink(6.0),
-            line.center().y,
-            Stroke::new(1.0, pal().border),
-        );
-        if resp
-            .on_hover_text(tip)
-            .on_hover_cursor(egui::CursorIcon::PointingHand)
-            .clicked()
-        {
-            ui.ctx()
-                .open_url(egui::OpenUrl::new_tab("https://www.deezer.com"));
+        ui.painter().hline(line.x_range().shrink(6.0), line.center().y, Stroke::new(1.0, pal().border));
+        if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            ui.ctx().open_url(egui::OpenUrl::new_tab("https://www.deezer.com"));
         }
         if big_art && let Some(t) = app.current.clone() {
             ui.add_space(8.0);
             let w = ui.available_width();
             let (r, resp) = ui.allocate_exact_size(Vec2::splat(w), Sense::click());
             artwork(ui, r, t.art_big(), r_lg());
-            a11y(ui, &resp, egui::WidgetType::Button, || {
-                format!("{}: {} by {}", tr("Now playing"), t.title, t.all_artists())
-            });
-            if resp
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .clicked()
-            {
+            a11y(ui, &resp, egui::WidgetType::Button, || format!("{}: {} by {}", tr("Now playing"), t.title, t.all_artists()));
+            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 app.navigate(Route::Queue, &ctx);
             }
         }
@@ -789,16 +456,7 @@ fn vgradient_rounded(ui: &Ui, r: Rect, top: Color32, bottom: Color32) {
     // A rounded square with a subtle two-tone fill.
     ui.painter().rect_filled(r, CornerRadius::same(8), bottom);
     let top_half = Rect::from_min_max(r.min, pos2(r.max.x, r.center().y));
-    ui.painter().rect_filled(
-        top_half,
-        CornerRadius {
-            nw: 8,
-            ne: 8,
-            sw: 0,
-            se: 0,
-        },
-        top.gamma_multiply(0.35),
-    );
+    ui.painter().rect_filled(top_half, CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, top.gamma_multiply(0.35));
 }
 
 /// True when the theme wants an icon-only sidebar.
@@ -815,35 +473,18 @@ fn nav_heading(ui: &mut Ui, text: &str) {
     let text = tr(text);
     ui.horizontal(|ui| {
         ui.add_space(10.0);
-        ui.label(
-            RichText::new(text.to_uppercase())
-                .font(semi(10.5))
-                .color(pal().text_faint),
-        );
+        ui.label(RichText::new(text.to_uppercase()).font(semi(10.5)).color(pal().text_faint));
     });
     ui.add_space(2.0);
 }
 
-fn nav_item(
-    ui: &mut Ui,
-    glyph: &str,
-    label: &str,
-    selected: bool,
-    badge: Option<usize>,
-) -> egui::Response {
+fn nav_item(ui: &mut Ui, glyph: &str, label: &str, selected: bool, badge: Option<usize>) -> egui::Response {
     nav_item_art(ui, None, glyph, label, selected, badge)
 }
 
 /// A sidebar row. With `art` (a playlist's cover, the Liked Songs heart) the picture
 /// takes the icon's place.
-fn nav_item_art(
-    ui: &mut Ui,
-    art: Option<&str>,
-    glyph: &str,
-    label: &str,
-    selected: bool,
-    badge: Option<usize>,
-) -> egui::Response {
+fn nav_item_art(ui: &mut Ui, art: Option<&str>, glyph: &str, label: &str, selected: bool, badge: Option<usize>) -> egui::Response {
     if compact_sidebar() {
         // Shorter words fit under the icons; the full name is in the tooltip.
         let full = tr(label);
@@ -860,9 +501,7 @@ fn nav_item_art(
         });
         // Icon over a small label, so the narrow sidebar still says what each button is.
         let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 54.0), Sense::click());
-        resp.widget_info(|| {
-            egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, full)
-        });
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, full));
         focus_ring(ui, &resp);
         let fill = if selected {
             pal().surface_active
@@ -874,121 +513,50 @@ fn nav_item_art(
         ui.painter().rect_filled(rect, r_md(), fill);
         let top = pos2(rect.center().x, rect.top() + 18.0);
         if art.is_some() {
-            artwork(
-                ui,
-                Rect::from_center_size(top, Vec2::splat(24.0)),
-                art,
-                CornerRadius::same(5),
-            );
+            artwork(ui, Rect::from_center_size(top, Vec2::splat(24.0)), art, CornerRadius::same(5));
         } else {
-            let (font, col) = if selected {
-                (filled_icon(19.0), pal().accent_soft)
-            } else {
-                (regular(19.0), pal().text_muted)
-            };
+            let (font, col) = if selected { (filled_icon(19.0), pal().accent_soft) } else { (regular(19.0), pal().text_muted) };
             paint_icon(ui.painter(), top, glyph, font, col);
         }
-        let text_col = if selected || resp.hovered() {
-            pal().text
-        } else {
-            pal().text_muted
-        };
+        let text_col = if selected || resp.hovered() { pal().text } else { pal().text_muted };
         let g = one_line(ui, short, med(9.5), text_col, rect.width() - 6.0);
-        ui.painter().galley(
-            pos2(
-                rect.center().x - g.size().x / 2.0,
-                rect.bottom() - 8.0 - g.size().y,
-            ),
-            g,
-            text_col,
-        );
-        return resp
-            .on_hover_text(full)
-            .on_hover_cursor(egui::CursorIcon::PointingHand);
+        ui.painter().galley(pos2(rect.center().x - g.size().x / 2.0, rect.bottom() - 8.0 - g.size().y), g, text_col);
+        return resp.on_hover_text(full).on_hover_cursor(egui::CursorIcon::PointingHand);
     }
     let label = tr(label);
-    let (rect, resp) = ui.allocate_exact_size(
-        vec2(
-            ui.available_width(),
-            if art.is_some() { 40.0 } else { 36.0 },
-        ),
-        Sense::click(),
-    );
-    resp.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, label)
-    });
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), if art.is_some() { 40.0 } else { 36.0 }), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, label));
     focus_ring(ui, &resp);
     // Highlights fade in and out; the accent bar beside the page you're on is drawn once
     // for the whole sidebar (`nav_bar`), so it can slide from one row to the next.
     let ctx = ui.ctx().clone();
-    let hover_t = ctx.animate_bool_with_time(
-        resp.id.with("hover_fade"),
-        resp.hovered(),
-        crate::theme::motion(0.12),
-    );
-    let sel_t = ctx.animate_bool_with_time(
-        resp.id.with("sel_fade"),
-        selected,
-        crate::theme::motion(0.18),
-    );
+    let hover_t = ctx.animate_bool_with_time(resp.id.with("hover_fade"), resp.hovered(), crate::theme::motion(0.12));
+    let sel_t = ctx.animate_bool_with_time(resp.id.with("sel_fade"), selected, crate::theme::motion(0.18));
     if hover_t > 0.0 && sel_t < 1.0 {
-        ui.painter()
-            .rect_filled(rect, r_md(), pal().surface_hover.gamma_multiply(hover_t));
+        ui.painter().rect_filled(rect, r_md(), pal().surface_hover.gamma_multiply(hover_t));
     }
     if sel_t > 0.0 {
-        ui.painter()
-            .rect_filled(rect, r_md(), pal().surface_active.gamma_multiply(sel_t));
+        ui.painter().rect_filled(rect, r_md(), pal().surface_active.gamma_multiply(sel_t));
     }
     if selected && ui.clip_rect().contains_rect(rect) {
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("nav_bar"), (rect.left(), rect.center().y)));
     }
     let icon_c = pos2(rect.left() + 22.0, rect.center().y);
     if art.is_some() {
-        artwork(
-            ui,
-            Rect::from_center_size(icon_c, Vec2::splat(28.0)),
-            art,
-            CornerRadius::same(5),
-        );
+        artwork(ui, Rect::from_center_size(icon_c, Vec2::splat(28.0)), art, CornerRadius::same(5));
     } else {
-        let icon_col = if selected {
-            pal().accent_soft
-        } else {
-            pal().text_muted
-        };
-        let font = if selected {
-            filled_icon(17.0)
-        } else {
-            regular(17.0)
-        };
+        let icon_col = if selected { pal().accent_soft } else { pal().text_muted };
+        let font = if selected { filled_icon(17.0) } else { regular(17.0) };
         paint_icon(ui.painter(), icon_c, glyph, font, icon_col);
     }
-    let text_col = if selected || resp.hovered() {
-        pal().text
-    } else {
-        pal().text_muted
-    };
+    let text_col = if selected || resp.hovered() { pal().text } else { pal().text_muted };
     let max_w = rect.width() - 80.0;
     let g = one_line(ui, label, med(13.5), text_col, max_w);
-    ui.painter().galley(
-        pos2(rect.left() + 44.0, rect.center().y - g.size().y / 2.0),
-        g,
-        text_col,
-    );
+    ui.painter().galley(pos2(rect.left() + 44.0, rect.center().y - g.size().y / 2.0), g, text_col);
     if let Some(n) = badge.filter(|n| *n > 0) {
         // Hovered/selected rows have a lighter background, where faint text would be too dim.
-        let badge_col = if selected || resp.hovered() {
-            pal().text_muted
-        } else {
-            pal().text_faint
-        };
-        ui.painter().text(
-            pos2(rect.right() - 10.0, rect.center().y),
-            Align2::RIGHT_CENTER,
-            n.to_string(),
-            regular(11.5),
-            badge_col,
-        );
+        let badge_col = if selected || resp.hovered() { pal().text_muted } else { pal().text_faint };
+        ui.painter().text(pos2(rect.right() - 10.0, rect.center().y), Align2::RIGHT_CENTER, n.to_string(), regular(11.5), badge_col);
     }
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -1014,9 +582,7 @@ fn search_dropdown(app: &mut App, ui: &mut Ui, pill: Rect, edit: &egui::Response
     let ctx = ui.ctx().clone();
     let area_id = egui::Id::new("search_dropdown");
     let last_rect: Option<Rect> = ui.data(|d| d.get_temp(area_id.with("rect")));
-    let over = last_rect.is_some_and(|r| {
-        ui.rect_contains_pointer(r) || ctx.pointer_hover_pos().is_some_and(|p| r.contains(p))
-    });
+    let over = last_rect.is_some_and(|r| ui.rect_contains_pointer(r) || ctx.pointer_hover_pos().is_some_and(|p| r.contains(p)));
     // Developer check: PULSE_DEBUG_DROPDOWN keeps it open for screenshots.
     if !edit.has_focus() && !over && std::env::var_os("PULSE_DEBUG_DROPDOWN").is_none() {
         ui.data_mut(|d| {
@@ -1031,24 +597,9 @@ fn search_dropdown(app: &mut App, ui: &mut Ui, pill: Rect, edit: &egui::Response
     }
     let lib = crate::suggest::Library {
         liked_songs: app.liked_ids.iter().map(String::as_str).collect(),
-        liked_albums: app
-            .saved
-            .liked_albums
-            .iter()
-            .map(|a| a.id.as_str())
-            .collect(),
-        liked_playlists: app
-            .saved
-            .liked_playlists
-            .iter()
-            .map(|p| p.id.as_str())
-            .collect(),
-        followed: app
-            .saved
-            .followed_artists
-            .iter()
-            .map(|a| a.id.as_str())
-            .collect(),
+        liked_albums: app.saved.liked_albums.iter().map(|a| a.id.as_str()).collect(),
+        liked_playlists: app.saved.liked_playlists.iter().map(|p| p.id.as_str()).collect(),
+        followed: app.saved.followed_artists.iter().map(|a| a.id.as_str()).collect(),
         played_artists: app
             .saved
             .played_artists
@@ -1058,13 +609,7 @@ fn search_dropdown(app: &mut App, ui: &mut Ui, pill: Rect, edit: &egui::Response
                 _ => None,
             })
             .collect(),
-        recent_songs: app
-            .saved
-            .recent
-            .iter()
-            .take(50)
-            .map(|t| t.id.as_str())
-            .collect(),
+        recent_songs: app.saved.recent.iter().take(50).map(|t| t.id.as_str()).collect(),
     };
     let mut items: Vec<Suggestion> = vec![];
     if q.is_empty() {
@@ -1073,11 +618,7 @@ fn search_dropdown(app: &mut App, ui: &mut Ui, pill: Rect, edit: &egui::Response
         }
     } else {
         let results = app.search_results_for(&q);
-        let popular = app
-            .popular_searches
-            .get(&q.to_lowercase())
-            .map(Vec::as_slice)
-            .unwrap_or(&[]);
+        let popular = app.popular_searches.get(&q.to_lowercase()).map(Vec::as_slice).unwrap_or(&[]);
         for c in crate::suggest::completions(&q, &app.saved.recent_searches, popular, results, 4) {
             items.push(Suggestion::Query(c));
         }
@@ -1087,15 +628,11 @@ fn search_dropdown(app: &mut App, ui: &mut Ui, pill: Rect, edit: &egui::Response
             }
         }
     }
-    let saved: Vec<bool> = items
-        .iter()
-        .map(|s| matches!(s, Suggestion::Pick(p) if p.saved(&lib)))
-        .collect();
+    let saved: Vec<bool> = items.iter().map(|s| matches!(s, Suggestion::Pick(p) if p.saved(&lib))).collect();
     drop(lib);
     let searching = !q.is_empty()
         && !items.iter().any(|s| matches!(s, Suggestion::Pick(_)))
-        && (app.search_edited_at.is_some()
-            || matches!(app.cache.get(&format!("search:{q}")), Some(Remote::Loading)));
+        && (app.search_edited_at.is_some() || matches!(app.cache.get(&format!("search:{q}")), Some(Remote::Loading)));
     if items.is_empty() && !searching {
         return false;
     }
@@ -1125,364 +662,160 @@ fn search_dropdown(app: &mut App, ui: &mut Ui, pill: Rect, edit: &egui::Response
     // in Gaming Mode and in Ultra-low).
     let now = ui.input(|i| i.time);
     let opened = ui.data_mut(|d| *d.get_temp_mut_or(area_id.with("opened"), now));
-    let t = if crate::theme::reduce_motion() {
-        1.0
-    } else {
-        ((now - opened) / 0.14).clamp(0.0, 1.0) as f32
-    };
+    let t = if crate::theme::reduce_motion() { 1.0 } else { ((now - opened) / 0.14).clamp(0.0, 1.0) as f32 };
     let shown = 1.0 - (1.0 - t).powi(3);
     if shown < 1.0 {
         ctx.request_repaint();
     }
-    let area = egui::Area::new(area_id)
-        .order(egui::Order::Foreground)
-        .fixed_pos(pill.left_bottom() + vec2(0.0, 8.0 - (1.0 - shown) * 6.0))
-        .show(&ctx, |ui| {
-            if shown < 1.0 {
-                ui.multiply_opacity(shown);
+    let area = egui::Area::new(area_id).order(egui::Order::Foreground).fixed_pos(pill.left_bottom() + vec2(0.0, 8.0 - (1.0 - shown) * 6.0)).show(&ctx, |ui| {
+        if shown < 1.0 {
+            ui.multiply_opacity(shown);
+        }
+        // A rounded panel the width of the search box, lifted off the page by a soft shadow.
+        let panel = Frame::menu(ui.style())
+            .inner_margin(8)
+            .corner_radius(CornerRadius::same(14))
+            .stroke(Stroke::new(1.0, pal().border))
+            .shadow(egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(110) });
+        panel.show(ui, |ui| {
+            ui.set_width(pill.width() - 16.0);
+            ui.spacing_mut().item_spacing.y = 2.0;
+            if q.is_empty() {
+                // "Recent searches", and a quiet "Clear history" button across from it.
+                let (head, _) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::hover());
+                ui.painter().text(pos2(head.left() + 10.0, head.center().y), Align2::LEFT_CENTER, tr("Recent searches"), semi(13.5), pal().text);
+                let label = ui.painter().layout_no_wrap(tr("Clear history").to_owned(), med(12.0), pal().text_muted);
+                let b = Rect::from_min_size(pos2(head.right() - label.size().x - 20.0 - 4.0, head.center().y - 13.0), vec2(label.size().x + 20.0, 26.0));
+                let br = ui.interact(b, area_id.with("clear"), Sense::click());
+                a11y(ui, &br, egui::WidgetType::Button, || tr("Clear history").to_owned());
+                if br.hovered() {
+                    ui.painter().rect_filled(b, CornerRadius::same(13), pal().surface_hover);
+                }
+                ui.painter().galley(b.center() - label.size() / 2.0, label, if br.hovered() { pal().text } else { pal().text_muted });
+                if br.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                    clear_history = true;
+                }
+                ui.add_space(2.0);
             }
-            // A rounded panel the width of the search box, lifted off the page by a soft shadow.
-            let panel = Frame::menu(ui.style())
-                .inner_margin(8)
-                .corner_radius(CornerRadius::same(14))
-                .stroke(Stroke::new(1.0, pal().border))
-                .shadow(egui::Shadow {
-                    offset: [0, 12],
-                    blur: 32,
-                    spread: 0,
-                    color: Color32::from_black_alpha(110),
-                });
-            panel.show(ui, |ui| {
-                ui.set_width(pill.width() - 16.0);
-                ui.spacing_mut().item_spacing.y = 2.0;
-                if q.is_empty() {
-                    // "Recent searches", and a quiet "Clear history" button across from it.
-                    let (head, _) =
-                        ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::hover());
-                    ui.painter().text(
-                        pos2(head.left() + 10.0, head.center().y),
-                        Align2::LEFT_CENTER,
-                        tr("Recent searches"),
-                        semi(13.5),
-                        pal().text,
-                    );
-                    let label = ui.painter().layout_no_wrap(
-                        tr("Clear history").to_owned(),
-                        med(12.0),
-                        pal().text_muted,
-                    );
-                    let b = Rect::from_min_size(
-                        pos2(
-                            head.right() - label.size().x - 20.0 - 4.0,
-                            head.center().y - 13.0,
-                        ),
-                        vec2(label.size().x + 20.0, 26.0),
-                    );
-                    let br = ui.interact(b, area_id.with("clear"), Sense::click());
-                    a11y(ui, &br, egui::WidgetType::Button, || {
-                        tr("Clear history").to_owned()
-                    });
-                    if br.hovered() {
-                        ui.painter()
-                            .rect_filled(b, CornerRadius::same(13), pal().surface_hover);
-                    }
-                    ui.painter().galley(
-                        b.center() - label.size() / 2.0,
-                        label,
-                        if br.hovered() {
-                            pal().text
-                        } else {
-                            pal().text_muted
-                        },
-                    );
-                    if br.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                        clear_history = true;
-                    }
-                    ui.add_space(2.0);
-                }
-                for (k, s) in items.iter().enumerate() {
-                    // A thin line between the searches and the results.
-                    if k > 0
-                        && matches!(s, Suggestion::Pick(_))
-                        && matches!(items[k - 1], Suggestion::Query(_))
-                    {
-                        ui.add_space(4.0);
-                        let (line, _) =
-                            ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
-                        ui.painter().hline(
-                            line.x_range().shrink(8.0),
-                            line.center().y,
-                            Stroke::new(1.0, pal().border),
-                        );
-                        ui.add_space(4.0);
-                    }
-                    let height = match s {
-                        Suggestion::Pick(_) => 52.0,
-                        Suggestion::Recent(_) => 44.0,
-                        Suggestion::Query(_) => 36.0,
-                    };
-                    let (rect, resp) =
-                        ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::click());
-                    // The whole row counts as pointed at, the × on it included.
-                    let hot = ui.rect_contains_pointer(rect) || sel == Some(k);
-                    let fade = ui.ctx().animate_bool(area_id.with(("hot", k)), hot);
-                    if fade > 0.0 {
-                        ui.painter().rect_filled(
-                            rect,
-                            r_md(),
-                            pal().surface_hover.gamma_multiply(fade),
-                        );
-                    }
-                    let mut x = rect.left() + 8.0;
-                    let mut right = rect.right() - 8.0;
-                    match s {
-                        Suggestion::Recent(text) => {
-                            // The clock in a rounded tile, the search itself at full strength, and
-                            // an × (while pointed at) to forget it.
-                            let tile = Rect::from_min_size(
-                                pos2(x, rect.center().y - 16.0),
-                                Vec2::splat(32.0),
-                            );
-                            ui.painter().rect_filled(
-                                tile,
-                                CornerRadius::same(8),
-                                pal().surface_active,
-                            );
-                            paint_icon(
-                                ui.painter(),
-                                tile.center(),
-                                icon::CLOCK_COUNTER_CLOCKWISE,
-                                regular(16.0),
-                                if hot { pal().text } else { pal().text_muted },
-                            );
-                            x = tile.right() + 12.0;
-                            if hot {
-                                let b = Rect::from_center_size(
-                                    pos2(right - 13.0, rect.center().y),
-                                    Vec2::splat(28.0),
-                                );
-                                let br =
-                                    ui.interact(b, area_id.with(("forget", k)), Sense::click());
-                                a11y(ui, &br, egui::WidgetType::Button, || {
-                                    format!("{} {text}", tr("Remove"))
-                                });
-                                if br.hovered() {
-                                    ui.painter().circle_filled(
-                                        b.center(),
-                                        14.0,
-                                        pal().surface_active,
-                                    );
-                                }
-                                paint_icon(
-                                    ui.painter(),
-                                    b.center(),
-                                    icon::X,
-                                    regular(14.0),
-                                    if br.hovered() {
-                                        pal().text
-                                    } else {
-                                        pal().text_muted
-                                    },
-                                );
-                                if br.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                                    forget = Some(k);
-                                }
-                                right = b.left() - 6.0;
-                            }
-                            paint_line(
-                                ui,
-                                pos2(x, rect.center().y - 9.0),
-                                text,
-                                med(14.0),
-                                pal().text,
-                                right - x,
-                            );
-                        }
-                        Suggestion::Query(text) => {
-                            paint_icon(
-                                ui.painter(),
-                                pos2(x + 9.0, rect.center().y),
-                                icon::MAGNIFYING_GLASS,
-                                regular(15.0),
-                                pal().text_muted,
-                            );
-                            x += 30.0;
-                            // What you typed in bold, the rest plain, like music apps.
-                            let typed = text.len().min(q.len());
-                            let bold = text
-                                .get(..typed)
-                                .filter(|p| crate::app::fold(p) == crate::app::fold(&q))
-                                .map(|_| typed)
-                                .unwrap_or(0);
-                            let mut job = egui::text::LayoutJob::default();
-                            job.append(
-                                &text[..bold],
-                                0.0,
-                                egui::TextFormat::simple(semi(13.5), pal().text),
-                            );
-                            job.append(
-                                &text[bold..],
-                                0.0,
-                                egui::TextFormat::simple(regular(13.5), pal().text_muted),
-                            );
-                            let g = ui.painter().layout_job(job);
-                            ui.painter().galley(
-                                pos2(x, rect.center().y - g.size().y / 2.0),
-                                g,
-                                pal().text,
-                            );
-                        }
-                        Suggestion::Pick(p) => {
-                            let (title, sub, art, round) = match p.as_ref() {
-                                Pick::Artist(a) => (
-                                    a.name.clone(),
-                                    tr("Artist").to_string(),
-                                    a.picture.clone(),
-                                    true,
-                                ),
-                                Pick::Album(a) => (
-                                    a.title.clone(),
-                                    format!("{} • {}", tr(a.kind()), a.artist.name),
-                                    a.cover_small.clone().or(a.cover.clone()),
-                                    false,
-                                ),
-                                Pick::Playlist(p) => (
-                                    p.title.clone(),
-                                    format!("{} • {}", tr("Playlist"), p.creator),
-                                    p.picture.clone(),
-                                    false,
-                                ),
-                                Pick::Song(t) => (
-                                    t.title.clone(),
-                                    format!("{} • {}", tr("Song"), t.all_artists()),
-                                    t.art_small().map(str::to_owned),
-                                    false,
-                                ),
-                            };
-                            let r = Rect::from_min_size(
-                                pos2(x, rect.center().y - 20.0),
-                                Vec2::splat(40.0),
-                            );
-                            artwork(
-                                ui,
-                                r,
-                                art.as_deref(),
-                                if round {
-                                    CornerRadius::same(20)
-                                } else {
-                                    r_sm()
-                                },
-                            );
-                            x += 52.0;
-                            // Right side: Follow for artists, add / saved for the rest.
-                            let on = saved[k];
-                            if let Pick::Artist(_) = p.as_ref() {
-                                let b = Rect::from_center_size(
-                                    pos2(right - 42.0, rect.center().y),
-                                    vec2(84.0, 30.0),
-                                );
-                                let br =
-                                    ui.interact(b, area_id.with(("follow", k)), Sense::click());
-                                ui.painter().rect_stroke(
-                                    b,
-                                    CornerRadius::same(15),
-                                    Stroke::new(
-                                        1.0,
-                                        if br.hovered() {
-                                            pal().text
-                                        } else {
-                                            pal().text_faint
-                                        },
-                                    ),
-                                    egui::StrokeKind::Inside,
-                                );
-                                ui.painter().text(
-                                    b.center(),
-                                    Align2::CENTER_CENTER,
-                                    tr(if on { "Following" } else { "Follow" }),
-                                    semi(12.0),
-                                    pal().text,
-                                );
-                                if br.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                                    toggled = Some(k);
-                                }
-                                right = b.left() - 10.0;
-                            } else {
-                                let b = Rect::from_center_size(
-                                    pos2(right - 12.0, rect.center().y),
-                                    Vec2::splat(26.0),
-                                );
-                                let br = ui.interact(b, area_id.with(("save", k)), Sense::click());
-                                let (glyph, font, col) = if on {
-                                    (icon::CHECK_CIRCLE, filled_icon(20.0), pal().accent_soft)
-                                } else {
-                                    (
-                                        icon::PLUS_CIRCLE,
-                                        regular(20.0),
-                                        if br.hovered() {
-                                            pal().text
-                                        } else {
-                                            pal().text_muted
-                                        },
-                                    )
-                                };
-                                paint_icon(ui.painter(), b.center(), glyph, font, col);
-                                let tip = tr(if on {
-                                    "Remove from your library"
-                                } else {
-                                    "Save to your library"
-                                });
-                                if br
-                                    .on_hover_text(tip)
-                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                    .clicked()
-                                {
-                                    toggled = Some(k);
-                                }
-                                right = b.left() - 8.0;
-                            }
-                            let w = right - x;
-                            paint_line(
-                                ui,
-                                pos2(x, rect.center().y - 16.0),
-                                &title,
-                                med(13.5),
-                                pal().text,
-                                w,
-                            );
-                            paint_line(
-                                ui,
-                                pos2(x, rect.center().y + 2.0),
-                                &sub,
-                                regular(12.0),
-                                pal().text_muted,
-                                w,
-                            );
-                        }
-                    }
-                    if toggled != Some(k)
-                        && forget != Some(k)
-                        && resp
-                            .on_hover_cursor(egui::CursorIcon::PointingHand)
-                            .clicked()
-                    {
-                        chosen = Some(k);
-                    }
-                }
-                if searching {
+            for (k, s) in items.iter().enumerate() {
+                // A thin line between the searches and the results.
+                if k > 0 && matches!(s, Suggestion::Pick(_)) && matches!(items[k - 1], Suggestion::Query(_)) {
                     ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(10.0);
-                        ui.spinner();
-                        ui.label(
-                            RichText::new(tr("Searching…"))
-                                .font(regular(12.5))
-                                .color(pal().text_muted),
-                        );
-                    });
+                    let (line, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
+                    ui.painter().hline(line.x_range().shrink(8.0), line.center().y, Stroke::new(1.0, pal().border));
+                    ui.add_space(4.0);
                 }
-            });
+                let height = match s {
+                    Suggestion::Pick(_) => 52.0,
+                    Suggestion::Recent(_) => 44.0,
+                    Suggestion::Query(_) => 36.0,
+                };
+                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::click());
+                // The whole row counts as pointed at, the × on it included.
+                let hot = ui.rect_contains_pointer(rect) || sel == Some(k);
+                let fade = ui.ctx().animate_bool(area_id.with(("hot", k)), hot);
+                if fade > 0.0 {
+                    ui.painter().rect_filled(rect, r_md(), pal().surface_hover.gamma_multiply(fade));
+                }
+                let mut x = rect.left() + 8.0;
+                let mut right = rect.right() - 8.0;
+                match s {
+                    Suggestion::Recent(text) => {
+                        // The clock in a rounded tile, the search itself at full strength, and
+                        // an × (while pointed at) to forget it.
+                        let tile = Rect::from_min_size(pos2(x, rect.center().y - 16.0), Vec2::splat(32.0));
+                        ui.painter().rect_filled(tile, CornerRadius::same(8), pal().surface_active);
+                        paint_icon(ui.painter(), tile.center(), icon::CLOCK_COUNTER_CLOCKWISE, regular(16.0), if hot { pal().text } else { pal().text_muted });
+                        x = tile.right() + 12.0;
+                        if hot {
+                            let b = Rect::from_center_size(pos2(right - 13.0, rect.center().y), Vec2::splat(28.0));
+                            let br = ui.interact(b, area_id.with(("forget", k)), Sense::click());
+                            a11y(ui, &br, egui::WidgetType::Button, || format!("{} {text}", tr("Remove")));
+                            if br.hovered() {
+                                ui.painter().circle_filled(b.center(), 14.0, pal().surface_active);
+                            }
+                            paint_icon(ui.painter(), b.center(), icon::X, regular(14.0), if br.hovered() { pal().text } else { pal().text_muted });
+                            if br.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                                forget = Some(k);
+                            }
+                            right = b.left() - 6.0;
+                        }
+                        paint_line(ui, pos2(x, rect.center().y - 9.0), text, med(14.0), pal().text, right - x);
+                    }
+                    Suggestion::Query(text) => {
+                        paint_icon(ui.painter(), pos2(x + 9.0, rect.center().y), icon::MAGNIFYING_GLASS, regular(15.0), pal().text_muted);
+                        x += 30.0;
+                        // What you typed in bold, the rest plain, like music apps.
+                        let typed = text.len().min(q.len());
+                        let bold = text.get(..typed).filter(|p| crate::app::fold(p) == crate::app::fold(&q)).map(|_| typed).unwrap_or(0);
+                        let mut job = egui::text::LayoutJob::default();
+                        job.append(&text[..bold], 0.0, egui::TextFormat::simple(semi(13.5), pal().text));
+                        job.append(&text[bold..], 0.0, egui::TextFormat::simple(regular(13.5), pal().text_muted));
+                        let g = ui.painter().layout_job(job);
+                        ui.painter().galley(pos2(x, rect.center().y - g.size().y / 2.0), g, pal().text);
+                    }
+                    Suggestion::Pick(p) => {
+                        let (title, sub, art, round) = match p.as_ref() {
+                            Pick::Artist(a) => (a.name.clone(), tr("Artist").to_string(), a.picture.clone(), true),
+                            Pick::Album(a) => {
+                                (a.title.clone(), format!("{} • {}", tr(a.kind()), a.artist.name), a.cover_small.clone().or(a.cover.clone()), false)
+                            }
+                            Pick::Playlist(p) => (p.title.clone(), format!("{} • {}", tr("Playlist"), p.creator), p.picture.clone(), false),
+                            Pick::Song(t) => (t.title.clone(), format!("{} • {}", tr("Song"), t.all_artists()), t.art_small().map(str::to_owned), false),
+                        };
+                        let r = Rect::from_min_size(pos2(x, rect.center().y - 20.0), Vec2::splat(40.0));
+                        artwork(ui, r, art.as_deref(), if round { CornerRadius::same(20) } else { r_sm() });
+                        x += 52.0;
+                        // Right side: Follow for artists, add / saved for the rest.
+                        let on = saved[k];
+                        if let Pick::Artist(_) = p.as_ref() {
+                            let b = Rect::from_center_size(pos2(right - 42.0, rect.center().y), vec2(84.0, 30.0));
+                            let br = ui.interact(b, area_id.with(("follow", k)), Sense::click());
+                            ui.painter().rect_stroke(
+                                b,
+                                CornerRadius::same(15),
+                                Stroke::new(1.0, if br.hovered() { pal().text } else { pal().text_faint }),
+                                egui::StrokeKind::Inside,
+                            );
+                            ui.painter().text(b.center(), Align2::CENTER_CENTER, tr(if on { "Following" } else { "Follow" }), semi(12.0), pal().text);
+                            if br.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                                toggled = Some(k);
+                            }
+                            right = b.left() - 10.0;
+                        } else {
+                            let b = Rect::from_center_size(pos2(right - 12.0, rect.center().y), Vec2::splat(26.0));
+                            let br = ui.interact(b, area_id.with(("save", k)), Sense::click());
+                            let (glyph, font, col) = if on {
+                                (icon::CHECK_CIRCLE, filled_icon(20.0), pal().accent_soft)
+                            } else {
+                                (icon::PLUS_CIRCLE, regular(20.0), if br.hovered() { pal().text } else { pal().text_muted })
+                            };
+                            paint_icon(ui.painter(), b.center(), glyph, font, col);
+                            let tip = tr(if on { "Remove from your library" } else { "Save to your library" });
+                            if br.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                                toggled = Some(k);
+                            }
+                            right = b.left() - 8.0;
+                        }
+                        let w = right - x;
+                        paint_line(ui, pos2(x, rect.center().y - 16.0), &title, med(13.5), pal().text, w);
+                        paint_line(ui, pos2(x, rect.center().y + 2.0), &sub, regular(12.0), pal().text_muted, w);
+                    }
+                }
+                if toggled != Some(k) && forget != Some(k) && resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                    chosen = Some(k);
+                }
+            }
+            if searching {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(10.0);
+                    ui.spinner();
+                    ui.label(RichText::new(tr("Searching…")).font(regular(12.5)).color(pal().text_muted));
+                });
+            }
         });
+    });
     ui.data_mut(|d| {
         d.insert_temp(area_id.with("rect"), area.response.rect);
         d.insert_temp(sel_id, sel);
@@ -1534,19 +867,11 @@ fn search_dropdown(app: &mut App, ui: &mut Ui, pill: Rect, edit: &egui::Response
 fn top_bar(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     ui.horizontal_centered(|ui| {
-        let back_col = if app.can_go_back() {
-            pal().text
-        } else {
-            pal().text_faint
-        };
+        let back_col = if app.can_go_back() { pal().text } else { pal().text_faint };
         if icon_button(ui, icon::CARET_LEFT, 17.0, back_col, tr("Back")).clicked() {
             app.go_back(&ctx);
         }
-        let fwd_col = if app.can_go_forward() {
-            pal().text
-        } else {
-            pal().text_faint
-        };
+        let fwd_col = if app.can_go_forward() { pal().text } else { pal().text_faint };
         if icon_button(ui, icon::CARET_RIGHT, 17.0, fwd_col, tr("Forward")).clicked() {
             app.go_forward(&ctx);
         }
@@ -1560,64 +885,23 @@ fn top_bar(app: &mut App, ui: &mut Ui) {
         let focused = ui.memory(|m| m.has_focus(id));
         let hot = focused || ui.rect_contains_pointer(rect);
         if focused {
-            ui.painter().add(
-                egui::Shadow {
-                    offset: [0, 0],
-                    blur: 16,
-                    spread: 1,
-                    color: pal().accent.gamma_multiply(0.30),
-                }
-                .as_shape(rect, CornerRadius::same(20)),
-            );
+            ui.painter().add(egui::Shadow { offset: [0, 0], blur: 16, spread: 1, color: pal().accent.gamma_multiply(0.30) }.as_shape(rect, CornerRadius::same(20)));
         }
-        let stroke = if focused {
-            Stroke::new(1.5, pal().accent_soft)
-        } else {
-            Stroke::new(1.0, if hot { pal().text_faint } else { pal().border })
-        };
-        ui.painter().rect(
-            rect,
-            CornerRadius::same(20),
-            if hot {
-                pal().surface_hover
-            } else {
-                pal().surface
-            },
-            stroke,
-            egui::StrokeKind::Inside,
-        );
-        paint_icon(
-            ui.painter(),
-            pos2(rect.left() + 21.0, rect.center().y),
-            icon::MAGNIFYING_GLASS,
-            regular(17.0),
-            if focused {
-                pal().text
-            } else {
-                pal().text_muted
-            },
-        );
+        let stroke = if focused { Stroke::new(1.5, pal().accent_soft) } else { Stroke::new(1.0, if hot { pal().text_faint } else { pal().border }) };
+        ui.painter().rect(rect, CornerRadius::same(20), if hot { pal().surface_hover } else { pal().surface }, stroke, egui::StrokeKind::Inside);
+        paint_icon(ui.painter(), pos2(rect.left() + 21.0, rect.center().y), icon::MAGNIFYING_GLASS, regular(17.0), if focused { pal().text } else { pal().text_muted });
         // A click anywhere on the pill (the icon, the padding) starts typing.
         if pill.on_hover_cursor(egui::CursorIcon::Text).clicked() {
             ui.memory_mut(|m| m.request_focus(id));
         }
 
-        let edit_rect = Rect::from_min_max(
-            pos2(rect.left() + 42.0, rect.top()),
-            pos2(rect.right() - 64.0, rect.bottom()),
-        );
-        let mut child = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(edit_rect)
-                .layout(Layout::left_to_right(Align::Center)),
-        );
+        let edit_rect = Rect::from_min_max(pos2(rect.left() + 42.0, rect.top()), pos2(rect.right() - 64.0, rect.bottom()));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(edit_rect).layout(Layout::left_to_right(Align::Center)));
         let resp = child.add(
             egui::TextEdit::singleline(&mut app.search_text)
                 .id(id)
                 .frame(Frame::NONE)
-                .hint_text(
-                    RichText::new(tr("What do you want to listen to?")).color(pal().text_faint),
-                )
+                .hint_text(RichText::new(tr("What do you want to listen to?")).color(pal().text_faint))
                 .font(regular(14.0))
                 .desired_width(edit_rect.width())
                 .vertical_align(Align::Center),
@@ -1641,52 +925,20 @@ fn top_bar(app: &mut App, ui: &mut Ui) {
         if !app.search_text.is_empty() {
             let r = Rect::from_center_size(right - vec2(10.0, 0.0), Vec2::splat(26.0));
             let c = ui.interact(r, id.with("clear"), Sense::click());
-            a11y(ui, &c, egui::WidgetType::Button, || {
-                "Clear search".to_owned()
-            });
+            a11y(ui, &c, egui::WidgetType::Button, || "Clear search".to_owned());
             if c.hovered() {
-                ui.painter()
-                    .circle_filled(r.center(), 13.0, pal().surface_active);
+                ui.painter().circle_filled(r.center(), 13.0, pal().surface_active);
             }
-            paint_icon(
-                ui.painter(),
-                r.center(),
-                icon::X,
-                regular(14.0),
-                if c.hovered() {
-                    pal().text
-                } else {
-                    pal().text_muted
-                },
-            );
+            paint_icon(ui.painter(), r.center(), icon::X, regular(14.0), if c.hovered() { pal().text } else { pal().text_muted });
             if c.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 app.search_text.clear();
                 ui.memory_mut(|m| m.request_focus(id));
             }
         } else if !focused {
-            let keycap = Rect::from_min_max(
-                pos2(right.x - 44.0, right.y - 11.0),
-                pos2(right.x, right.y + 11.0),
-            );
-            ui.painter().rect(
-                keycap,
-                CornerRadius::same(6),
-                pal().surface_active,
-                Stroke::new(1.0, pal().border),
-                egui::StrokeKind::Inside,
-            );
-            ui.painter().hline(
-                keycap.x_range().shrink(4.0),
-                keycap.bottom() - 1.5,
-                Stroke::new(1.0, pal().border),
-            );
-            paint_icon(
-                ui.painter(),
-                keycap.center() - vec2(0.0, 0.5),
-                "Ctrl K",
-                med(10.5),
-                pal().text_muted,
-            );
+            let keycap = Rect::from_min_max(pos2(right.x - 44.0, right.y - 11.0), pos2(right.x, right.y + 11.0));
+            ui.painter().rect(keycap, CornerRadius::same(6), pal().surface_active, Stroke::new(1.0, pal().border), egui::StrokeKind::Inside);
+            ui.painter().hline(keycap.x_range().shrink(4.0), keycap.bottom() - 1.5, Stroke::new(1.0, pal().border));
+            paint_icon(ui.painter(), keycap.center() - vec2(0.0, 0.5), "Ctrl K", med(10.5), pal().text_muted);
         }
 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1694,26 +946,14 @@ fn top_bar(app: &mut App, ui: &mut Ui) {
             let (r, resp) = ui.allocate_exact_size(Vec2::splat(34.0), Sense::click());
             personal::avatar(ui, r, app);
             if app.route == Route::Profile || resp.hovered() {
-                ui.painter()
-                    .circle_stroke(r.center(), 18.0, Stroke::new(2.0, pal().accent_soft));
+                ui.painter().circle_stroke(r.center(), 18.0, Stroke::new(2.0, pal().accent_soft));
             }
-            let who = if app.saved.profile.name.is_empty() {
-                tr("Profile").to_string()
-            } else {
-                app.saved.profile.name.clone()
-            };
+            let who = if app.saved.profile.name.is_empty() { tr("Profile").to_string() } else { app.saved.profile.name.clone() };
             a11y(ui, &resp, egui::WidgetType::Button, || who.clone());
             focus_ring(ui, &resp);
-            if resp
-                .on_hover_text(&who)
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .clicked()
-            {
+            if resp.on_hover_text(&who).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 if app.saved.profile.created == 0 {
-                    app.profile_editing = Some(ProfileForm {
-                        welcome: true,
-                        ..Default::default()
-                    });
+                    app.profile_editing = Some(ProfileForm { welcome: true, ..Default::default() });
                 } else {
                     app.navigate(Route::Profile, &ctx);
                 }
@@ -1728,31 +968,16 @@ fn top_bar(app: &mut App, ui: &mut Ui) {
             let mode = crate::perf::mode();
             let gaming = mode != crate::perf::Mode::Normal;
             let tip = if gaming {
-                let off: Vec<&str> = crate::perf::switched_off()
-                    .into_iter()
-                    .map(|e| tr(e.label()))
-                    .collect();
-                format!(
-                    "{} (Ctrl+G)\n{}\n• {}",
-                    tr(mode.label()),
-                    tr("Paused while it's on (music plays the same):"),
-                    off.join("\n• ")
-                )
+                let off: Vec<&str> = crate::perf::switched_off().into_iter().map(|e| tr(e.label())).collect();
+                format!("{} (Ctrl+G)\n{}\n• {}", tr(mode.label()), tr("Paused while it's on (music plays the same):"), off.join("\n• "))
             } else {
-                format!(
-                    "{} (Ctrl+G)",
-                    tr("Gaming Mode: pause the extras while you play")
-                )
+                format!("{} (Ctrl+G)", tr("Gaming Mode: pause the extras while you play"))
             };
             if top_icon(ui, icon::GAME_CONTROLLER, gaming, &tip).clicked() {
                 app.toggle_gaming(&ctx);
             }
             if app.theme_has_light_and_dark() {
-                let (glyph, tip) = if app.saved.light_mode {
-                    (icon::MOON, "Switch to dark mode")
-                } else {
-                    (icon::SUN, "Switch to light mode")
-                };
+                let (glyph, tip) = if app.saved.light_mode { (icon::MOON, "Switch to dark mode") } else { (icon::SUN, "Switch to light mode") };
                 if top_icon(ui, glyph, false, tr(tip)).clicked() {
                     app.toggle_theme(&ctx);
                 }
@@ -1765,29 +990,17 @@ fn top_bar(app: &mut App, ui: &mut Ui) {
 /// screen-reader name too) says what it does.
 fn top_icon(ui: &mut Ui, glyph: &str, on: bool, tip: &str) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(38.0), Sense::click());
-    a11y(ui, &resp, egui::WidgetType::Button, || {
-        tip.lines().next().unwrap_or(tip).to_owned()
-    });
+    a11y(ui, &resp, egui::WidgetType::Button, || tip.lines().next().unwrap_or(tip).to_owned());
     let hovered = resp.hovered();
     let h = ui.ctx().animate_bool(resp.id.with("hover_fade"), hovered);
     if on {
-        ui.painter()
-            .circle_filled(rect.center(), 19.0, pal().surface_active);
+        ui.painter().circle_filled(rect.center(), 19.0, pal().surface_active);
     } else if h > 0.0 {
-        ui.painter().circle_filled(
-            rect.center(),
-            15.0 + 4.0 * h,
-            pal().surface_hover.gamma_multiply(h),
-        );
+        ui.painter().circle_filled(rect.center(), 15.0 + 4.0 * h, pal().surface_hover.gamma_multiply(h));
     }
-    let col = if on {
-        pal().accent_soft
-    } else {
-        pal().text_muted.lerp_to_gamma(pal().text, h)
-    };
+    let col = if on { pal().accent_soft } else { pal().text_muted.lerp_to_gamma(pal().text, h) };
     paint_icon(ui.painter(), rect.center(), glyph, regular(19.0), col);
-    resp.on_hover_text(tip)
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
+    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 // ---------------------------------------------------------------------------
@@ -1815,18 +1028,8 @@ fn page(app: &mut App, ui: &mut Ui) {
                 skeleton_rows(ui, 8);
             } else {
                 let tracks = app.local_files.clone();
-                let dir = crate::settings::music_dir()
-                    .map(|d| d.display().to_string())
-                    .unwrap_or_default();
-                local_collection(
-                    app,
-                    ui,
-                    "Local Files",
-                    &dir,
-                    icon::FOLDER_SIMPLE,
-                    &tracks,
-                    None,
-                );
+                let dir = crate::settings::music_dir().map(|d| d.display().to_string()).unwrap_or_default();
+                local_collection(app, ui, "Local Files", &dir, icon::FOLDER_SIMPLE, &tracks, None);
             }
         }
         Route::Liked => {
@@ -1838,13 +1041,7 @@ fn page(app: &mut App, ui: &mut Ui) {
             page_title(ui, "Liked Albums", None);
             let list = app.saved.liked_albums.clone();
             if list.is_empty() {
-                empty_state(
-                    ui,
-                    icon::VINYL_RECORD,
-                    "No liked albums yet",
-                    "Tap the heart on an album's page to save it here.",
-                    None,
-                );
+                empty_state(ui, icon::VINYL_RECORD, "No liked albums yet", "Tap the heart on an album's page to save it here.", None);
             } else {
                 album_grid(app, ui, &list, None);
             }
@@ -1853,13 +1050,7 @@ fn page(app: &mut App, ui: &mut Ui) {
             page_title(ui, "Your Artists", None);
             let list = app.saved.followed_artists.clone();
             if list.is_empty() {
-                empty_state(
-                    ui,
-                    icon::USER,
-                    "You're not following anyone yet",
-                    "Press Follow on an artist's page or in search to see them here.",
-                    None,
-                );
+                empty_state(ui, icon::USER, "You're not following anyone yet", "Press Follow on an artist's page or in search to see them here.", None);
             } else {
                 artist_grid(app, ui, &list, None);
             }
@@ -1868,28 +1059,14 @@ fn page(app: &mut App, ui: &mut Ui) {
             page_title(ui, "Liked Playlists", None);
             let list = app.saved.liked_playlists.clone();
             if list.is_empty() {
-                empty_state(
-                    ui,
-                    icon::PLAYLIST,
-                    "No liked playlists yet",
-                    "Tap the heart on a playlist's page to save it here.",
-                    None,
-                );
+                empty_state(ui, icon::PLAYLIST, "No liked playlists yet", "Tap the heart on a playlist's page to save it here.", None);
             } else {
                 playlist_grid(app, ui, &list, None);
             }
         }
         Route::Recent => {
             let tracks = app.saved.recent.clone();
-            local_collection(
-                app,
-                ui,
-                "Recently Played",
-                "Your last 50 songs, stored only on this computer",
-                icon::CLOCK_COUNTER_CLOCKWISE,
-                &tracks,
-                None,
-            );
+            local_collection(app, ui, "Recently Played", "Your last 50 songs, stored only on this computer", icon::CLOCK_COUNTER_CLOCKWISE, &tracks, None);
             if !tracks.is_empty() {
                 ui.add_space(12.0);
                 if ghost_button(ui, icon::TRASH, "Clear history").clicked() {
@@ -1899,11 +1076,7 @@ fn page(app: &mut App, ui: &mut Ui) {
         }
         Route::Local(i) => {
             if let Some(p) = app.saved.playlists.get(i).cloned() {
-                let sub = format!(
-                    "Your playlist · {} · {}",
-                    song_count(p.tracks.len()),
-                    total_time(&p.tracks)
-                );
+                let sub = format!("Your playlist · {} · {}", song_count(p.tracks.len()), total_time(&p.tracks));
                 local_collection(app, ui, &p.name, &sub, icon::PLAYLIST, &p.tracks, Some(i));
             }
         }
@@ -1926,13 +1099,7 @@ fn with_remote(app: &mut App, ui: &mut Ui, f: impl FnOnce(&mut App, &mut Ui, &Pa
             app.cache.entry(key).or_insert(Remote::Ready(page));
         }
         Some(Remote::Failed(e)) => {
-            if empty_state(
-                ui,
-                icon::WARNING_CIRCLE,
-                "Something went wrong",
-                &e,
-                Some("Try again"),
-            ) {
+            if empty_state(ui, icon::WARNING_CIRCLE, "Something went wrong", &e, Some("Try again")) {
                 let ctx = ui.ctx().clone();
                 app.retry(&ctx);
             } else {
@@ -1972,14 +1139,7 @@ fn tracks_block(app: &mut App, ui: &mut Ui, salt: &str, tracks: &[Track]) {
 
 /// `compact`: no header or numbers (a short list beside something else); `numbered_from`:
 /// the number before the first row (a list that carries on from one above).
-fn tracks_block_ex(
-    app: &mut App,
-    ui: &mut Ui,
-    salt: &str,
-    tracks: &[Track],
-    compact: bool,
-    numbered_from: usize,
-) {
+fn tracks_block_ex(app: &mut App, ui: &mut Ui, salt: &str, tracks: &[Track], compact: bool, numbered_from: usize) {
     app.ensure_views(tracks);
     app.ensure_featured(tracks);
     let names = app.playlist_names();
@@ -2032,21 +1192,9 @@ fn welcome_banner(ui: &mut Ui) {
     ui.add_space(8.0);
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 150.0), Sense::hover());
     let r = r_lg();
-    ui.painter()
-        .rect_filled(rect, r, Color32::from_rgb(28, 20, 52));
-    vgradient(
-        ui,
-        rect.shrink(1.0),
-        pal().accent.gamma_multiply(0.30),
-        Color32::TRANSPARENT,
-    );
-    ui.painter().text(
-        rect.left_top() + vec2(28.0, 30.0),
-        Align2::LEFT_TOP,
-        "Any song. Any artist.",
-        heavy(28.0),
-        ON_DARK,
-    );
+    ui.painter().rect_filled(rect, r, Color32::from_rgb(28, 20, 52));
+    vgradient(ui, rect.shrink(1.0), pal().accent.gamma_multiply(0.30), Color32::TRANSPARENT);
+    ui.painter().text(rect.left_top() + vec2(28.0, 30.0), Align2::LEFT_TOP, "Any song. Any artist.", heavy(28.0), ON_DARK);
     ui.painter().text(
         rect.left_top() + vec2(28.0, 72.0),
         Align2::LEFT_TOP,
@@ -2054,13 +1202,7 @@ fn welcome_banner(ui: &mut Ui) {
         regular(14.0),
         ON_DARK_MUTED,
     );
-    ui.painter().text(
-        rect.right_center() - vec2(40.0, 0.0),
-        Align2::RIGHT_CENTER,
-        icon::VINYL_RECORD,
-        regular(96.0),
-        pal().accent_soft.gamma_multiply(0.25),
-    );
+    ui.painter().text(rect.right_center() - vec2(40.0, 0.0), Align2::RIGHT_CENTER, icon::VINYL_RECORD, regular(96.0), pal().accent_soft.gamma_multiply(0.25));
 }
 
 /// Rows built from your artists and what you play ("Listeners of X also listen to",
@@ -2100,11 +1242,7 @@ fn home_discovery(app: &mut App, ui: &mut Ui) {
 fn suggestion_row(app: &mut App, ui: &mut Ui, salt: &str, row: &crate::deezer::Suggestion) {
     match row {
         crate::deezer::Suggestion::AlsoListen(name, artists) => {
-            section_title(
-                ui,
-                &tr("Listeners of {} also listen to").replace("{}", name),
-                None,
-            );
+            section_title(ui, &tr("Listeners of {} also listen to").replace("{}", name), None);
             artist_grid(app, ui, artists, Some(1));
         }
         crate::deezer::Suggestion::SongsLike(name, tracks) => {
@@ -2141,14 +1279,7 @@ fn album_grid(app: &mut App, ui: &mut Ui, albums: &[AlbumInfo], rows: Option<usi
         if !a.artist.name.is_empty() {
             sub = format!("{sub} · {}", a.artist.name);
         }
-        let info = CardInfo {
-            id: egui::Id::new(("album", &a.id)),
-            art: a.cover.as_deref(),
-            title: &a.title,
-            subtitle: sub,
-            round: false,
-            badge: None,
-        };
+        let info = CardInfo { id: egui::Id::new(("album", &a.id)), art: a.cover.as_deref(), title: &a.title, subtitle: sub, round: false, badge: None };
         match card(ui, w, &info) {
             CardClick::Open => action = Some((a.id.clone(), false)),
             CardClick::Play => action = Some((a.id.clone(), true)),
@@ -2178,14 +1309,7 @@ fn playlist_grid(app: &mut App, ui: &mut Ui, playlists: &[PlaylistInfo], rows: O
         } else {
             "Playlist".to_string()
         };
-        let info = CardInfo {
-            id: egui::Id::new(("pl", &p.id)),
-            art: p.picture.as_deref(),
-            title: &p.title,
-            subtitle: sub,
-            round: false,
-            badge: None,
-        };
+        let info = CardInfo { id: egui::Id::new(("pl", &p.id)), art: p.picture.as_deref(), title: &p.title, subtitle: sub, round: false, badge: None };
         match card(ui, w, &info) {
             CardClick::Open => action = Some((p.id.clone(), false)),
             CardClick::Play => action = Some((p.id.clone(), true)),
@@ -2215,19 +1339,10 @@ fn album_grid_visits(app: &mut App, ui: &mut Ui, items: &[crate::app::Visit], ro
     let mut preview = None;
     card_grid(ui, items, rows, |ui, w, v| {
         let current = match &v.place {
-            crate::app::Place::Yours(name) => app
-                .saved
-                .playlists
-                .iter()
-                .position(|p| p.name == *name)
-                .and_then(|i| app.playlist_art(i)),
+            crate::app::Place::Yours(name) => app.saved.playlists.iter().position(|p| p.name == *name).and_then(|i| app.playlist_art(i)),
             _ => None,
         };
-        let art = if v.place == crate::app::Place::Liked {
-            Some(LIKED_ART)
-        } else {
-            current.as_deref().or(v.image.as_deref())
-        };
+        let art = if v.place == crate::app::Place::Liked { Some(LIKED_ART) } else { current.as_deref().or(v.image.as_deref()) };
         // Orbits saved before the rename were called "Daily Mix 01".
         let title = match &v.place {
             crate::app::Place::Mix(id) => app
@@ -2260,11 +1375,7 @@ fn album_grid_visits(app: &mut App, ui: &mut Ui, items: &[crate::app::Visit], ro
     if let Some((place, play)) = action
         && let Some(route) = app.route_for(&place)
     {
-        if play {
-            open_and_play(app, route, &ctx)
-        } else {
-            app.navigate(route, &ctx)
-        }
+        if play { open_and_play(app, route, &ctx) } else { app.navigate(route, &ctx) }
     }
 }
 
@@ -2274,11 +1385,7 @@ fn artist_grid(app: &mut App, ui: &mut Ui, artists: &[ArtistInfo], rows: Option<
     // Pulse knows about them: opening one opens the main page anyway.
     let kept: Vec<ArtistInfo>;
     let artists = if artists.iter().any(|a| app.artist_alias.contains_key(&a.id)) {
-        kept = artists
-            .iter()
-            .filter(|a| !app.artist_alias.contains_key(&a.id))
-            .cloned()
-            .collect();
+        kept = artists.iter().filter(|a| !app.artist_alias.contains_key(&a.id)).cloned().collect();
         &kept[..]
     } else {
         artists
@@ -2287,19 +1394,8 @@ fn artist_grid(app: &mut App, ui: &mut Ui, artists: &[ArtistInfo], rows: Option<
     let mut radio = None;
     let mut preview = None;
     card_grid(ui, artists, rows, |ui, w, a| {
-        let sub = if a.fans > 0 {
-            format!("{} fans", fmt_count(a.fans))
-        } else {
-            "Artist".into()
-        };
-        let info = CardInfo {
-            id: egui::Id::new(("artist", &a.id)),
-            art: a.picture.as_deref(),
-            title: &a.name,
-            subtitle: sub,
-            round: true,
-            badge: None,
-        };
+        let sub = if a.fans > 0 { format!("{} fans", fmt_count(a.fans)) } else { "Artist".into() };
+        let info = CardInfo { id: egui::Id::new(("artist", &a.id)), art: a.picture.as_deref(), title: &a.name, subtitle: sub, round: true, badge: None };
         match card(ui, w, &info) {
             CardClick::Open => open = Some(a.id.clone()),
             // The play button on an artist starts their radio.
@@ -2321,33 +1417,20 @@ fn artist_grid(app: &mut App, ui: &mut Ui, artists: &[ArtistInfo], rows: Option<
 
 fn charts(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
-    let title = if app.chart_genre.0 == 0 {
-        "Charts".to_string()
-    } else {
-        format!("Charts · {}", app.chart_genre.1)
-    };
+    let title = if app.chart_genre.0 == 0 { "Charts".to_string() } else { format!("Charts · {}", app.chart_genre.1) };
     page_title(ui, &title, Some("The 100 most popular songs right now"));
 
     ui.horizontal(|ui| {
         egui::ComboBox::from_id_salt("genre")
-            .selected_text(
-                RichText::new(format!("{}  {}", icon::MUSIC_NOTES, app.chart_genre.1))
-                    .font(med(12.5)),
-            )
+            .selected_text(RichText::new(format!("{}  {}", icon::MUSIC_NOTES, app.chart_genre.1)).font(med(12.5)))
             .width(200.0)
             .height(420.0)
             .show_ui(ui, |ui| {
-                if ui
-                    .selectable_label(app.chart_genre.0 == 0, "All genres")
-                    .clicked()
-                {
+                if ui.selectable_label(app.chart_genre.0 == 0, "All genres").clicked() {
                     app.chart_genre = (0, "All genres".into());
                 }
                 for (id, name) in crate::deezer::GENRES {
-                    if ui
-                        .selectable_label(app.chart_genre.0 == *id, *name)
-                        .clicked()
-                    {
+                    if ui.selectable_label(app.chart_genre.0 == *id, *name).clicked() {
                         app.chart_genre = (*id, name.to_string());
                     }
                 }
@@ -2359,13 +1442,7 @@ fn charts(app: &mut App, ui: &mut Ui) {
     with_remote(app, ui, |app, ui, page| {
         let Page::Tracks(tracks) = page else { return };
         if tracks.is_empty() {
-            empty_state(
-                ui,
-                icon::MUSIC_NOTES,
-                "Nothing here yet",
-                "No chart for this genre right now.",
-                None,
-            );
+            empty_state(ui, icon::MUSIC_NOTES, "Nothing here yet", "No chart for this genre right now.", None);
             return;
         }
         action_row(app, ui, tracks);
@@ -2383,39 +1460,17 @@ fn shuffle_play(app: &mut App, tracks: &[Track], ctx: &egui::Context) {
 
 /// A compact leading result with an explicit play action.
 fn search_top_card(app: &mut App, ui: &mut Ui, artist: Option<&ArtistInfo>, tracks: &[Track]) {
-    let Some((name, kind, art)) = artist
-        .map(|a| (a.name.as_str(), "Artist", a.picture.as_deref()))
-        .or_else(|| {
-            tracks
-                .first()
-                .map(|t| (t.title.as_str(), "Song", t.art_big()))
-        })
-    else {
-        return;
-    };
+    let Some((name, kind, art)) = artist.map(|a| (a.name.as_str(), "Artist", a.picture.as_deref()))
+        .or_else(|| tracks.first().map(|t| (t.title.as_str(), "Song", t.art_big()))) else { return };
     // The same height as the four songs beside it, so the two sit level.
-    let (rect, response) =
-        ui.allocate_exact_size(vec2(ui.available_width(), 4.0 * 56.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 4.0 * 56.0), Sense::click());
     let hot = response.hovered() || ui.rect_contains_pointer(rect);
     // A soft wash of the theme's accent from the top-left corner, like a cover glow.
-    ui.painter().rect_filled(
-        rect,
-        r_lg(),
-        if hot {
-            pal().surface_active
-        } else {
-            pal().surface_hover
-        },
-    );
+    ui.painter().rect_filled(rect, r_lg(), if hot { pal().surface_active } else { pal().surface_hover });
     let glow = pal().accent.gamma_multiply(if hot { 0.26 } else { 0.18 });
     let mut mesh = egui::Mesh::default();
     let inner = rect.shrink(1.0);
-    for (p, c) in [
-        (inner.left_top(), glow),
-        (inner.right_top(), Color32::TRANSPARENT),
-        (inner.right_bottom(), Color32::TRANSPARENT),
-        (inner.left_bottom(), glow.gamma_multiply(0.4)),
-    ] {
+    for (p, c) in [(inner.left_top(), glow), (inner.right_top(), Color32::TRANSPARENT), (inner.right_bottom(), Color32::TRANSPARENT), (inner.left_bottom(), glow.gamma_multiply(0.4))] {
         mesh.colored_vertex(p, c);
     }
     mesh.add_triangle(0, 1, 2);
@@ -2423,99 +1478,37 @@ fn search_top_card(app: &mut App, ui: &mut Ui, artist: Option<&ArtistInfo>, trac
     ui.painter().with_clip_rect(rect.shrink(8.0)).add(mesh);
     let size = 104.0;
     let art_rect = Rect::from_min_size(rect.min + vec2(20.0, 20.0), Vec2::splat(size));
-    let radius = if artist.is_some() {
-        CornerRadius::same(52)
-    } else {
-        r_md()
-    };
+    let radius = if artist.is_some() { CornerRadius::same(52) } else { r_md() };
     // A soft shadow under the picture.
-    ui.painter().add(
-        egui::Shadow {
-            offset: [0, 6],
-            blur: 18,
-            spread: 0,
-            color: Color32::from_black_alpha(90),
-        }
-        .as_shape(art_rect, radius),
-    );
+    ui.painter().add(egui::Shadow { offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(90) }.as_shape(art_rect, radius));
     if artist.is_some() && art.is_none_or(|url| url.is_empty()) {
         artist_monogram(ui, art_rect, name, radius);
     } else {
         artwork(ui, art_rect, art, radius);
     }
     let text_w = rect.width() - 40.0 - 64.0;
-    paint_line(
-        ui,
-        pos2(rect.left() + 20.0, art_rect.bottom() + 16.0),
-        name,
-        heavy(26.0),
-        pal().text,
-        text_w,
-    );
+    paint_line(ui, pos2(rect.left() + 20.0, art_rect.bottom() + 16.0), name, heavy(26.0), pal().text, text_w);
     // The kind of result as a small chip ("Artist", "Song").
-    let chip_text = ui
-        .painter()
-        .layout_no_wrap(tr(kind).to_owned(), semi(11.5), pal().text);
-    let chip = Rect::from_min_size(
-        pos2(rect.left() + 20.0, art_rect.bottom() + 54.0),
-        vec2(chip_text.size().x + 18.0, 24.0),
-    );
-    ui.painter()
-        .rect_filled(chip, CornerRadius::same(12), pal().bg.gamma_multiply(0.55));
-    ui.painter().galley(
-        chip.center() - chip_text.size() / 2.0,
-        chip_text,
-        pal().text,
-    );
+    let chip_text = ui.painter().layout_no_wrap(tr(kind).to_owned(), semi(11.5), pal().text);
+    let chip = Rect::from_min_size(pos2(rect.left() + 20.0, art_rect.bottom() + 54.0), vec2(chip_text.size().x + 18.0, 24.0));
+    ui.painter().rect_filled(chip, CornerRadius::same(12), pal().bg.gamma_multiply(0.55));
+    ui.painter().galley(chip.center() - chip_text.size() / 2.0, chip_text, pal().text);
     // Play: in the corner, a little bigger when you point at the card.
     let grow = ui.ctx().animate_bool(response.id.with("grow"), hot);
-    let button = Rect::from_center_size(
-        pos2(rect.right() - 44.0, rect.bottom() - 44.0),
-        Vec2::splat(48.0),
-    );
-    let play = ui
-        .interact(button, response.id.with("play"), Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
-    ui.painter().add(
-        egui::Shadow {
-            offset: [0, 4],
-            blur: 12,
-            spread: 0,
-            color: Color32::from_black_alpha(80),
-        }
-        .as_shape(button, CornerRadius::same(24)),
-    );
-    ui.painter().circle_filled(
-        button.center(),
-        24.0 + 2.0 * grow,
-        parts().play_button.fill.unwrap_or(pal().accent),
-    );
-    paint_icon(
-        ui.painter(),
-        button.center(),
-        icon::PLAY,
-        filled_icon(20.0),
-        parts().play_button.color.unwrap_or(Color32::WHITE),
-    );
-    a11y(ui, &response, egui::WidgetType::Button, || {
-        format!("{}, {}", name, tr(kind))
-    });
-    a11y(ui, &play, egui::WidgetType::Button, || {
-        format!("{} {}", tr("Play"), name)
-    });
+    let button = Rect::from_center_size(pos2(rect.right() - 44.0, rect.bottom() - 44.0), Vec2::splat(48.0));
+    let play = ui.interact(button, response.id.with("play"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+    ui.painter().add(egui::Shadow { offset: [0, 4], blur: 12, spread: 0, color: Color32::from_black_alpha(80) }.as_shape(button, CornerRadius::same(24)));
+    ui.painter().circle_filled(button.center(), 24.0 + 2.0 * grow, parts().play_button.fill.unwrap_or(pal().accent));
+    paint_icon(ui.painter(), button.center(), icon::PLAY, filled_icon(20.0), parts().play_button.color.unwrap_or(Color32::WHITE));
+    a11y(ui, &response, egui::WidgetType::Button, || format!("{}, {}", name, tr(kind)));
+    a11y(ui, &play, egui::WidgetType::Button, || format!("{} {}", tr("Play"), name));
     let ctx = ui.ctx().clone();
     if play.clicked() {
-        if let Some(a) = artist {
-            open_and_play(app, Route::Mix(a.id.clone()), &ctx);
-        } else {
-            app.play_list(tracks, 0, &ctx);
-        }
+        if let Some(a) = artist { open_and_play(app, Route::Mix(a.id.clone()), &ctx); }
+        else { app.play_list(tracks, 0, &ctx); }
     } else if response.clicked() {
-        if let Some(a) = artist {
-            app.navigate(Route::Artist(a.id.clone()), &ctx);
-        } else if let Some(t) = tracks.first() {
-            app.navigate(Route::Song(t.id.clone()), &ctx);
-        }
+        if let Some(a) = artist { app.navigate(Route::Artist(a.id.clone()), &ctx); }
+        else if let Some(t) = tracks.first() { app.navigate(Route::Song(t.id.clone()), &ctx); }
     }
 }
 fn search(app: &mut App, ui: &mut Ui, q: &str) {
@@ -2524,13 +1517,7 @@ fn search(app: &mut App, ui: &mut Ui, q: &str) {
     with_remote(app, ui, |app, ui, page| {
         let Page::Search(r) = page else { return };
         if r.is_empty() {
-            empty_state(
-                ui,
-                icon::MAGNIFYING_GLASS,
-                "No results",
-                "Try different words or check the spelling.",
-                None,
-            );
+            empty_state(ui, icon::MAGNIFYING_GLASS, "No results", "Try different words or check the spelling.", None);
             return;
         }
         let ctx = ui.ctx().clone();
@@ -2538,24 +1525,9 @@ fn search(app: &mut App, ui: &mut Ui, q: &str) {
         let id = egui::Id::new(("search_filter", &query));
         let mut filter: u8 = ui.data(|d| d.get_temp(id).unwrap_or(0));
         let kind = |a: &AlbumInfo| a.kind();
-        let albums: Vec<AlbumInfo> = r
-            .albums
-            .iter()
-            .filter(|a| matches!(kind(a), "Album" | "Compilation"))
-            .cloned()
-            .collect();
-        let eps: Vec<AlbumInfo> = r
-            .albums
-            .iter()
-            .filter(|a| kind(a) == "EP")
-            .cloned()
-            .collect();
-        let singles: Vec<AlbumInfo> = r
-            .albums
-            .iter()
-            .filter(|a| kind(a) == "Single")
-            .cloned()
-            .collect();
+        let albums: Vec<AlbumInfo> = r.albums.iter().filter(|a| matches!(kind(a), "Album" | "Compilation")).cloned().collect();
+        let eps: Vec<AlbumInfo> = r.albums.iter().filter(|a| kind(a) == "EP").cloned().collect();
+        let singles: Vec<AlbumInfo> = r.albums.iter().filter(|a| kind(a) == "Single").cloned().collect();
         let chips: [(u8, &str, bool); 7] = [
             (0, "All", true),
             (1, "Songs", !r.tracks.is_empty()),
@@ -2575,32 +1547,16 @@ fn search(app: &mut App, ui: &mut Ui, q: &str) {
         ui.data_mut(|d| d.insert_temp(id, filter));
         let all = filter == 0;
 
-        let top_artist = r.artists.first().filter(|a| {
-            crate::deezer::name_match(&a.name, &query) >= 2 && !crate::deezer::cover_act(&a.name)
-        });
+        let top_artist = r.artists.first().filter(|a| crate::deezer::name_match(&a.name, &query) >= 2 && !crate::deezer::cover_act(&a.name));
         let top_fans = top_artist.map_or(0, |a| a.fans);
-        let artists: Vec<ArtistInfo> = r
-            .artists
-            .iter()
-            .filter(|a| {
-                if crate::deezer::cover_act(&a.name) {
-                    return false;
-                }
-                if let Some(top) = top_artist {
-                    if a.id != top.id
-                        && a.name.contains(',')
-                        && a.name.to_lowercase().contains(&top.name.to_lowercase())
-                    {
-                        return false;
-                    }
-                    if a.id != top.id && top_fans >= 100 && a.fans < top_fans / 100 {
-                        return false;
-                    }
-                }
-                true
-            })
-            .cloned()
-            .collect();
+        let artists: Vec<ArtistInfo> = r.artists.iter().filter(|a| {
+            if crate::deezer::cover_act(&a.name) { return false; }
+            if let Some(top) = top_artist {
+                if a.id != top.id && a.name.contains(',') && a.name.to_lowercase().contains(&top.name.to_lowercase()) { return false; }
+                if a.id != top.id && top_fans >= 100 && a.fans < top_fans / 100 { return false; }
+            }
+            true
+        }).cloned().collect();
         if all && (top_artist.is_some() || !r.tracks.is_empty()) {
             let total = ui.available_width();
             let left = (total * 0.36).max(220.0);
@@ -2609,31 +1565,16 @@ fn search(app: &mut App, ui: &mut Ui, q: &str) {
                     section_title(ui, "Top result", None);
                     search_top_card(app, ui, top_artist, &r.tracks);
                 });
-                ui.allocate_ui_with_layout(
-                    vec2((total - left - 8.0).max(0.0), 0.0),
-                    Layout::top_down(Align::Min),
-                    |ui| {
-                        if !r.tracks.is_empty() {
-                            section_title(ui, "Songs", None);
-                            tracks_block_ex(
-                                app,
-                                ui,
-                                "search_top_tracks",
-                                &r.tracks[..r.tracks.len().min(4)],
-                                true,
-                                0,
-                            );
-                        }
-                    },
-                );
+                ui.allocate_ui_with_layout(vec2((total - left - 8.0).max(0.0), 0.0), Layout::top_down(Align::Min), |ui| {
+                    if !r.tracks.is_empty() {
+                        section_title(ui, "Songs", None);
+                        tracks_block_ex(app, ui, "search_top_tracks", &r.tracks[..r.tracks.len().min(4)], true, 0);
+                    }
+                });
             });
         }
         if (all || filter == 2) && !artists.is_empty() {
-            let rest: Vec<ArtistInfo> = artists
-                .iter()
-                .filter(|a| !all || top_artist.is_none_or(|top| top.id != a.id))
-                .cloned()
-                .collect();
+            let rest: Vec<ArtistInfo> = artists.iter().filter(|a| !all || top_artist.is_none_or(|top| top.id != a.id)).cloned().collect();
             if !rest.is_empty() {
                 if section_title(ui, "Artists", all.then_some("See all")) {
                     ui.data_mut(|d| d.insert_temp(id, 2u8));
@@ -2650,60 +1591,34 @@ fn search(app: &mut App, ui: &mut Ui, q: &str) {
             if now - since >= 0.7 {
                 app.warm_list(&r.tracks);
             } else {
-                ui.ctx()
-                    .request_repaint_after(std::time::Duration::from_millis(250));
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
             }
         }
         if filter == 1 && !r.tracks.is_empty() {
             section_title(ui, "Songs", None);
-            let shown = if all {
-                &r.tracks[..r.tracks.len().min(10)]
-            } else {
-                &r.tracks[..]
-            };
+            let shown = if all { &r.tracks[..r.tracks.len().min(10)] } else { &r.tracks[..] };
             tracks_block(app, ui, "search_tracks", shown);
         }
         if all && r.tracks.len() > 4 {
             section_title(ui, "More songs", None);
             // Numbered on from the four at the top.
-            tracks_block_ex(
-                app,
-                ui,
-                "search_more_tracks",
-                &r.tracks[4..r.tracks.len().min(10)],
-                false,
-                4,
-            );
+            tracks_block_ex(app, ui, "search_more_tracks", &r.tracks[4..r.tracks.len().min(10)], false, 4);
         }
         // Searched for an artist: who their listeners also play.
         if let Some((name, related, _)) = &r.around
             && (all || filter == 2)
             && !related.is_empty()
         {
-            suggestion_row(
-                app,
-                ui,
-                "search_also",
-                &crate::deezer::Suggestion::AlsoListen(name.clone(), related.clone()),
-            );
+            suggestion_row(app, ui, "search_also", &crate::deezer::Suggestion::AlsoListen(name.clone(), related.clone()));
         }
         // ...and songs by others that sound like theirs.
         if let Some((name, _, songs)) = &r.around
             && (all || filter == 1)
             && songs.len() >= 3
         {
-            suggestion_row(
-                app,
-                ui,
-                "search_like",
-                &crate::deezer::Suggestion::SongsLike(name.clone(), songs.clone()),
-            );
+            suggestion_row(app, ui, "search_like", &crate::deezer::Suggestion::SongsLike(name.clone(), songs.clone()));
         }
-        for (n, title, list) in [
-            (3, "Albums", &albums),
-            (4, "EPs", &eps),
-            (5, "Singles", &singles),
-        ] {
+        for (n, title, list) in [(3, "Albums", &albums), (4, "EPs", &eps), (5, "Singles", &singles)] {
             if (all || filter == n) && !list.is_empty() {
                 section_title(ui, title, None);
                 album_grid(app, ui, list, if all { Some(1) } else { None });
@@ -2756,8 +1671,7 @@ fn hero(ui: &mut Ui, h: &Hero) -> HeroClicks {
     let style = &parts().hero;
     let hero_r = style.radius.map(CornerRadius::same).unwrap_or(r_lg());
     // Full-bleed themes show an artist's photo across the whole header.
-    let full_bleed =
-        layout().hero == crate::theme::HeroStyle::FullBleed && h.round && h.art.is_some();
+    let full_bleed = layout().hero == crate::theme::HeroStyle::FullBleed && h.round && h.art.is_some();
     if full_bleed {
         return hero_full_bleed(ui, h, hero_r);
     }
@@ -2772,128 +1686,56 @@ fn hero(ui: &mut Ui, h: &Hero) -> HeroClicks {
     };
     if let Some(b) = h.banner {
         artwork(ui, rect, Some(b), hero_r);
-        ui.painter()
-            .rect_filled(rect, hero_r, Color32::from_black_alpha(150));
+        ui.painter().rect_filled(rect, hero_r, Color32::from_black_alpha(150));
     } else if let Some(fill) = style.fill {
         ui.painter().rect_filled(rect, hero_r, fill);
     } else {
         // Dark banner tinted with the theme's accent.
         let base = Color32::from_rgb(14, 13, 20);
-        ui.painter()
-            .rect_filled(rect, hero_r, base.lerp_to_gamma(pal().accent, 0.12));
-        vgradient(
-            ui,
-            rect.shrink(1.0),
-            pal().accent.gamma_multiply(0.22),
-            Color32::TRANSPARENT,
-        );
+        ui.painter().rect_filled(rect, hero_r, base.lerp_to_gamma(pal().accent, 0.12));
+        vgradient(ui, rect.shrink(1.0), pal().accent.gamma_multiply(0.22), Color32::TRANSPARENT);
     }
     if let Some(b) = style.border {
-        ui.painter()
-            .rect_stroke(rect, hero_r, b, egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(rect, hero_r, b, egui::StrokeKind::Inside);
     }
     let art_size = 144.0;
-    let art_rect = Rect::from_min_size(
-        pos2(rect.left() + 24.0, rect.center().y - art_size / 2.0),
-        Vec2::splat(art_size),
-    );
+    let art_rect = Rect::from_min_size(pos2(rect.left() + 24.0, rect.center().y - art_size / 2.0), Vec2::splat(art_size));
     // shadow
-    let radius = if h.round {
-        CornerRadius::same(72)
-    } else {
-        r_md()
-    };
-    let shadow = egui::Shadow {
-        offset: [0, 10],
-        blur: 28,
-        spread: 0,
-        color: Color32::from_black_alpha(110),
-    };
+    let radius = if h.round { CornerRadius::same(72) } else { r_md() };
+    let shadow = egui::Shadow { offset: [0, 10], blur: 28, spread: 0, color: Color32::from_black_alpha(110) };
     ui.painter().add(shadow.as_shape(art_rect, radius));
     if h.art.is_some() {
         artwork(ui, art_rect, h.art, radius);
     } else {
-        ui.painter()
-            .rect_filled(art_rect, radius, pal().accent.gamma_multiply(0.55));
-        vgradient(
-            ui,
-            art_rect,
-            Color32::from_white_alpha(18),
-            Color32::TRANSPARENT,
-        );
-        paint_icon(
-            ui.painter(),
-            art_rect.center(),
-            h.glyph,
-            filled_icon(60.0),
-            Color32::WHITE,
-        );
+        ui.painter().rect_filled(art_rect, radius, pal().accent.gamma_multiply(0.55));
+        vgradient(ui, art_rect, Color32::from_white_alpha(18), Color32::TRANSPARENT);
+        paint_icon(ui.painter(), art_rect.center(), h.glyph, filled_icon(60.0), Color32::WHITE);
     }
     if h.editable {
-        let r = ui
-            .interact(art_rect, ui.id().with("hero_art"), Sense::click())
-            .on_hover_cursor(egui::CursorIcon::PointingHand);
-        a11y(ui, &r, egui::WidgetType::Button, || {
-            tr("Change cover").to_owned()
-        });
+        let r = ui.interact(art_rect, ui.id().with("hero_art"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+        a11y(ui, &r, egui::WidgetType::Button, || tr("Change cover").to_owned());
         if r.hovered() {
             // Pencil overlay, like Spotify.
-            ui.painter()
-                .rect_filled(art_rect, radius, Color32::from_black_alpha(140));
-            paint_icon(
-                ui.painter(),
-                art_rect.center() - vec2(0.0, 10.0),
-                icon::PENCIL_SIMPLE,
-                regular(40.0),
-                Color32::WHITE,
-            );
-            paint_icon(
-                ui.painter(),
-                art_rect.center() + vec2(0.0, 26.0),
-                tr("Change cover"),
-                med(13.0),
-                Color32::WHITE,
-            );
+            ui.painter().rect_filled(art_rect, radius, Color32::from_black_alpha(140));
+            paint_icon(ui.painter(), art_rect.center() - vec2(0.0, 10.0), icon::PENCIL_SIMPLE, regular(40.0), Color32::WHITE);
+            paint_icon(ui.painter(), art_rect.center() + vec2(0.0, 26.0), tr("Change cover"), med(13.0), Color32::WHITE);
         }
         clicks.art = Some(r);
     }
     let tx = art_rect.right() + 28.0;
     let tw = rect.right() - tx - 24.0;
     let bottom = art_rect.bottom();
-    paint_line(
-        ui,
-        pos2(tx, bottom - 112.0),
-        &h.kind.to_uppercase(),
-        semi(11.5),
-        on_muted,
-        tw,
-    );
-    let title = if style.uppercase == Some(true) {
-        h.title.to_uppercase()
-    } else {
-        h.title.to_string()
-    };
-    let size = style.font_size.unwrap_or(if title.chars().count() > 28 {
-        30.0
-    } else {
-        44.0
-    });
-    let font = if style.bold == Some(false) {
-        semi(size)
-    } else {
-        heavy(size)
-    };
+    paint_line(ui, pos2(tx, bottom - 112.0), &h.kind.to_uppercase(), semi(11.5), on_muted, tw);
+    let title = if style.uppercase == Some(true) { h.title.to_uppercase() } else { h.title.to_string() };
+    let size = style.font_size.unwrap_or(if title.chars().count() > 28 { 30.0 } else { 44.0 });
+    let font = if style.bold == Some(false) { semi(size) } else { heavy(size) };
     let tg = one_line(ui, &title, font, on, tw);
     let th = tg.size().y;
     let title_rect = Rect::from_min_size(pos2(tx, bottom - 30.0 - th), tg.size());
     ui.painter().galley(title_rect.min, tg, on);
     if h.editable {
-        let r = ui
-            .interact(title_rect, ui.id().with("hero_title"), Sense::click())
-            .on_hover_cursor(egui::CursorIcon::Text);
-        a11y(ui, &r, egui::WidgetType::Button, || {
-            format!("{}: {}", tr("Rename"), h.title)
-        });
+        let r = ui.interact(title_rect, ui.id().with("hero_title"), Sense::click()).on_hover_cursor(egui::CursorIcon::Text);
+        a11y(ui, &r, egui::WidgetType::Button, || format!("{}: {}", tr("Rename"), h.title));
         clicks.title = r.on_hover_text(tr("Rename")).clicked();
     }
     let mut sx = tx;
@@ -2908,28 +1750,13 @@ fn hero(ui: &mut Ui, h: &Hero) -> HeroClicks {
         if room < 24.0 {
             break;
         }
-        let r = link_text(
-            ui,
-            ui.id().with(("hero_link", i)),
-            pos2(sx, bottom - 20.0),
-            name,
-            semi(13.5),
-            on,
-            room,
-        );
+        let r = link_text(ui, ui.id().with(("hero_link", i)), pos2(sx, bottom - 20.0), name, semi(13.5), on, room);
         if r.clicked() {
             clicks.link = Some(i);
         }
         sx = r.rect.right();
     }
-    paint_line(
-        ui,
-        pos2(sx, bottom - 20.0),
-        h.subtitle,
-        regular(13.5),
-        on_muted,
-        (tx + tw - sx).max(0.0),
-    );
+    paint_line(ui, pos2(sx, bottom - 20.0), h.subtitle, regular(13.5), on_muted, (tx + tw - sx).max(0.0));
     ui.add_space(18.0);
     clicks
 }
@@ -2947,16 +1774,7 @@ fn hero_full_bleed(ui: &mut Ui, h: &Hero, radius: CornerRadius) -> HeroClicks {
     let photo_w = rect.width().min((1000.0 / ppp).max(rect.height()));
     let photo = Rect::from_min_max(pos2(rect.right() - photo_w, rect.top()), rect.max);
     let covers_all = photo_w >= rect.width() - 0.5;
-    let pr = if covers_all {
-        radius
-    } else {
-        CornerRadius {
-            nw: 0,
-            sw: 0,
-            ne: radius.ne,
-            se: radius.se,
-        }
-    };
+    let pr = if covers_all { radius } else { CornerRadius { nw: 0, sw: 0, ne: radius.ne, se: radius.se } };
     // Crop to the banner's shape, keeping a little more of the top, where faces usually are.
     artwork_cover(ui, photo, h.art, pr, 0.35);
     if !covers_all {
@@ -2971,46 +1789,16 @@ fn hero_full_bleed(ui: &mut Ui, h: &Hero, radius: CornerRadius) -> HeroClicks {
         ui.painter().add(egui::Shape::mesh(mesh));
     }
     // Darken towards the bottom so the name stays readable.
-    vgradient(
-        ui,
-        rect,
-        Color32::from_black_alpha(20),
-        Color32::from_black_alpha(200),
-    );
+    vgradient(ui, rect, Color32::from_black_alpha(20), Color32::from_black_alpha(200));
     let style = &parts().hero;
     let tw = rect.width() - 56.0;
-    let title = if style.uppercase == Some(true) {
-        h.title.to_uppercase()
-    } else {
-        h.title.to_string()
-    };
+    let title = if style.uppercase == Some(true) { h.title.to_uppercase() } else { h.title.to_string() };
     // Bottom up: subtitle, then the name, then "ARTIST" above the name's actual height.
-    let tg = one_line(
-        ui,
-        &title,
-        heavy(style.font_size.unwrap_or(64.0)),
-        ON_DARK,
-        tw,
-    );
+    let tg = one_line(ui, &title, heavy(style.font_size.unwrap_or(64.0)), ON_DARK, tw);
     let title_top = rect.bottom() - 46.0 - tg.size().y;
-    paint_line(
-        ui,
-        pos2(rect.left() + 28.0, title_top - 20.0),
-        &h.kind.to_uppercase(),
-        semi(11.5),
-        ON_DARK_MUTED,
-        tw,
-    );
-    ui.painter()
-        .galley(pos2(rect.left() + 28.0, title_top), tg, ON_DARK);
-    paint_line(
-        ui,
-        rect.left_bottom() + vec2(28.0, -36.0),
-        h.subtitle,
-        regular(14.0),
-        ON_DARK_MUTED,
-        tw,
-    );
+    paint_line(ui, pos2(rect.left() + 28.0, title_top - 20.0), &h.kind.to_uppercase(), semi(11.5), ON_DARK_MUTED, tw);
+    ui.painter().galley(pos2(rect.left() + 28.0, title_top), tg, ON_DARK);
+    paint_line(ui, rect.left_bottom() + vec2(28.0, -36.0), h.subtitle, regular(14.0), ON_DARK_MUTED, tw);
     ui.add_space(18.0);
     HeroClicks::default()
 }
@@ -3038,13 +1826,7 @@ fn remote_playlist(app: &mut App, ui: &mut Ui) {
                 links: &[],
             },
         );
-        app.note_visit(
-            crate::app::Place::Playlist(info.id.clone()),
-            &info.title,
-            &format!("Playlist · {}", info.creator),
-            info.picture.as_deref(),
-            false,
-        );
+        app.note_visit(crate::app::Place::Playlist(info.id.clone()), &info.title, &format!("Playlist · {}", info.creator), info.picture.as_deref(), false);
         let ctx = ui.ctx().clone();
         autoplay_page(app, &ctx, tracks);
         ui.horizontal(|ui| {
@@ -3067,24 +1849,12 @@ fn album_page(app: &mut App, ui: &mut Ui) {
             return;
         };
         let linked = crate::deezer::is_deezer_id(&info.artist.id);
-        let mut sub = if linked {
-            String::new()
-        } else {
-            info.artist.name.clone()
-        };
+        let mut sub = if linked { String::new() } else { info.artist.name.clone() };
         if let Some(y) = info.year() {
             sub.push_str(&format!(" · {y}"));
         }
-        sub.push_str(&format!(
-            " · {}, {}",
-            song_count(tracks.len()),
-            total_time(tracks)
-        ));
-        let sub = if linked {
-            sub
-        } else {
-            sub.trim_start_matches(" · ").to_string()
-        };
+        sub.push_str(&format!(" · {}, {}", song_count(tracks.len()), total_time(tracks)));
+        let sub = if linked { sub } else { sub.trim_start_matches(" · ").to_string() };
         let names = [info.artist.name.as_str()];
         let links: &[&str] = if linked { &names } else { &[] };
         let clicks = hero(
@@ -3127,32 +1897,19 @@ fn album_page(app: &mut App, ui: &mut Ui) {
         if let Some(label) = info.label.as_deref().filter(|l| !l.is_empty()) {
             ui.add_space(10.0);
             let date = info.release_date.clone().unwrap_or_default();
-            ui.label(
-                RichText::new(format!("{date}  ·  {label}"))
-                    .font(regular(12.0))
-                    .color(pal().text_muted),
-            );
+            ui.label(RichText::new(format!("{date}  ·  {label}")).font(regular(12.0)).color(pal().text_muted));
         }
     });
 }
 
 /// "Follow" / "Following": an outlined pill, like music apps use.
 fn follow_button(ui: &mut Ui, following: bool) -> egui::Response {
-    let text = RichText::new(tr(if following { "Following" } else { "Follow" }))
-        .font(semi(12.5))
-        .color(pal().text);
+    let text = RichText::new(tr(if following { "Following" } else { "Follow" })).font(semi(12.5)).color(pal().text);
     let b = egui::Button::new(text)
         .min_size(vec2(84.0, 30.0))
         .corner_radius(CornerRadius::same(15))
         .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::new(
-            1.0,
-            if following {
-                pal().text_muted
-            } else {
-                pal().text_faint
-            },
-        ));
+        .stroke(Stroke::new(1.0, if following { pal().text_muted } else { pal().text_faint }));
     ui.add(b).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
@@ -3161,35 +1918,15 @@ fn save_heart(ui: &mut Ui, liked: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(40.0), Sense::click());
     resp_selected(ui, &resp, liked, "Save to your library");
     let size = 24.0 * heart_pop(ui, resp.id.with("pop"), liked);
-    let (font, col) = if liked {
-        (filled_icon(size), pal().accent_soft)
-    } else {
-        (
-            regular(size),
-            if resp.hovered() {
-                pal().text
-            } else {
-                pal().text_muted
-            },
-        )
-    };
+    let (font, col) = if liked { (filled_icon(size), pal().accent_soft) } else { (regular(size), if resp.hovered() { pal().text } else { pal().text_muted }) };
     paint_icon(ui.painter(), rect.center(), icon::HEART, font, col);
-    resp.on_hover_text(tr(if liked {
-        "Remove from your library"
-    } else {
-        "Save to your library"
-    }))
-    .on_hover_cursor(egui::CursorIcon::PointingHand)
+    resp.on_hover_text(tr(if liked { "Remove from your library" } else { "Save to your library" })).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 fn action_row(app: &mut App, ui: &mut Ui, tracks: &[Track]) {
     let ctx = ui.ctx().clone();
     app.warm_list(tracks);
-    let playing_this = app.is_playing()
-        && app
-            .current
-            .as_ref()
-            .is_some_and(|c| tracks.iter().any(|t| t.id == c.id));
+    let playing_this = app.is_playing() && app.current.as_ref().is_some_and(|c| tracks.iter().any(|t| t.id == c.id));
     ui.horizontal(|ui| {
         if play_button(ui, 52.0, playing_this).clicked() {
             if playing_this {
@@ -3209,11 +1946,7 @@ fn action_row(app: &mut App, ui: &mut Ui, tracks: &[Track]) {
 fn artist(app: &mut App, ui: &mut Ui) {
     with_remote(app, ui, |app, ui, page| {
         let Page::Artist(p) = page else { return };
-        let sub = format!(
-            "{} fans · {} releases",
-            fmt_count(p.artist.fans),
-            p.artist.albums
-        );
+        let sub = format!("{} fans · {} releases", fmt_count(p.artist.fans), p.artist.albums);
         hero(
             ui,
             &Hero {
@@ -3232,10 +1965,7 @@ fn artist(app: &mut App, ui: &mut Ui) {
             crate::app::Place::Artist(p.artist.id.clone()),
             &p.artist.name,
             "Artist",
-            p.artist
-                .picture
-                .as_deref()
-                .or(p.artist.picture_xl.as_deref()),
+            p.artist.picture.as_deref().or(p.artist.picture_xl.as_deref()),
             true,
         );
         let ctx = ui.ctx().clone();
@@ -3256,9 +1986,7 @@ fn artist(app: &mut App, ui: &mut Ui) {
 
         section_title(ui, "Popular", None);
         if p.top.is_empty() {
-            ui.label(
-                RichText::new("No popular songs listed for this artist.").color(pal().text_muted),
-            );
+            ui.label(RichText::new("No popular songs listed for this artist.").color(pal().text_muted));
         } else {
             // Deezer's ten most popular, already sorted by popularity.
             tracks_block(app, ui, "artist_top", &p.top);
@@ -3276,34 +2004,17 @@ fn artist(app: &mut App, ui: &mut Ui) {
         ui.horizontal(|ui| {
             let (r, resp) = ui.allocate_exact_size(Vec2::splat(56.0), Sense::click());
             artwork(ui, r, p.artist.picture.as_deref(), r_md());
-            paint_icon(
-                ui.painter(),
-                r.center(),
-                icon::PLANET,
-                filled_icon(22.0),
-                Color32::WHITE.gamma_multiply(0.9),
-            );
+            paint_icon(ui.painter(), r.center(), icon::PLANET, filled_icon(22.0), Color32::WHITE.gamma_multiply(0.9));
             ui.vertical(|ui| {
                 ui.add_space(6.0);
-                ui.label(
-                    RichText::new(tr("{} Radio").replace("{}", &p.artist.name))
-                        .font(semi(14.5))
-                        .color(pal().text),
-                );
-                ui.label(
-                    RichText::new(&preview)
-                        .font(regular(12.5))
-                        .color(pal().text_muted),
-                );
+                ui.label(RichText::new(tr("{} Radio").replace("{}", &p.artist.name)).font(semi(14.5)).color(pal().text));
+                ui.label(RichText::new(&preview).font(regular(12.5)).color(pal().text_muted));
             });
             ui.add_space(12.0);
             if ghost_button(ui, icon::PLAY, "Start radio").clicked() {
                 open_and_play(app, Route::Mix(p.artist.id.clone()), &ctx);
             }
-            if resp
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .clicked()
-            {
+            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 app.navigate(Route::Mix(p.artist.id.clone()), &ctx);
             }
         });
@@ -3332,19 +2043,10 @@ fn artist(app: &mut App, ui: &mut Ui) {
         }
         if p.songs_like.len() >= 3 {
             section_title(ui, &tr("Songs like {}").replace("{}", &p.artist.name), None);
-            tracks_block(
-                app,
-                ui,
-                "artist_like",
-                &p.songs_like[..p.songs_like.len().min(10)],
-            );
+            tracks_block(app, ui, "artist_like", &p.songs_like[..p.songs_like.len().min(10)]);
         }
         if !p.related.is_empty() {
-            section_title(
-                ui,
-                &tr("Listeners of {} also listen to").replace("{}", &p.artist.name),
-                None,
-            );
+            section_title(ui, &tr("Listeners of {} also listen to").replace("{}", &p.artist.name), None);
             artist_grid(app, ui, &p.related, Some(1));
         }
     });
@@ -3352,59 +2054,24 @@ fn artist(app: &mut App, ui: &mut Ui) {
 
 /// A wide card for an artist's newest album or single. Returns true when clicked.
 fn latest_release_card(ui: &mut Ui, a: &AlbumInfo) -> bool {
-    let (rect, resp) =
-        ui.allocate_exact_size(vec2(ui.available_width().min(560.0), 104.0), Sense::click());
-    a11y(ui, &resp, egui::WidgetType::Button, || {
-        format!("Latest release: {}", a.title)
-    });
-    let fill = if resp.hovered() {
-        pal().surface_active
-    } else {
-        pal().surface_hover
-    };
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width().min(560.0), 104.0), Sense::click());
+    a11y(ui, &resp, egui::WidgetType::Button, || format!("Latest release: {}", a.title));
+    let fill = if resp.hovered() { pal().surface_active } else { pal().surface_hover };
     ui.painter().rect_filled(rect, r_lg(), fill);
     let art = Rect::from_min_size(rect.min + vec2(12.0, 12.0), Vec2::splat(80.0));
     artwork(ui, art, a.cover.as_deref(), r_md());
     let tx = art.right() + 18.0;
     let tw = rect.right() - tx - 16.0;
-    let date = a
-        .release_date
-        .as_deref()
-        .map(pretty_date)
-        .unwrap_or_default();
-    paint_line(
-        ui,
-        pos2(tx, rect.top() + 14.0),
-        &date.to_uppercase(),
-        semi(11.0),
-        pal().text_muted,
-        tw,
-    );
-    paint_line(
-        ui,
-        pos2(tx, rect.top() + 34.0),
-        &a.title,
-        heavy(20.0),
-        pal().text,
-        tw,
-    );
-    paint_line(
-        ui,
-        pos2(tx, rect.top() + 68.0),
-        &release_line(a),
-        regular(13.0),
-        pal().text_muted,
-        tw,
-    );
-    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
-        .clicked()
+    let date = a.release_date.as_deref().map(pretty_date).unwrap_or_default();
+    paint_line(ui, pos2(tx, rect.top() + 14.0), &date.to_uppercase(), semi(11.0), pal().text_muted, tw);
+    paint_line(ui, pos2(tx, rect.top() + 34.0), &a.title, heavy(20.0), pal().text, tw);
+    paint_line(ui, pos2(tx, rect.top() + 68.0), &release_line(a), regular(13.0), pal().text_muted, tw);
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
 }
 
 /// "2026-11-06" → "Nov 6, 2026".
 fn pretty_date(d: &str) -> String {
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     let parts: Vec<&str> = d.split('-').collect();
     match parts.as_slice() {
         [y, m, day] => match (m.parse::<usize>(), day.parse::<u32>()) {
@@ -3415,26 +2082,11 @@ fn pretty_date(d: &str) -> String {
     }
 }
 
-fn local_collection(
-    app: &mut App,
-    ui: &mut Ui,
-    title: &str,
-    sub: &str,
-    glyph: &str,
-    tracks: &[Track],
-    playlist: Option<usize>,
-) {
+fn local_collection(app: &mut App, ui: &mut Ui, title: &str, sub: &str, glyph: &str, tracks: &[Track], playlist: Option<usize>) {
     let ctx = ui.ctx().clone();
-    let kind = if playlist.is_some() {
-        "Playlist"
-    } else {
-        "Library"
-    };
+    let kind = if playlist.is_some() { "Playlist" } else { "Library" };
     // Cover: your own picture, else the first song's artwork.
-    let custom = playlist
-        .and_then(|i| app.saved.playlists.get(i))
-        .and_then(|p| p.cover.as_ref())
-        .map(|c| crate::settings::file_uri(c));
+    let custom = playlist.and_then(|i| app.saved.playlists.get(i)).and_then(|p| p.cover.as_ref()).map(|c| crate::settings::file_uri(c));
     let art = custom.clone().or_else(|| match playlist {
         Some(_) => tracks.iter().find_map(|t| t.art_big()).map(str::to_owned),
         None if app.route == Route::Liked => Some(LIKED_ART.to_owned()),
@@ -3455,20 +2107,8 @@ fn local_collection(
         },
     );
     match (&app.route, playlist) {
-        (_, Some(_)) => app.note_visit(
-            crate::app::Place::Yours(title.to_string()),
-            title,
-            "Playlist",
-            art.as_deref(),
-            false,
-        ),
-        (Route::Liked, _) => app.note_visit(
-            crate::app::Place::Liked,
-            tr("Liked Songs"),
-            "Playlist",
-            Some(LIKED_ART),
-            false,
-        ),
+        (_, Some(_)) => app.note_visit(crate::app::Place::Yours(title.to_string()), title, "Playlist", art.as_deref(), false),
+        (Route::Liked, _) => app.note_visit(crate::app::Place::Liked, tr("Liked Songs"), "Playlist", Some(LIKED_ART), false),
         _ => {}
     }
     if let Some(i) = playlist {
@@ -3496,9 +2136,7 @@ fn local_collection(
     if tracks.is_empty() {
         let body = match (&app.route, playlist) {
             (Route::Liked, _) => "Tap the heart on any song to save it here.",
-            (Route::LocalFiles, _) => {
-                "Put music files in your Music folder and they'll show up here."
-            }
+            (Route::LocalFiles, _) => "Put music files in your Music folder and they'll show up here.",
             (_, Some(_)) => "Right-click any song and choose “Add to playlist”.",
             _ => "Songs you play will show up here.",
         };
@@ -3525,11 +2163,7 @@ fn local_collection(
     app.ensure_featured(tracks);
     // Imported songs: look again on Deezer, and give coverless songs their video's picture.
     app.rematch_imports(tracks, &ctx);
-    let coverless: Vec<Track> = tracks
-        .iter()
-        .filter(|t| t.cover_small.is_none() && !crate::local::is_local(&t.id))
-        .cloned()
-        .collect();
+    let coverless: Vec<Track> = tracks.iter().filter(|t| t.cover_small.is_none() && !crate::local::is_local(&t.id)).cloned().collect();
     app.ensure_views(&coverless);
     list_toolbar(app, ui, tracks, playlist, title);
     let chips = crate::app::genre_chips(tracks, &app.saved.album_genres);
@@ -3545,12 +2179,7 @@ fn local_collection(
         ui.add_space(8.0);
     }
 
-    let view = crate::app::view_tracks(
-        tracks,
-        &app.list_view,
-        added.as_ref(),
-        &app.saved.album_genres,
-    );
+    let view = crate::app::view_tracks(tracks, &app.list_view, added.as_ref(), &app.saved.album_genres);
     if view.is_empty() {
         ui.add_space(20.0);
         ui.label(RichText::new(tr("No songs match.")).color(pal().text_muted));
@@ -3581,9 +2210,7 @@ fn local_collection(
 /// Asks for a picture (Windows file dialog) and makes it the playlist cover.
 fn pick_cover(app: &mut App, i: usize, ctx: &egui::Context) {
     #[cfg(windows)]
-    if let Some(file) = rfd::FileDialog::new()
-        .add_filter("Pictures", &["png", "jpg", "jpeg", "webp"])
-        .pick_file()
+    if let Some(file) = rfd::FileDialog::new().add_filter("Pictures", &["png", "jpg", "jpeg", "webp"]).pick_file()
         && let Err(e) = app.set_playlist_cover(i, &file)
     {
         app.toast(&e, ctx);
@@ -3593,19 +2220,9 @@ fn pick_cover(app: &mut App, i: usize, ctx: &egui::Context) {
 }
 
 /// The bar above a song list: play, shuffle, download · search, sort, more.
-fn list_toolbar(
-    app: &mut App,
-    ui: &mut Ui,
-    tracks: &[Track],
-    playlist: Option<usize>,
-    title: &str,
-) {
+fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<usize>, title: &str) {
     let ctx = ui.ctx().clone();
-    let playing_this = app.is_playing()
-        && app
-            .current
-            .as_ref()
-            .is_some_and(|c| tracks.iter().any(|t| t.id == c.id));
+    let playing_this = app.is_playing() && app.current.as_ref().is_some_and(|c| tracks.iter().any(|t| t.id == c.id));
     let view = crate::app::view_tracks(tracks, &app.list_view, None, &app.saved.album_genres);
     ui.horizontal(|ui| {
         ui.set_min_height(56.0);
@@ -3617,69 +2234,27 @@ fn list_toolbar(
             }
         }
         ui.add_space(4.0);
-        let sh_col = if app.saved.shuffle {
-            pal().accent_soft
-        } else {
-            pal().text_muted
-        };
-        if icon_toggle(
-            ui,
-            icon::SHUFFLE,
-            26.0,
-            sh_col,
-            tr("Shuffle"),
-            tr("Shuffle"),
-            app.saved.shuffle,
-        )
-        .clicked()
-        {
+        let sh_col = if app.saved.shuffle { pal().accent_soft } else { pal().text_muted };
+        if icon_toggle(ui, icon::SHUFFLE, 26.0, sh_col, tr("Shuffle"), tr("Shuffle"), app.saved.shuffle).clicked() {
             shuffle_play(app, &view, &ctx);
         }
         if app.saved.shuffle {
             let r = ui.min_rect();
-            ui.painter().circle_filled(
-                pos2(r.right() - 20.0, r.center().y + 18.0),
-                2.0,
-                pal().accent_soft,
-            );
+            ui.painter().circle_filled(pos2(r.right() - 20.0, r.center().y + 18.0), 2.0, pal().accent_soft);
         }
         // Download: all songs here, or a check once they're all saved.
-        let online: Vec<Track> = tracks
-            .iter()
-            .filter(|t| !crate::local::is_local(&t.id))
-            .cloned()
-            .collect();
+        let online: Vec<Track> = tracks.iter().filter(|t| !crate::local::is_local(&t.id)).cloned().collect();
         if !online.is_empty() {
             let all = online.iter().all(|t| app.is_downloaded(&t.id));
-            let busy = !all
-                && online.iter().any(|t| {
-                    app.download_queue.iter().any(|q| q.id == t.id)
-                        || app.downloading.iter().any(|(d, _)| d.id == t.id)
-                });
+            let busy = !all && online.iter().any(|t| app.download_queue.iter().any(|q| q.id == t.id) || app.downloading.iter().any(|(d, _)| d.id == t.id));
             if busy {
                 ui.add_space(6.0);
                 ui.spinner().on_hover_text(tr("Downloading…"));
             } else if all {
-                if icon_button(
-                    ui,
-                    icon::ARROW_CIRCLE_DOWN,
-                    26.0,
-                    pal().accent_soft,
-                    tr("Downloaded"),
-                )
-                .clicked()
-                {
+                if icon_button(ui, icon::ARROW_CIRCLE_DOWN, 26.0, pal().accent_soft, tr("Downloaded")).clicked() {
                     // Already downloaded: nothing to do.
                 }
-            } else if icon_button(
-                ui,
-                icon::ARROW_CIRCLE_DOWN,
-                26.0,
-                pal().text_muted,
-                tr("Download"),
-            )
-            .clicked()
-            {
+            } else if icon_button(ui, icon::ARROW_CIRCLE_DOWN, 26.0, pal().text_muted, tr("Download")).clicked() {
                 app.download(&online, &ctx);
             }
         }
@@ -3719,32 +2294,15 @@ fn list_toolbar(
             // Search: an icon that opens into a box.
             if app.list_view.search_open || !app.list_view.search.is_empty() {
                 let id = ui.id().with("list_search");
-                let r = ui.add(
-                    egui::TextEdit::singleline(&mut app.list_view.search)
-                        .id(id)
-                        .hint_text(tr("Search in playlist"))
-                        .desired_width(200.0),
-                );
-                if app.list_view.search_open
-                    && !r.has_focus()
-                    && app.list_view.search.is_empty()
-                    && r.lost_focus()
-                {
+                let r = ui.add(egui::TextEdit::singleline(&mut app.list_view.search).id(id).hint_text(tr("Search in playlist")).desired_width(200.0));
+                if app.list_view.search_open && !r.has_focus() && app.list_view.search.is_empty() && r.lost_focus() {
                     app.list_view.search_open = false;
                 }
                 if app.list_view.search_open && app.list_view.search.is_empty() && !r.lost_focus() {
                     r.request_focus();
                 }
             }
-            if icon_button(
-                ui,
-                icon::MAGNIFYING_GLASS,
-                17.0,
-                pal().text_muted,
-                tr("Search in playlist"),
-            )
-            .clicked()
-            {
+            if icon_button(ui, icon::MAGNIFYING_GLASS, 17.0, pal().text_muted, tr("Search in playlist")).clicked() {
                 app.list_view.search_open = !app.list_view.search_open;
                 if !app.list_view.search_open {
                     app.list_view.search.clear();
@@ -3759,13 +2317,7 @@ fn queue_page(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     page_title(ui, "Queue", None);
     let Some(cur) = app.current.clone() else {
-        empty_state(
-            ui,
-            icon::QUEUE,
-            "Nothing playing",
-            "Pick a song and your queue will appear here.",
-            None,
-        );
+        empty_state(ui, icon::QUEUE, "Nothing playing", "Pick a song and your queue will appear here.", None);
         return;
     };
     section_title(ui, "Now playing", None);
@@ -3785,11 +2337,7 @@ fn queue_page(app: &mut App, ui: &mut Ui) {
     // like Spotify: they're always the run at the end of the queue.
     let start = app.queue_pos + 1;
     let first_auto = if app.saved.autoplay {
-        (start..app.queue.len())
-            .rev()
-            .take_while(|&i| app.autoplay_ids.contains(&app.queue[i].id))
-            .last()
-            .unwrap_or(app.queue.len())
+        (start..app.queue.len()).rev().take_while(|&i| app.autoplay_ids.contains(&app.queue[i].id)).last().unwrap_or(app.queue.len())
     } else {
         app.queue.len()
     };
@@ -3802,10 +2350,7 @@ fn queue_page(app: &mut App, ui: &mut Ui) {
             return;
         }
         if yours == 0 {
-            ui.label(
-                RichText::new(tr("Nothing queued. Right-click a song → “Add to queue”."))
-                    .color(pal().text_muted),
-            );
+            ui.label(RichText::new(tr("Nothing queued. Right-click a song → “Add to queue”.")).color(pal().text_muted));
         } else {
             let mut cx = table_ctx(app, &names);
             cx.queue_mode = true;
@@ -3834,19 +2379,11 @@ fn queue_page(app: &mut App, ui: &mut Ui) {
     ui.add_space(2.0);
     let about = match (&app.radio_seed, app.saved.autoplay) {
         (_, false) => tr("Turn on to keep playing similar songs when your queue ends.").to_string(),
-        (Some(seed), true) if first_auto < app.queue.len() => format!(
-            "{} · {}",
-            tr("Songs like {}").replace("{}", &format!("“{}”", seed.title)),
-            seed.artist.name
-        ),
+        (Some(seed), true) if first_auto < app.queue.len() => format!("{} · {}", tr("Songs like {}").replace("{}", &format!("“{}”", seed.title)), seed.artist.name),
         _ if app.autoplay_loading() => tr("Finding songs like this one…").to_string(),
         _ => tr("Similar songs will play when your queue ends.").to_string(),
     };
-    ui.label(
-        RichText::new(about)
-            .font(regular(13.0))
-            .color(pal().text_muted),
-    );
+    ui.label(RichText::new(about).font(regular(13.0)).color(pal().text_muted));
     ui.add_space(8.0);
     if app.saved.autoplay && first_auto < app.queue.len() {
         let mut cx = table_ctx(app, &names);
@@ -3855,10 +2392,7 @@ fn queue_page(app: &mut App, ui: &mut Ui) {
         track_table(ui, "q_auto", &app.queue[first_auto..], &cx, &mut ev);
         if !ev.is_empty() {
             // The table counts from its own first song; the queue's events count from the song after the one playing.
-            let ev = ev
-                .into_iter()
-                .map(|e| shift_queue_event(e, yours))
-                .collect();
+            let ev = ev.into_iter().map(|e| shift_queue_event(e, yours)).collect();
             let upcoming: Vec<Track> = app.queue[start..].to_vec();
             app.handle_events(ev, &upcoming, &ctx);
         }
@@ -3878,11 +2412,7 @@ fn shift_queue_event(e: TrackEvent, by: usize) -> TrackEvent {
 fn total_time(tracks: &[Track]) -> String {
     let s: u32 = tracks.iter().map(crate::fixes::shown_length).sum();
     let (h, m) = (s / 3600, (s % 3600) / 60);
-    if h > 0 {
-        format!("{h} hr {m} min")
-    } else {
-        format!("{m} min")
-    }
+    if h > 0 { format!("{h} hr {m} min") } else { format!("{m} min") }
 }
 
 // ---------------------------------------------------------------------------
@@ -3896,40 +2426,23 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
     if tung_theme(app) {
         let shelf = full.expand2(vec2(24.0, 0.0)).intersect(ui.clip_rect());
         let c = pal().text;
-        wood_grain(
-            ui,
-            shelf,
-            Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 22),
-            1.0,
-            0.0,
-        );
+        wood_grain(ui, shelf, Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 22), 1.0, 0.0);
     }
     let left_w = (full.width() * 0.28).clamp(220.0, 360.0);
     let right_w = left_w.min(260.0);
     let controls_left = layout().player == crate::theme::PlayerStyle::ControlsLeft;
-    let center_w = if controls_left {
-        (full.width() * 0.34).clamp(300.0, 520.0)
-    } else {
-        (full.width() - left_w - right_w - 32.0).clamp(280.0, 640.0)
-    };
+    let center_w = if controls_left { (full.width() * 0.34).clamp(300.0, 520.0) } else { (full.width() - left_w - right_w - 32.0).clamp(280.0, 640.0) };
     // Where the song info and the controls go: song left + controls centred (normal),
     // or controls left + song next to them.
     let (left, center) = if controls_left {
         let c = Rect::from_min_size(full.min, vec2(center_w, full.height()));
-        let l = Rect::from_min_size(
-            pos2(c.right() + 28.0, full.top()),
-            vec2(left_w, full.height()),
-        );
+        let l = Rect::from_min_size(pos2(c.right() + 28.0, full.top()), vec2(left_w, full.height()));
         (l, c)
     } else {
-        (
-            Rect::from_min_size(full.min, vec2(left_w, full.height())),
-            Rect::from_center_size(full.center(), vec2(center_w, full.height())),
-        )
+        (Rect::from_min_size(full.min, vec2(left_w, full.height())), Rect::from_center_size(full.center(), vec2(center_w, full.height())))
     };
     // The small cover hides when the theme shows a big one in the sidebar.
-    let small_art = !(layout().now_playing_art == crate::theme::NowPlayingArt::SidebarLarge
-        && !compact_sidebar());
+    let small_art = !(layout().now_playing_art == crate::theme::NowPlayingArt::SidebarLarge && !compact_sidebar());
 
     // ---- now playing
     if let Some(t) = app.current.clone() {
@@ -3941,50 +2454,25 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
         if small_art {
             artwork(ui, art, t.art_big(), CornerRadius::same(6));
         }
-        let art_resp = ui
-            .interact(art, egui::Id::new("np_art"), Sense::click())
-            .on_hover_cursor(egui::CursorIcon::PointingHand);
-        a11y(ui, &art_resp, egui::WidgetType::Button, || {
-            format!(
-                "Now playing: {} by {}. Open queue",
-                t.title,
-                t.all_artists()
-            )
-        });
+        let art_resp = ui.interact(art, egui::Id::new("np_art"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+        a11y(ui, &art_resp, egui::WidgetType::Button, || format!("Now playing: {} by {}. Open queue", t.title, t.all_artists()));
         if art_resp.clicked() {
             app.navigate(Route::Queue, &ctx);
         }
         let tx = art.right() + 14.0;
         let tw = left.right() - tx - 40.0;
-        let title_rect = paint_line(
-            ui,
-            pos2(tx, left.center().y - 18.0),
-            &t.title,
-            semi(13.5),
-            pal().text,
-            tw,
-        );
+        let title_rect = paint_line(ui, pos2(tx, left.center().y - 18.0), &t.title, semi(13.5), pal().text, tw);
         // Right-click the song title for the song menu (like, share, credits…).
         // Hovering it shows how long the song took to start.
-        let mut title_resp = ui
-            .interact(title_rect, egui::Id::new("np_title"), Sense::click())
-            .on_hover_cursor(egui::CursorIcon::PointingHand);
+        let mut title_resp = ui.interact(title_rect, egui::Id::new("np_title"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
         if let Some(t) = app.audio.timing() {
             title_resp = title_resp.on_hover_text(t);
         }
         if title_resp.hovered() {
-            ui.painter().hline(
-                title_rect.x_range(),
-                title_rect.bottom() - 1.0,
-                Stroke::new(1.0, pal().text),
-            );
+            ui.painter().hline(title_rect.x_range(), title_rect.bottom() - 1.0, Stroke::new(1.0, pal().text));
         }
         if title_resp.clicked() {
-            app.handle_events(
-                vec![TrackEvent::OpenSong(t.clone())],
-                std::slice::from_ref(&t),
-                &ctx,
-            );
+            app.handle_events(vec![TrackEvent::OpenSong(t.clone())], std::slice::from_ref(&t), &ctx);
         }
         let mut np_events = vec![];
         let names = app.playlist_names();
@@ -4015,26 +2503,10 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
         }
         if let LoadState::Resolving(msg) = app.audio.load_state() {
             // Just "Loading…" while it loads (with the percentage during first-time setup).
-            paint_line(
-                ui,
-                pos2(tx, left.center().y + 2.0),
-                &loading_text(&msg),
-                regular(12.0),
-                pal().accent_soft,
-                tw,
-            );
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(200));
+            paint_line(ui, pos2(tx, left.center().y + 2.0), &loading_text(&msg), regular(12.0), pal().accent_soft, tw);
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
         } else {
-            let (a, feat) = artist_links(
-                ui,
-                egui::Id::new("np_artist"),
-                pos2(tx, left.center().y + 2.0),
-                &t,
-                regular(12.5),
-                pal().text_muted,
-                tw,
-            );
+            let (a, feat) = artist_links(ui, egui::Id::new("np_artist"), pos2(tx, left.center().y + 2.0), &t, regular(12.5), pal().text_muted, tw);
             if a.clicked() {
                 app.open_artist(&t, &ctx);
             }
@@ -4048,55 +2520,24 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
             LoadState::Resolving(msg) => loading_text(&msg),
             _ => t.all_artists(),
         };
-        let artist_w = one_line(ui, &second_line, regular(12.5), pal().text_muted, tw)
-            .size()
-            .x;
+        let artist_w = one_line(ui, &second_line, regular(12.5), pal().text_muted, tw).size().x;
         let text_right = tx + title_rect.width().max(artist_w);
-        let hr = Rect::from_center_size(
-            pos2(
-                (text_right + 22.0).min(left.right() - 18.0),
-                left.center().y,
-            ),
-            Vec2::splat(30.0),
-        );
-        let h = ui
-            .interact(hr, egui::Id::new("np_like"), Sense::click())
-            .on_hover_cursor(egui::CursorIcon::PointingHand);
+        let hr = Rect::from_center_size(pos2((text_right + 22.0).min(left.right() - 18.0), left.center().y), Vec2::splat(30.0));
+        let h = ui.interact(hr, egui::Id::new("np_like"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
         resp_selected(ui, &h, liked, "Like current song");
         // Keyed to the song, so changing songs doesn't make an already-liked heart pop.
         let size = 18.0 * heart_pop(ui, egui::Id::new(("np_like_pop", &t.id)), liked);
-        let (font, col) = if liked {
-            (filled_icon(size), pal().accent_soft)
-        } else {
-            (
-                regular(size),
-                if h.hovered() {
-                    pal().text
-                } else {
-                    pal().text_muted
-                },
-            )
-        };
+        let (font, col) = if liked { (filled_icon(size), pal().accent_soft) } else { (regular(size), if h.hovered() { pal().text } else { pal().text_muted }) };
         paint_icon(ui.painter(), hr.center(), icon::HEART, font, col);
         if h.clicked() {
             app.toggle_like(&t, &ctx);
         }
     } else {
-        ui.painter().text(
-            left.left_center(),
-            Align2::LEFT_CENTER,
-            "Pick something to play",
-            regular(13.0),
-            pal().text_faint,
-        );
+        ui.painter().text(left.left_center(), Align2::LEFT_CENTER, "Pick something to play", regular(13.0), pal().text_faint);
     }
 
     // ---- controls + progress
-    let mut cui = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(center)
-            .layout(Layout::top_down(Align::Center)),
-    );
+    let mut cui = ui.new_child(egui::UiBuilder::new().max_rect(center).layout(Layout::top_down(Align::Center)));
     cui.add_space(10.0);
     {
         // Each button has a fixed spot measured from the middle, so play sits exactly
@@ -4105,36 +2546,13 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
         // A slot exactly as wide as its button (icon size + 12), centred on its spot.
         let mut slot = |n: i32, icon: f32| {
             let w = if n == 0 { 40.0 } else { icon + 12.0 };
-            let r = Rect::from_center_size(
-                pos2(row.center().x + n as f32 * 50.0, row.center().y),
-                vec2(w, 40.0),
-            );
-            cui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(r)
-                    .layout(Layout::left_to_right(Align::Center)),
-            )
+            let r = Rect::from_center_size(pos2(row.center().x + n as f32 * 50.0, row.center().y), vec2(w, 40.0));
+            cui.new_child(egui::UiBuilder::new().max_rect(r).layout(Layout::left_to_right(Align::Center)))
         };
         let ui = &mut slot(-2, 17.0);
-        let shuf_col = if app.saved.shuffle {
-            pal().accent_soft
-        } else {
-            pal().text_muted
-        };
-        let tip = if app.saved.shuffle {
-            "Shuffle: on (S)"
-        } else {
-            "Shuffle: off (S)"
-        };
-        let s = icon_toggle(
-            ui,
-            icon::SHUFFLE,
-            17.0,
-            shuf_col,
-            tip,
-            "Shuffle",
-            app.saved.shuffle,
-        );
+        let shuf_col = if app.saved.shuffle { pal().accent_soft } else { pal().text_muted };
+        let tip = if app.saved.shuffle { "Shuffle: on (S)" } else { "Shuffle: off (S)" };
+        let s = icon_toggle(ui, icon::SHUFFLE, 17.0, shuf_col, tip, "Shuffle", app.saved.shuffle);
         if app.saved.shuffle {
             active_dot(ui, &s);
         }
@@ -4146,23 +2564,12 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
             app.previous(&ctx);
         }
         let ui = &mut slot(0, 40.0);
-        let loading =
-            (app.audio.load_state().is_busy() || app.audio.seeking()) && app.current.is_some();
+        let loading = (app.audio.load_state().is_busy() || app.audio.seeking()) && app.current.is_some();
         let (r, resp) = ui.allocate_exact_size(Vec2::splat(40.0), Sense::click());
         let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
         let playing = app.is_playing();
-        a11y(ui, &resp, egui::WidgetType::Button, || {
-            if playing { "Pause" } else { "Play" }.to_owned()
-        });
-        ui.painter().circle_filled(
-            r.center(),
-            19.0,
-            if resp.hovered() {
-                pal().text.gamma_multiply(0.85)
-            } else {
-                pal().text
-            },
-        );
+        a11y(ui, &resp, egui::WidgetType::Button, || if playing { "Pause" } else { "Play" }.to_owned());
+        ui.painter().circle_filled(r.center(), 19.0, if resp.hovered() { pal().text.gamma_multiply(0.85) } else { pal().text });
         if loading {
             let t = ui.input(|i| i.time) as f32;
             let start = t * 6.0;
@@ -4172,17 +2579,11 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
                     r.center() + vec2(a.cos(), a.sin()) * 8.0
                 })
                 .collect();
-            ui.painter()
-                .add(egui::Shape::line(pts, Stroke::new(2.2, pal().bg)));
+            ui.painter().add(egui::Shape::line(pts, Stroke::new(2.2, pal().bg)));
             // About 30 times a second (it asked for every frame the screen can show).
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(33));
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
         } else {
-            let glyph = if app.is_playing() {
-                icon::PAUSE
-            } else {
-                icon::PLAY
-            };
+            let glyph = if app.is_playing() { icon::PAUSE } else { icon::PLAY };
             paint_icon(ui.painter(), r.center(), glyph, filled_icon(18.0), pal().bg);
         }
         if resp.on_hover_text("Play / Pause (Space)").clicked() {
@@ -4211,27 +2612,15 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
     cui.add_space(2.0);
     cui.horizontal(|ui| {
         let dur = app.current_length();
-        let pos = if app.needs_load {
-            0.0
-        } else {
-            app.audio.position().as_secs_f32()
-        };
+        let pos = if app.needs_load { 0.0 } else { app.audio.position().as_secs_f32() };
         let frac = if dur > 0 { pos / dur as f32 } else { 0.0 };
         let shown = app.seek_preview.unwrap_or(frac);
         let time_w = 42.0;
         let bar_w = center_w - time_w * 2.0 - 20.0;
         ui.add_space(2.0);
-        ui.allocate_ui_with_layout(
-            vec2(time_w, 16.0),
-            Layout::right_to_left(Align::Center),
-            |ui| {
-                ui.label(
-                    RichText::new(fmt_duration((shown * dur as f32) as u32))
-                        .font(regular(11.5))
-                        .color(pal().text_muted),
-                );
-            },
-        );
+        ui.allocate_ui_with_layout(vec2(time_w, 16.0), Layout::right_to_left(Align::Center), |ui| {
+            ui.label(RichText::new(fmt_duration((shown * dur as f32) as u32)).font(regular(11.5)).color(pal().text_muted));
+        });
         let buffered = (!app.needs_load && app.current.is_some()).then(|| app.audio.buffered());
         let (resp, val) = slim_slider(ui, bar_w, shown, buffered, "Seek");
         if tung_theme(app) && app.current.is_some() {
@@ -4247,26 +2636,14 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
         } else if !resp.dragged() {
             app.seek_preview = None;
         }
-        ui.allocate_ui_with_layout(
-            vec2(time_w, 16.0),
-            Layout::left_to_right(Align::Center),
-            |ui| {
-                ui.label(
-                    RichText::new(fmt_duration(dur))
-                        .font(regular(11.5))
-                        .color(pal().text_muted),
-                );
-            },
-        );
+        ui.allocate_ui_with_layout(vec2(time_w, 16.0), Layout::left_to_right(Align::Center), |ui| {
+            ui.label(RichText::new(fmt_duration(dur)).font(regular(11.5)).color(pal().text_muted));
+        });
     });
 
     // ---- right: queue + volume
     let right = Rect::from_min_max(pos2(full.right() - right_w, full.top()), full.max);
-    let mut rui = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(right)
-            .layout(Layout::right_to_left(Align::Center)),
-    );
+    let mut rui = ui.new_child(egui::UiBuilder::new().max_rect(right).layout(Layout::right_to_left(Align::Center)));
     rui.spacing_mut().item_spacing.x = 6.0;
     let (_, v) = slim_slider(&mut rui, 104.0, app.saved.volume, None, "Volume");
     if let Some(v) = v {
@@ -4277,52 +2654,20 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
         v if v < 0.5 => icon::SPEAKER_LOW,
         _ => icon::SPEAKER_HIGH,
     };
-    let mute_tip = if app.muted_volume.is_some() {
-        "Unmute (M)"
-    } else {
-        "Mute (M)"
-    };
+    let mute_tip = if app.muted_volume.is_some() { "Unmute (M)" } else { "Mute (M)" };
     if icon_button(&mut rui, vol_icon, 17.0, pal().text_muted, mute_tip).clicked() {
         app.toggle_mute();
     }
     let on_lyrics = app.route == Route::Lyrics;
     let lyrics_on = on_lyrics || lyrics_page::panel_open(app, &ctx);
-    if icon_button(
-        &mut rui,
-        icon::MICROPHONE_STAGE,
-        17.0,
-        if lyrics_on {
-            pal().accent_soft
-        } else {
-            pal().text_muted
-        },
-        tr("Lyrics (L)"),
-    )
-    .clicked()
-    {
+    if icon_button(&mut rui, icon::MICROPHONE_STAGE, 17.0, if lyrics_on { pal().accent_soft } else { pal().text_muted }, tr("Lyrics (L)")).clicked() {
         lyrics_page::toggle(app, &ctx);
     }
     let mini_on = app.saved.settings.mini_open;
-    if icon_button(
-        &mut rui,
-        icon::PICTURE_IN_PICTURE,
-        17.0,
-        if mini_on {
-            pal().accent_soft
-        } else {
-            pal().text_muted
-        },
-        tr("Mini player (Ctrl+M)"),
-    )
-    .clicked()
-    {
+    if icon_button(&mut rui, icon::PICTURE_IN_PICTURE, 17.0, if mini_on { pal().accent_soft } else { pal().text_muted }, tr("Mini player (Ctrl+M)")).clicked() {
         app.saved.settings.mini_open = !mini_on;
     }
-    let qcol = if app.route == Route::Queue {
-        pal().accent_soft
-    } else {
-        pal().text_muted
-    };
+    let qcol = if app.route == Route::Queue { pal().accent_soft } else { pal().text_muted };
     let q = icon_button(&mut rui, icon::QUEUE, 17.0, qcol, "Queue");
     if q.clicked() {
         if app.route == Route::Queue {
@@ -4339,11 +2684,7 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
 
 /// The frame every dialog uses.
 fn dialog_frame() -> Frame {
-    Frame::new()
-        .fill(pal().surface)
-        .corner_radius(r_lg())
-        .inner_margin(24)
-        .stroke(Stroke::new(1.0, pal().border))
+    Frame::new().fill(pal().surface).corner_radius(r_lg()).inner_margin(24).stroke(Stroke::new(1.0, pal().border))
 }
 
 /// "Pulse closed unexpectedly last time", with the report to copy.
@@ -4448,38 +2789,23 @@ fn report_dialog(app: &mut App, ctx: &egui::Context) {
         }
     });
     if send {
-        let details = if include {
-            crate::diag::report(&app.diag, &app.saved.settings)
-        } else {
-            String::new()
-        };
-        app.report_sending = Some(crate::report::send(
-            crate::report::Kind::Problem,
-            &text,
-            &details,
-        ));
+        let details = if include { crate::diag::report(&app.diag, &app.saved.settings) } else { String::new() };
+        app.report_sending = Some(crate::report::send(crate::report::Kind::Problem, &text, &details));
         app.toast(tr("Sending your report…"), ctx);
     } else if open {
         app.report = Some((text, include));
     }
 }
 
-static OWN_PUBLIC: std::sync::Mutex<
-    Option<(String, Option<crate::account::Profile>, std::time::Instant)>,
-> = std::sync::Mutex::new(None);
+static OWN_PUBLIC: std::sync::Mutex<Option<(String, Option<crate::account::Profile>, std::time::Instant)>> = std::sync::Mutex::new(None);
 
 /// Your public profile (for the profile page), read in the background and kept for a
 /// minute. None until it's here.
 pub fn own_public_profile(username: &str, ctx: &egui::Context) -> Option<crate::account::Profile> {
     let mut g = OWN_PUBLIC.lock().unwrap();
-    let fresh = g.as_ref().is_some_and(|(u, _, at)| {
-        u == username && at.elapsed() < std::time::Duration::from_secs(60)
-    });
+    let fresh = g.as_ref().is_some_and(|(u, _, at)| u == username && at.elapsed() < std::time::Duration::from_secs(60));
     if !fresh {
-        let keep = g
-            .as_ref()
-            .filter(|(u, ..)| u == username)
-            .and_then(|(_, p, _)| p.clone());
+        let keep = g.as_ref().filter(|(u, ..)| u == username).and_then(|(_, p, _)| p.clone());
         *g = Some((username.to_string(), keep, std::time::Instant::now()));
         let (name, ctx) = (username.to_string(), ctx.clone());
         std::thread::spawn(move || {
@@ -4500,32 +2826,20 @@ pub fn own_public_profile(username: &str, ctx: &egui::Context) -> Option<crate::
 pub fn forget_own_public_profile() {
     if let Some((_, _, at)) = OWN_PUBLIC.lock().unwrap().as_mut() {
         // Old enough to be read again (if the clock allows going that far back).
-        if let Some(old) =
-            std::time::Instant::now().checked_sub(std::time::Duration::from_secs(120))
-        {
+        if let Some(old) = std::time::Instant::now().checked_sub(std::time::Duration::from_secs(120)) {
             *at = old;
         }
     }
 }
 
 /// One of the Tung Tung theme's pictures, loaded once (`repeat`: tiles when stretched).
-fn tung_texture(
-    ctx: &egui::Context,
-    name: &'static str,
-    bytes: &'static [u8],
-    repeat: bool,
-) -> egui::TextureHandle {
+fn tung_texture(ctx: &egui::Context, name: &'static str, bytes: &'static [u8], repeat: bool) -> egui::TextureHandle {
     let id = egui::Id::new(("tung_texture", name));
     if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         return t;
     }
-    let img = image::load_from_memory(bytes)
-        .map(|i| i.to_rgba8())
-        .unwrap_or_default();
-    let color = egui::ColorImage::from_rgba_unmultiplied(
-        [img.width() as usize, img.height() as usize],
-        img.as_raw(),
-    );
+    let img = image::load_from_memory(bytes).map(|i| i.to_rgba8()).unwrap_or_default();
+    let color = egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw());
     let mut opts = egui::TextureOptions::LINEAR;
     if repeat {
         opts.wrap_mode = egui::TextureWrapMode::Repeat;
@@ -4541,17 +2855,9 @@ fn wood_grain(ui: &Ui, rect: Rect, tint: Color32, scale: f32, v_offset: f32) {
     if crate::perf::mode() == crate::perf::Mode::UltraLow || crate::perf::software() {
         return;
     }
-    let tex = tung_texture(
-        ui.ctx(),
-        "tung_wood",
-        include_bytes!("../assets/themes/Tung Tung/wood.png"),
-        true,
-    );
+    let tex = tung_texture(ui.ctx(), "tung_wood", include_bytes!("../assets/themes/Tung Tung/wood.png"), true);
     let [w, h] = tex.size().map(|v| v as f32 * scale);
-    let uv = Rect::from_min_size(
-        pos2(rect.left() / w, v_offset + rect.top() / h),
-        vec2(rect.width() / w, rect.height() / h),
-    );
+    let uv = Rect::from_min_size(pos2(rect.left() / w, v_offset + rect.top() / h), vec2(rect.width() / w, rect.height() / h));
     ui.painter().image(tex.id(), rect, uv, tint);
 }
 
@@ -4566,32 +2872,19 @@ fn tung_runner(ui: &mut Ui, bar: Rect, at: f32, playing: bool) {
     const FRAMES: usize = 8;
     const FPS: f64 = 12.0;
     const SIZE: f32 = 26.0;
-    let tex = tung_texture(
-        ui.ctx(),
-        "tung_runner",
-        include_bytes!("../assets/themes/Tung Tung/runner.png"),
-        false,
-    );
+    let tex = tung_texture(ui.ctx(), "tung_runner", include_bytes!("../assets/themes/Tung Tung/runner.png"), false);
     // The bar is a wooden plank he runs on: grain over the whole track, played part too.
     let track = Rect::from_center_size(bar.center(), vec2(bar.width(), 5.0));
     wood_grain(ui, track, Color32::from_black_alpha(110), 0.35, 0.3);
     let moving = playing && !crate::theme::reduce_motion();
-    let frame = if moving {
-        (ui.input(|i| i.time) * FPS) as usize % FRAMES
-    } else {
-        0
-    };
+    let frame = if moving { (ui.input(|i| i.time) * FPS) as usize % FRAMES } else { 0 };
     if moving {
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_secs_f64(1.0 / FPS));
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(1.0 / FPS));
     }
     let x = bar.left() + bar.width() * at.clamp(0.0, 1.0);
     // Feet just on the bar's line (the frame has a little empty space under the feet).
     let rect = Rect::from_center_size(pos2(x, bar.center().y - SIZE / 2.0 + 3.0), vec2(SIZE, SIZE));
-    let uv = Rect::from_min_max(
-        pos2(frame as f32 / FRAMES as f32, 0.0),
-        pos2((frame + 1) as f32 / FRAMES as f32, 1.0),
-    );
+    let uv = Rect::from_min_max(pos2(frame as f32 / FRAMES as f32, 0.0), pos2((frame + 1) as f32 / FRAMES as f32, 1.0));
     ui.painter().image(tex.id(), rect, uv, Color32::WHITE);
 }
 
@@ -4602,83 +2895,37 @@ fn update_dialog(app: &mut App, ctx: &egui::Context) {
     let Status::Available(release) = &app.updater.status else {
         return;
     };
-    if app.update_asked
-        || app.intro.is_some()
-        || app.account_dialog.is_some()
-        || app.picker.is_some()
-        || app.report.is_some()
-    {
+    if app.update_asked || app.intro.is_some() || app.account_dialog.is_some() || app.picker.is_some() || app.report.is_some() {
         return;
     }
     let (version, page) = (release.version.clone(), release.page.clone());
     let (mut later, mut update) = (false, false);
-    egui::Modal::new(egui::Id::new("update_available"))
-        .frame(dialog_frame())
-        .show(ctx, |ui| {
-            ui.set_width(400.0);
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(egui_phosphor::regular::ARROW_CIRCLE_UP)
-                        .size(24.0)
-                        .color(pal().accent),
-                );
-                ui.label(
-                    RichText::new(format!(
-                        "{} {} {}",
-                        tr("Pulse"),
-                        version,
-                        tr("is available.")
-                    ))
-                    .font(heavy(19.0)),
-                );
-            });
-            ui.add_space(8.0);
-            ui.add(
-                egui::Label::new(
-                    RichText::new(tr(
-                        "It only takes a moment: Pulse restarts and your library stays as it is.",
-                    ))
-                    .color(pal().text_muted),
-                )
-                .wrap(),
-            );
-            ui.add_space(16.0);
-            ui.horizontal(|ui| {
-                if ui
-                    .add(
-                        egui::Button::new(tr("What's new"))
-                            .frame_when_inactive(false)
-                            .corner_radius(16),
-                    )
-                    .clicked()
-                {
-                    ctx.open_url(egui::OpenUrl::new_tab(&page));
-                }
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new(tr("Update now")).color(Color32::WHITE),
-                            )
-                            .fill(pal().accent)
-                            .corner_radius(16),
-                        )
-                        .clicked()
-                    {
-                        update = true;
-                    }
-                    if ui
-                        .add(egui::Button::new(RichText::new(tr("Later"))).corner_radius(16))
-                        .clicked()
-                    {
-                        later = true;
-                    }
-                });
-            });
-            if ui.input(|i| i.key_pressed(Key::Escape)) {
-                later = true;
-            }
+    egui::Modal::new(egui::Id::new("update_available")).frame(dialog_frame()).show(ctx, |ui| {
+        ui.set_width(400.0);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(egui_phosphor::regular::ARROW_CIRCLE_UP).size(24.0).color(pal().accent));
+            ui.label(RichText::new(format!("{} {} {}", tr("Pulse"), version, tr("is available."))).font(heavy(19.0)));
         });
+        ui.add_space(8.0);
+        ui.add(egui::Label::new(RichText::new(tr("It only takes a moment: Pulse restarts and your library stays as it is.")).color(pal().text_muted)).wrap());
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            if ui.add(egui::Button::new(tr("What's new")).frame_when_inactive(false).corner_radius(16)).clicked() {
+                ctx.open_url(egui::OpenUrl::new_tab(&page));
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui.add(egui::Button::new(RichText::new(tr("Update now")).color(Color32::WHITE)).fill(pal().accent).corner_radius(16)).clicked() {
+                    update = true;
+                }
+                if ui.add(egui::Button::new(RichText::new(tr("Later"))).corner_radius(16)).clicked() {
+                    later = true;
+                }
+            });
+        });
+        if ui.input(|i| i.key_pressed(Key::Escape)) {
+            later = true;
+        }
+    });
     if update || later {
         app.update_asked = true;
     }
@@ -4741,12 +2988,7 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
     online::account_dialog(app, ctx);
     personal::profile_dialog(app, ctx);
     // "Pick artists you like": once, when you're starting out, after the other welcome windows.
-    if app.picker.is_none()
-        && !app.saved.artists_picked
-        && app.account_dialog.is_none()
-        && app.profile_editing.is_none()
-        && app.intro.is_none()
-    {
+    if app.picker.is_none() && !app.saved.artists_picked && app.account_dialog.is_none() && app.profile_editing.is_none() && app.intro.is_none() {
         if app.saved.followed_artists.is_empty() && app.saved.played_artists.len() < 5 {
             pick_artists::open(app, ctx);
         } else {
@@ -4755,49 +2997,22 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
     }
     pick_artists::show(app, ctx);
     if let Some(idx) = app.confirm_delete.take() {
-        let name = app
-            .saved
-            .playlists
-            .get(idx)
-            .map(|p| p.name.clone())
-            .unwrap_or_default();
+        let name = app.saved.playlists.get(idx).map(|p| p.name.clone()).unwrap_or_default();
         let (mut keep, mut delete) = (true, false);
         egui::Modal::new(egui::Id::new("confirm_delete"))
-            .frame(
-                Frame::new()
-                    .fill(pal().surface)
-                    .corner_radius(r_lg())
-                    .inner_margin(24)
-                    .stroke(Stroke::new(1.0, pal().border)),
-            )
+            .frame(Frame::new().fill(pal().surface).corner_radius(r_lg()).inner_margin(24).stroke(Stroke::new(1.0, pal().border)))
             .show(ctx, |ui| {
                 ui.set_width(360.0);
                 ui.label(RichText::new("Delete playlist?").font(heavy(20.0)));
                 ui.add_space(8.0);
-                ui.label(
-                    RichText::new(format!(
-                        "“{name}” will be removed from your library. This can't be undone."
-                    ))
-                    .color(pal().text_muted),
-                );
+                ui.label(RichText::new(format!("“{name}” will be removed from your library. This can't be undone.")).color(pal().text_muted));
                 ui.add_space(16.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .add(
-                            egui::Button::new(RichText::new("Delete").color(Color32::WHITE))
-                                .fill(pal().accent)
-                                .corner_radius(16),
-                        )
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(RichText::new("Delete").color(Color32::WHITE)).fill(pal().accent).corner_radius(16)).clicked() {
                         delete = true;
                     }
                     // Cancel gets focus first so Enter never deletes by accident.
-                    let cancel = ui.add(
-                        egui::Button::new("Cancel")
-                            .frame_when_inactive(false)
-                            .corner_radius(16),
-                    );
+                    let cancel = ui.add(egui::Button::new("Cancel").frame_when_inactive(false).corner_radius(16));
                     if ui.memory(|m| m.focused().is_none()) {
                         cancel.request_focus();
                     }
@@ -4820,47 +3035,23 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
         let mut keep = true;
         let mut create = false;
         egui::Modal::new(egui::Id::new("new_playlist"))
-            .frame(
-                Frame::new()
-                    .fill(pal().surface)
-                    .corner_radius(r_lg())
-                    .inner_margin(24)
-                    .stroke(Stroke::new(1.0, pal().border)),
-            )
+            .frame(Frame::new().fill(pal().surface).corner_radius(r_lg()).inner_margin(24).stroke(Stroke::new(1.0, pal().border)))
             .show(ctx, |ui| {
                 ui.set_width(360.0);
                 ui.label(RichText::new("New playlist").font(heavy(20.0)));
                 ui.add_space(12.0);
-                let r = ui.add(
-                    egui::TextEdit::singleline(&mut name)
-                        .hint_text("My awesome playlist")
-                        .desired_width(f32::INFINITY)
-                        .margin(Margin::symmetric(10, 8)),
-                );
+                let r = ui
+                    .add(egui::TextEdit::singleline(&mut name).hint_text("My awesome playlist").desired_width(f32::INFINITY).margin(Margin::symmetric(10, 8)));
                 r.request_focus();
                 if ui.input(|i| i.key_pressed(Key::Enter)) {
                     create = true;
                 }
                 ui.add_space(16.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .add(
-                            egui::Button::new(RichText::new("Create").color(Color32::WHITE))
-                                .fill(pal().accent)
-                                .corner_radius(16),
-                        )
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(RichText::new("Create").color(Color32::WHITE)).fill(pal().accent).corner_radius(16)).clicked() {
                         create = true;
                     }
-                    if ui
-                        .add(
-                            egui::Button::new("Cancel")
-                                .frame_when_inactive(false)
-                                .corner_radius(16),
-                        )
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new("Cancel").frame_when_inactive(false).corner_radius(16)).clicked() {
                         keep = false;
                     }
                 });
@@ -4879,46 +3070,22 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
         let mut keep = true;
         let mut done = false;
         egui::Modal::new(egui::Id::new("rename_playlist"))
-            .frame(
-                Frame::new()
-                    .fill(pal().surface)
-                    .corner_radius(r_lg())
-                    .inner_margin(24)
-                    .stroke(Stroke::new(1.0, pal().border)),
-            )
+            .frame(Frame::new().fill(pal().surface).corner_radius(r_lg()).inner_margin(24).stroke(Stroke::new(1.0, pal().border)))
             .show(ctx, |ui| {
                 ui.set_width(360.0);
                 ui.label(RichText::new("Rename playlist").font(heavy(20.0)));
                 ui.add_space(12.0);
-                let r = ui.add(
-                    egui::TextEdit::singleline(&mut name)
-                        .desired_width(f32::INFINITY)
-                        .margin(Margin::symmetric(10, 8)),
-                );
+                let r = ui.add(egui::TextEdit::singleline(&mut name).desired_width(f32::INFINITY).margin(Margin::symmetric(10, 8)));
                 r.request_focus();
                 if ui.input(|i| i.key_pressed(Key::Enter)) {
                     done = true;
                 }
                 ui.add_space(16.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .add(
-                            egui::Button::new(RichText::new("Save").color(Color32::WHITE))
-                                .fill(pal().accent)
-                                .corner_radius(16),
-                        )
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(RichText::new("Save").color(Color32::WHITE)).fill(pal().accent).corner_radius(16)).clicked() {
                         done = true;
                     }
-                    if ui
-                        .add(
-                            egui::Button::new("Cancel")
-                                .frame_when_inactive(false)
-                                .corner_radius(16),
-                        )
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new("Cancel").frame_when_inactive(false).corner_radius(16)).clicked() {
                         keep = false;
                     }
                 });
@@ -4940,19 +3107,9 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
 
 /// A dialog's button: filled with the accent color when it's the main one.
 fn dialog_button(ui: &mut Ui, label: &str, primary: bool, enabled: bool) -> egui::Response {
-    let text = RichText::new(label).font(semi(13.5)).color(if primary {
-        Color32::WHITE
-    } else {
-        pal().text
-    });
-    let b = egui::Button::new(text)
-        .min_size(vec2(96.0, 36.0))
-        .corner_radius(CornerRadius::same(18))
-        .fill(if primary {
-            pal().accent
-        } else {
-            pal().surface_hover
-        });
+    let text = RichText::new(label).font(semi(13.5)).color(if primary { Color32::WHITE } else { pal().text });
+    let b =
+        egui::Button::new(text).min_size(vec2(96.0, 36.0)).corner_radius(CornerRadius::same(18)).fill(if primary { pal().accent } else { pal().surface_hover });
     ui.add_enabled(enabled, b)
 }
 
@@ -5081,11 +3238,7 @@ fn credits_dialog(app: &mut App, ctx: &egui::Context) {
             artwork(ui, art, t.art_small(), CornerRadius::same(6));
             ui.vertical(|ui| {
                 ui.label(RichText::new("Credits").font(heavy(18.0)).color(pal().text));
-                ui.label(
-                    RichText::new(&t.title)
-                        .font(med(13.5))
-                        .color(pal().text_muted),
-                );
+                ui.label(RichText::new(&t.title).font(med(13.5)).color(pal().text_muted));
             });
         });
         ui.add_space(10.0);
@@ -5093,11 +3246,7 @@ fn credits_dialog(app: &mut App, ctx: &egui::Context) {
             None => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label(
-                        RichText::new("Loading credits…")
-                            .font(regular(13.0))
-                            .color(pal().text_muted),
-                    );
+                    ui.label(RichText::new("Loading credits…").font(regular(13.0)).color(pal().text_muted));
                 });
             }
             Some(Err(e)) => {
@@ -5106,11 +3255,7 @@ fn credits_dialog(app: &mut App, ctx: &egui::Context) {
             Some(Ok(c)) => {
                 let row = |ui: &mut Ui, label: &str, value: &str| {
                     ui.label(RichText::new(value).font(med(14.0)).color(pal().text));
-                    ui.label(
-                        RichText::new(label)
-                            .font(regular(12.0))
-                            .color(pal().text_muted),
-                    );
+                    ui.label(RichText::new(label).font(regular(12.0)).color(pal().text_muted));
                     ui.add_space(6.0);
                 };
                 if c.people.is_empty() {
@@ -5173,32 +3318,22 @@ fn toast(app: &App, ctx: &egui::Context) {
     .clamp(0.0, 1.0) as f32;
     let screen = ctx.content_rect();
     // It rises into place as it fades in.
-    let rise = if still || age >= 0.15 {
-        0.0
-    } else {
-        (1.0 - crate::theme::ease_out((age / 0.15) as f32)) * 14.0
-    };
-    egui::Area::new(egui::Id::new("toast"))
-        .order(egui::Order::Foreground)
-        .anchor(Align2::CENTER_BOTTOM, vec2(0.0, -104.0 + rise))
-        .interactable(false)
-        .show(ctx, |ui| {
+    let rise = if still || age >= 0.15 { 0.0 } else { (1.0 - crate::theme::ease_out((age / 0.15) as f32)) * 14.0 };
+    egui::Area::new(egui::Id::new("toast")).order(egui::Order::Foreground).anchor(Align2::CENTER_BOTTOM, vec2(0.0, -104.0 + rise)).interactable(false).show(
+        ctx,
+        |ui| {
             ui.set_max_width(screen.width() * 0.6);
             ui.multiply_opacity(alpha);
             Frame::new()
                 .fill(pal().text)
                 .corner_radius(CornerRadius::same(10))
                 .inner_margin(Margin::symmetric(16, 10))
-                .shadow(egui::Shadow {
-                    offset: [0, 6],
-                    blur: 20,
-                    spread: 0,
-                    color: Color32::from_black_alpha(120),
-                })
+                .shadow(egui::Shadow { offset: [0, 6], blur: 20, spread: 0, color: Color32::from_black_alpha(120) })
                 .show(ui, |ui| {
                     ui.label(RichText::new(msg).font(med(13.0)).color(pal().bg));
                 });
-        });
+        },
+    );
     // Redraw quickly only while it fades in or out; in between, wake up when the fade-out
     // starts (it used to redraw 33 times a second the whole time it showed).
     let next = if still {
@@ -5213,11 +3348,7 @@ fn toast(app: &App, ctx: &egui::Context) {
 
 /// "1 song" / "12 songs".
 fn song_count(n: usize) -> String {
-    if n == 1 {
-        "1 song".to_string()
-    } else {
-        format!("{n} songs")
-    }
+    if n == 1 { "1 song".to_string() } else { format!("{n} songs") }
 }
 
 /// "Single · 2024 · 3 songs". The count is left out when Deezer didn't give one,

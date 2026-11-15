@@ -23,22 +23,10 @@ pub struct Service {
 }
 
 pub const SERVICES: [Service; 4] = [
-    Service {
-        name: "Deezer (music info)",
-        url: "https://api.deezer.com/chart/0/tracks?limit=1",
-    },
-    Service {
-        name: "YouTube (audio)",
-        url: "https://www.youtube.com/generate_204",
-    },
-    Service {
-        name: "LRCLIB (lyrics)",
-        url: "https://lrclib.net/api/search?q=hello",
-    },
-    Service {
-        name: "GitHub (updates)",
-        url: "https://api.github.com/repos/mercy123xz/Pulse/releases/latest",
-    },
+    Service { name: "Deezer (music info)", url: "https://api.deezer.com/chart/0/tracks?limit=1" },
+    Service { name: "YouTube (audio)", url: "https://www.youtube.com/generate_204" },
+    Service { name: "LRCLIB (lyrics)", url: "https://lrclib.net/api/search?q=hello" },
+    Service { name: "GitHub (updates)", url: "https://api.github.com/repos/mercy123xz/Pulse/releases/latest" },
 ];
 
 #[derive(Clone)]
@@ -128,10 +116,7 @@ impl Diagnostics {
             std::thread::spawn(move || {
                 let start = Instant::now();
                 let result = match check(i, url) {
-                    Ok(detail) => Check::Passed {
-                        ms: start.elapsed().as_millis() as u64,
-                        detail,
-                    },
+                    Ok(detail) => Check::Passed { ms: start.elapsed().as_millis() as u64, detail },
                     Err(e) => Check::Failed(e),
                 };
                 let _ = tx.send((i, result));
@@ -144,39 +129,18 @@ impl Diagnostics {
 
 /// Asks one service for something small and makes sure the answer makes sense.
 fn check(i: usize, url: &str) -> Result<String, String> {
-    let mut resp = crate::net::api()
-        .get(url)
-        .call()
-        .map_err(crate::net::friendly_error)?;
-    let body = resp
-        .body_mut()
-        .with_config()
-        .limit(2 * 1024 * 1024)
-        .read_to_string()
-        .map_err(|e| format!("{} ({e})", crate::i18n::tr("The answer was cut off")))?;
-    let json = || {
-        serde_json::from_str::<serde_json::Value>(&body).map_err(|_| {
-            crate::i18n::tr("It answered, but not with what Pulse expects").to_string()
-        })
-    };
+    let mut resp = crate::net::api().get(url).call().map_err(crate::net::friendly_error)?;
+    let body = resp.body_mut().with_config().limit(2 * 1024 * 1024).read_to_string().map_err(|e| format!("{} ({e})", crate::i18n::tr("The answer was cut off")))?;
+    let json = || serde_json::from_str::<serde_json::Value>(&body).map_err(|_| crate::i18n::tr("It answered, but not with what Pulse expects").to_string());
     match i {
         0 => {
             let v = json()?;
-            if v["data"].as_array().is_some_and(|a| !a.is_empty()) {
-                Ok(String::new())
-            } else {
-                Err(crate::i18n::tr("It answered, but with no songs").into())
-            }
+            if v["data"].as_array().is_some_and(|a| !a.is_empty()) { Ok(String::new()) } else { Err(crate::i18n::tr("It answered, but with no songs").into()) }
         }
-        2 => json()?
-            .as_array()
-            .map(|_| String::new())
-            .ok_or_else(|| crate::i18n::tr("It answered, but not with lyrics").into()),
+        2 => json()?.as_array().map(|_| String::new()).ok_or_else(|| crate::i18n::tr("It answered, but not with lyrics").into()),
         3 => {
             let v = json()?;
-            let tag = v["tag_name"]
-                .as_str()
-                .ok_or_else(|| crate::i18n::tr("It answered, but without a release").to_string())?;
+            let tag = v["tag_name"].as_str().ok_or_else(|| crate::i18n::tr("It answered, but without a release").to_string())?;
             Ok(format!("{} {tag}", crate::i18n::tr("Newest release:")))
         }
         _ => Ok(String::new()),
@@ -189,37 +153,23 @@ fn gather(offline: PathBuf) -> Facts {
     let data = crate::settings::data_dir();
     let size = |p: &std::path::Path| crate::settings::folder_size(p);
     let cache = data.join("cache");
-    let (art, lyrics, songs) = (
-        size(&cache.join("art")),
-        size(&cache.join("lyrics")),
-        size(&cache.join("audio")),
-    );
+    let (art, lyrics, songs) = (size(&cache.join("art")), size(&cache.join("lyrics")), size(&cache.join("audio")));
     let tools = crate::youtube::tools_dir();
     let tools_cache = size(&tools.join("cache"));
-    let library = crate::settings::library_file()
-        .and_then(|f| std::fs::metadata(f).ok())
-        .map_or(0, |m| m.len());
+    let library = crate::settings::library_file().and_then(|f| std::fs::metadata(f).ok()).map_or(0, |m| m.len());
     let mut storage = vec![
         ("Downloaded songs", size(&offline)),
         ("Played songs kept", songs),
         ("Album art cache", art),
         ("Lyrics cache", lyrics),
-        (
-            "Other cache",
-            size(&cache).saturating_sub(art + lyrics + songs) + tools_cache,
-        ),
+        ("Other cache", size(&cache).saturating_sub(art + lyrics + songs) + tools_cache),
         ("yt-dlp and Deno", size(&tools).saturating_sub(tools_cache)),
         ("Library and settings", library),
         ("Backups", size(&crate::backup::dir())),
         ("Crash reports", size(&crate::crash::dir())),
     ];
     storage.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
-    Facts {
-        os: os_name(),
-        ytdlp,
-        deno,
-        storage,
-    }
+    Facts { os: os_name(), ytdlp, deno, storage }
 }
 
 /// "Windows 11 (build 22631.4460)", or the system's own name elsewhere.
@@ -228,28 +178,13 @@ fn os_name() -> String {
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let out = std::process::Command::new("cmd")
-            .args(["/c", "ver"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
+        let out = std::process::Command::new("cmd").args(["/c", "ver"]).creation_flags(CREATE_NO_WINDOW).output();
         if let Ok(out) = out {
             let text = String::from_utf8_lossy(&out.stdout);
-            if let Some(v) = text
-                .split("Version ")
-                .nth(1)
-                .map(|v| v.trim().trim_end_matches(']'))
-            {
+            if let Some(v) = text.split("Version ").nth(1).map(|v| v.trim().trim_end_matches(']')) {
                 let build = v.split('.').skip(2).collect::<Vec<_>>().join(".");
-                let major: u32 = build
-                    .split('.')
-                    .next()
-                    .and_then(|b| b.parse().ok())
-                    .unwrap_or(0);
-                let name = if major >= 22000 {
-                    "Windows 11"
-                } else {
-                    "Windows 10"
-                };
+                let major: u32 = build.split('.').next().and_then(|b| b.parse().ok()).unwrap_or(0);
+                let name = if major >= 22000 { "Windows 11" } else { "Windows 10" };
                 return format!("{name} (build {build}), {}", std::env::consts::ARCH);
             }
         }
@@ -278,16 +213,8 @@ pub fn gpu(frame: &eframe::Frame) -> String {
     #[cfg(windows)]
     if let Some(rs) = frame.wgpu_render_state() {
         let i = rs.adapter.get_info();
-        let how = if i.device_type == eframe::egui_wgpu::wgpu::DeviceType::Cpu {
-            "software drawing"
-        } else {
-            "hardware"
-        };
-        let driver = if i.driver_info.is_empty() {
-            String::new()
-        } else {
-            format!(", driver {}", i.driver_info)
-        };
+        let how = if i.device_type == eframe::egui_wgpu::wgpu::DeviceType::Cpu { "software drawing" } else { "hardware" };
+        let driver = if i.driver_info.is_empty() { String::new() } else { format!(", driver {}", i.driver_info) };
         return format!("{} ({:?}, {how}{driver})", i.name, i.backend);
     }
     if let Some(gl) = frame.gl() {
@@ -301,11 +228,7 @@ pub fn gpu(frame: &eframe::Frame) -> String {
 
 /// A short time span ("240 ms", "2.5 s").
 fn ms_text(ms: u64) -> String {
-    if ms < 1000 {
-        format!("{ms} ms")
-    } else {
-        format!("{:.1} s", ms as f64 / 1000.0)
-    }
+    if ms < 1000 { format!("{ms} ms") } else { format!("{:.1} s", ms as f64 / 1000.0) }
 }
 
 impl Check {
@@ -313,14 +236,8 @@ impl Check {
     pub fn summary(&self) -> String {
         match self {
             Check::Running => crate::i18n::tr("Checking…").to_string(),
-            Check::Passed { ms, detail } if detail.is_empty() => {
-                format!("{} ({})", crate::i18n::tr("Working"), ms_text(*ms))
-            }
-            Check::Passed { ms, detail } => format!(
-                "{} ({}) · {detail}",
-                crate::i18n::tr("Working"),
-                ms_text(*ms)
-            ),
+            Check::Passed { ms, detail } if detail.is_empty() => format!("{} ({})", crate::i18n::tr("Working"), ms_text(*ms)),
+            Check::Passed { ms, detail } => format!("{} ({}) · {detail}", crate::i18n::tr("Working"), ms_text(*ms)),
             Check::Failed(e) => e.clone(),
         }
     }
@@ -334,20 +251,8 @@ pub fn report(d: &Diagnostics, settings: &crate::settings::Settings) -> String {
     line(&mut out, "Pulse", env!("CARGO_PKG_VERSION"));
     line(&mut out, "System", &f.os);
     line(&mut out, "Graphics", d.gpu.as_deref().unwrap_or("Unknown"));
-    line(
-        &mut out,
-        "Hardware acceleration",
-        if settings.hardware_acceleration {
-            "on"
-        } else {
-            "off"
-        },
-    );
-    line(
-        &mut out,
-        "Performance mode",
-        &format!("{:?}", crate::perf::mode()),
-    );
+    line(&mut out, "Hardware acceleration", if settings.hardware_acceleration { "on" } else { "off" });
+    line(&mut out, "Performance mode", &format!("{:?}", crate::perf::mode()));
     line(&mut out, "yt-dlp", &f.ytdlp);
     line(&mut out, "Deno", &f.deno);
     out.push_str("\nStorage:\n");
@@ -370,10 +275,7 @@ pub fn report(d: &Diagnostics, settings: &crate::settings::Settings) -> String {
     for p in problems.iter().rev() {
         out.push_str(&format!("  {p}\n"));
     }
-    out.push_str(&format!(
-        "\nCrash reports saved: {}\n",
-        crate::crash::reports().len()
-    ));
+    out.push_str(&format!("\nCrash reports saved: {}\n", crate::crash::reports().len()));
     out
 }
 
@@ -383,19 +285,11 @@ mod tests {
 
     #[test]
     fn report_has_no_file_paths() {
-        let d = Diagnostics {
-            facts: Some(gather(std::env::temp_dir().join("pulse-no-downloads"))),
-            ..Default::default()
-        };
+        let d = Diagnostics { facts: Some(gather(std::env::temp_dir().join("pulse-no-downloads"))), ..Default::default() };
         let text = report(&d, &crate::settings::Settings::default());
         assert!(text.contains("Storage:"));
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_default();
-        assert!(
-            home.is_empty() || !text.contains(&home),
-            "the report mustn't show your folders"
-        );
+        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default();
+        assert!(home.is_empty() || !text.contains(&home), "the report mustn't show your folders");
     }
 
     #[test]

@@ -9,15 +9,7 @@ use std::path::{Path, PathBuf};
 pub fn file_name(t: &Track, ext: &str) -> String {
     let clean = |s: &str| -> String {
         s.chars()
-            .map(|c| {
-                if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
-                    || c.is_control()
-                {
-                    '_'
-                } else {
-                    c
-                }
-            })
+            .map(|c| if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control() { '_' } else { c })
             .collect::<String>()
             .trim()
             .trim_end_matches('.')
@@ -26,11 +18,7 @@ pub fn file_name(t: &Track, ext: &str) -> String {
             .collect()
     };
     let id: String = t.id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    format!(
-        "{} - {} [{id}].{ext}",
-        clean(&t.artist.name),
-        clean(&t.title)
-    )
+    format!("{} - {} [{id}].{ext}", clean(&t.artist.name), clean(&t.title))
 }
 
 /// Size of the pieces a song is fetched in, and how many are fetched at the same time.
@@ -41,13 +29,7 @@ const PARALLEL: usize = 4;
 /// Downloads `t` into `dir`. `progress` gets 0.0 – 1.0.
 /// Returns the saved file and the YouTube video id (empty if the song was already kept
 /// from playing it, in which case nothing is downloaded at all).
-pub fn download(
-    t: &Track,
-    known_video: Option<String>,
-    quality: Quality,
-    dir: &Path,
-    progress: &(dyn Fn(f32) + Sync),
-) -> Result<(PathBuf, String), String> {
+pub fn download(t: &Track, known_video: Option<String>, quality: Quality, dir: &Path, progress: &(dyn Fn(f32) + Sync)) -> Result<(PathBuf, String), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("Couldn't create {} ({e})", dir.display()))?;
     // Played recently and still kept: copy it, no download needed.
     if let Some(kept) = crate::audiocache::find(&t.id) {
@@ -69,9 +51,7 @@ pub fn download(
     match result {
         Ok(0) | Err(_) => {
             let _ = std::fs::remove_file(&part);
-            Err(result
-                .err()
-                .unwrap_or_else(|| "The download was empty.".into()))
+            Err(result.err().unwrap_or_else(|| "The download was empty.".into()))
         }
         Ok(_) => {
             std::fs::rename(&part, &path).map_err(|e| format!("Couldn't save the song ({e})"))?;
@@ -83,13 +63,7 @@ pub fn download(
 
 /// Downloads `url` into the file `to`: several pieces side by side when the server allows
 /// it, else one after another. Returns the number of bytes saved.
-pub fn fetch(
-    url: &str,
-    headers: &[(String, String)],
-    size_hint: Option<u64>,
-    to: &Path,
-    progress: &(dyn Fn(f32) + Sync),
-) -> Result<u64, String> {
+pub fn fetch(url: &str, headers: &[(String, String)], size_hint: Option<u64>, to: &Path, progress: &(dyn Fn(f32) + Sync)) -> Result<u64, String> {
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
     let save = |e: std::io::Error| format!("Couldn't save the song ({e})");
@@ -99,19 +73,12 @@ pub fn fetch(
     let mut first = with_retries(|| crate::net::get_range(url, headers, 0, Some(PIECE - 1)))?;
     let total = first.total.or(size_hint);
     let mut head = Vec::new();
-    first
-        .body
-        .read_to_end(&mut head)
-        .map_err(|e| format!("Download interrupted ({e})"))?;
+    first.body.read_to_end(&mut head).map_err(|e| format!("Download interrupted ({e})"))?;
     file.write_all(&head).map_err(save)?;
     let have = head.len() as u64;
     let Some(total) = total.filter(|_| first.partial) else {
         // The whole file came in one go (or its size is a mystery): carry on in order.
-        return if first.partial {
-            sequential(url, headers, file, have, progress)
-        } else {
-            Ok(have)
-        };
+        return if first.partial { sequential(url, headers, file, have, progress) } else { Ok(have) };
     };
     if have >= total {
         return Ok(have);
@@ -121,11 +88,7 @@ pub fn fetch(
     }
 
     let starts: Vec<u64> = (PIECE..total).step_by(PIECE as usize).collect();
-    let (next, done, failed) = (
-        AtomicUsize::new(0),
-        AtomicU64::new(have),
-        AtomicBool::new(false),
-    );
+    let (next, done, failed) = (AtomicUsize::new(0), AtomicU64::new(have), AtomicBool::new(false));
     let error = Mutex::new(None::<String>);
     let file = Mutex::new(file);
     std::thread::scope(|s| {
@@ -140,27 +103,16 @@ pub fn fetch(
                     let piece = with_retries(|| {
                         let mut r = crate::net::get_range(url, headers, start, Some(end))?;
                         let mut v = Vec::with_capacity((end - start + 1) as usize);
-                        r.body
-                            .read_to_end(&mut v)
-                            .map_err(|e| format!("Download interrupted ({e})"))?;
-                        if v.len() as u64 != end - start + 1 {
-                            Err("Download interrupted (short piece).".to_string())
-                        } else {
-                            Ok(v)
-                        }
+                        r.body.read_to_end(&mut v).map_err(|e| format!("Download interrupted ({e})"))?;
+                        if v.len() as u64 != end - start + 1 { Err("Download interrupted (short piece).".to_string()) } else { Ok(v) }
                     });
                     let written = piece.and_then(|v| {
                         let mut f = file.lock().unwrap();
-                        f.seek(std::io::SeekFrom::Start(start))
-                            .and_then(|_| f.write_all(&v))
-                            .map_err(save)?;
+                        f.seek(std::io::SeekFrom::Start(start)).and_then(|_| f.write_all(&v)).map_err(save)?;
                         Ok(v.len() as u64)
                     });
                     match written {
-                        Ok(n) => progress(
-                            done.fetch_add(n, Ordering::SeqCst).saturating_add(n) as f32
-                                / total as f32,
-                        ),
+                        Ok(n) => progress(done.fetch_add(n, Ordering::SeqCst).saturating_add(n) as f32 / total as f32),
                         Err(e) => {
                             failed.store(true, Ordering::SeqCst);
                             error.lock().unwrap().get_or_insert(e);
@@ -178,29 +130,18 @@ pub fn fetch(
 }
 
 /// The rest of a file whose size isn't known, in 4 MB requests one after another.
-fn sequential(
-    url: &str,
-    headers: &[(String, String)],
-    mut file: std::fs::File,
-    mut have: u64,
-    progress: &(dyn Fn(f32) + Sync),
-) -> Result<u64, String> {
+fn sequential(url: &str, headers: &[(String, String)], mut file: std::fs::File, mut have: u64, progress: &(dyn Fn(f32) + Sync)) -> Result<u64, String> {
     const CHUNK: u64 = 4 * 1024 * 1024;
     loop {
-        let mut r = match with_retries(|| {
-            crate::net::get_range(url, headers, have, Some(have + CHUNK - 1))
-        }) {
+        let mut r = match with_retries(|| crate::net::get_range(url, headers, have, Some(have + CHUNK - 1))) {
             Ok(r) => r,
             // Asking past the end is how the end shows itself.
             Err(_) if have > 0 => return Ok(have),
             Err(e) => return Err(e),
         };
         let mut v = Vec::new();
-        r.body
-            .read_to_end(&mut v)
-            .map_err(|e| format!("Download interrupted ({e})"))?;
-        file.write_all(&v)
-            .map_err(|e| format!("Couldn't save the song ({e})"))?;
+        r.body.read_to_end(&mut v).map_err(|e| format!("Download interrupted ({e})"))?;
+        file.write_all(&v).map_err(|e| format!("Couldn't save the song ({e})"))?;
         have += v.len() as u64;
         if let Some(t) = r.total {
             progress(have as f32 / t.max(1) as f32);
@@ -237,9 +178,7 @@ mod tests {
     /// arrive side by side, much sooner than one connection could, and in the right places.
     #[test]
     fn downloads_in_pieces_side_by_side() {
-        let data: Vec<u8> = (0..6_300_000u32)
-            .map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8)
-            .collect();
+        let data: Vec<u8> = (0..6_300_000u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8).collect();
         let dir = std::env::temp_dir().join(format!("pulse-dl-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let most = std::sync::Mutex::new(0.0f32);
@@ -250,29 +189,17 @@ mod tests {
 
         let url = crate::audio::tests::slow_server(data.clone(), 1_000_000, true);
         let t0 = std::time::Instant::now();
-        assert_eq!(
-            fetch(&url, &[], None, &dir.join("a.part"), &note).unwrap(),
-            data.len() as u64
-        );
+        assert_eq!(fetch(&url, &[], None, &dir.join("a.part"), &note).unwrap(), data.len() as u64);
         let took = t0.elapsed().as_secs_f32();
         println!("6.3 MB at 1 MB/s per connection: {took:.1} s");
-        assert!(
-            took < 4.5,
-            "one connection would need 6.3 s, took {took:.1} s"
-        );
-        assert!(
-            std::fs::read(dir.join("a.part")).unwrap() == data,
-            "every byte in its place"
-        );
+        assert!(took < 4.5, "one connection would need 6.3 s, took {took:.1} s");
+        assert!(std::fs::read(dir.join("a.part")).unwrap() == data, "every byte in its place");
         assert!((*most.lock().unwrap() - 1.0).abs() < 1e-3);
 
         // A server that only sends whole files still works.
         let small = data[..300_000].to_vec();
         let url = crate::audio::tests::slow_server(small.clone(), 5_000_000, false);
-        assert_eq!(
-            fetch(&url, &[], None, &dir.join("b.part"), &note).unwrap(),
-            small.len() as u64
-        );
+        assert_eq!(fetch(&url, &[], None, &dir.join("b.part"), &note).unwrap(), small.len() as u64);
         assert!(std::fs::read(dir.join("b.part")).unwrap() == small);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -282,15 +209,9 @@ mod tests {
         let t = Track {
             id: "dz:42".into(),
             title: "What? / Why: \"Yes\"".into(),
-            artist: crate::deezer::ArtistRef {
-                name: "AC/DC".into(),
-                ..Default::default()
-            },
+            artist: crate::deezer::ArtistRef { name: "AC/DC".into(), ..Default::default() },
             ..Default::default()
         };
-        assert_eq!(
-            file_name(&t, "m4a"),
-            "AC_DC - What_ _ Why_ _Yes_ [dz42].m4a"
-        );
+        assert_eq!(file_name(&t, "m4a"), "AC_DC - What_ _ Why_ _Yes_ [dz42].m4a");
     }
 }

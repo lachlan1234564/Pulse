@@ -33,13 +33,7 @@ pub enum Extra {
 }
 
 impl Extra {
-    pub const ALL: [Extra; 5] = [
-        Extra::Animations,
-        Extra::Preloading,
-        Extra::Lookups,
-        Extra::LiveProgress,
-        Extra::ListArtwork,
-    ];
+    pub const ALL: [Extra; 5] = [Extra::Animations, Extra::Preloading, Extra::Lookups, Extra::LiveProgress, Extra::ListArtwork];
 
     fn bit(self) -> u8 {
         1 << self as u8
@@ -187,9 +181,6 @@ mod tests {
 
     #[test]
     fn levels_go_up_with_savings() {
-        assert!(
-            Mode::Normal.level() < Mode::Gaming.level()
-                && Mode::Gaming.level() < Mode::UltraLow.level()
-        );
+        assert!(Mode::Normal.level() < Mode::Gaming.level() && Mode::Gaming.level() < Mode::UltraLow.level());
     }
 }

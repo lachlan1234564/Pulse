@@ -4,6 +4,7 @@ use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId,
 use std::sync::Arc;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
+
 /// All UI colors. Every text color meets WCAG AA (4.5:1) on the backgrounds it is drawn on,
 /// and white on `accent` is 5.7:1.
 #[derive(Debug, Clone, PartialEq)]
@@ -110,16 +111,7 @@ pub struct PartStyle {
 }
 
 impl PartStyle {
-    pub const NONE: PartStyle = PartStyle {
-        fill: None,
-        border: None,
-        radius: None,
-        padding: None,
-        font_size: None,
-        bold: None,
-        uppercase: None,
-        color: None,
-    };
+    pub const NONE: PartStyle = PartStyle { fill: None, border: None, radius: None, padding: None, font_size: None, bold: None, uppercase: None, color: None };
 }
 
 /// The styleable parts. Each matches the function that draws it.
@@ -208,12 +200,7 @@ pub struct Active {
     pub radius: [u8; 3],
 }
 
-static DEFAULT_ACTIVE: Active = Active {
-    palette: DARK,
-    parts: Parts::NONE,
-    layout: LayoutOpts::DEFAULT,
-    radius: [6, 8, 12],
-};
+static DEFAULT_ACTIVE: Active = Active { palette: DARK, parts: Parts::NONE, layout: LayoutOpts::DEFAULT, radius: [6, 8, 12] };
 
 /// The theme in use. Swapped whole when the theme changes; each switch keeps the
 /// old one alive (about a kilobyte), so reads never need a lock.
@@ -254,6 +241,7 @@ pub fn is_light(p: &Palette) -> bool {
     (c.r() as u32 + c.g() as u32 + c.b() as u32) > 384
 }
 
+
 pub fn medium() -> FontFamily {
     FontFamily::Name("medium".into())
 }
@@ -276,32 +264,20 @@ fn icon_only(filled: bool) -> FontFamily {
 fn ink_offset(ch: char, filled: bool) -> egui::Vec2 {
     use skrifa::MetadataProvider;
     use skrifa::instance::{LocationRef, Size};
-    static CACHE: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<(char, bool), egui::Vec2>>,
-    > = std::sync::OnceLock::new();
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<(char, bool), egui::Vec2>>> = std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
     if let Some(v) = cache.lock().unwrap().get(&(ch, filled)) {
         return *v;
     }
-    let bytes = if filled {
-        egui_phosphor::Variant::Fill.font_bytes()
-    } else {
-        egui_phosphor::Variant::Regular.font_bytes()
-    };
+    let bytes = if filled { egui_phosphor::Variant::Fill.font_bytes() } else { egui_phosphor::Variant::Regular.font_bytes() };
     let measured = (|| {
         let font = skrifa::FontRef::new(bytes).ok()?;
         let gid = font.charmap().map(ch)?;
-        let adv = font
-            .glyph_metrics(Size::unscaled(), LocationRef::default())
-            .advance_width(gid)?;
+        let adv = font.glyph_metrics(Size::unscaled(), LocationRef::default()).advance_width(gid)?;
         // The glyph's stored box covers the whole icon grid, so measure the outline itself.
         let mut b = InkBounds::default();
-        let settings =
-            skrifa::outline::DrawSettings::unhinted(Size::unscaled(), LocationRef::default());
-        font.outline_glyphs()
-            .get(gid)?
-            .draw(settings, &mut b)
-            .ok()?;
+        let settings = skrifa::outline::DrawSettings::unhinted(Size::unscaled(), LocationRef::default());
+        font.outline_glyphs().get(gid)?.draw(settings, &mut b).ok()?;
         if b.x_min > b.x_max {
             return None;
         }
@@ -327,12 +303,7 @@ struct InkBounds {
 
 impl Default for InkBounds {
     fn default() -> Self {
-        Self {
-            x_min: f32::MAX,
-            y_min: f32::MAX,
-            x_max: f32::MIN,
-            y_max: f32::MIN,
-        }
+        Self { x_min: f32::MAX, y_min: f32::MAX, x_max: f32::MIN, y_max: f32::MIN }
     }
 }
 
@@ -366,13 +337,7 @@ impl skrifa::outline::OutlinePen for InkBounds {
 
 /// Like `Painter::text` with `Align2::CENTER_CENTER`, but an icon's drawing (not its box)
 /// is centered on `center`. Anything that isn't a single icon is drawn as normal text.
-pub fn paint_icon(
-    p: &egui::Painter,
-    center: egui::Pos2,
-    text: impl ToString,
-    font: FontId,
-    color: Color32,
-) -> egui::Rect {
+pub fn paint_icon(p: &egui::Painter, center: egui::Pos2, text: impl ToString, font: FontId, color: Color32) -> egui::Rect {
     let text = text.to_string();
     let mut chars = text.chars();
     let (Some(ch), None) = (chars.next(), chars.next()) else {
@@ -385,22 +350,11 @@ pub fn paint_icon(
     let filled = font.family == icon_fill();
     let mut off = ink_offset(ch, filled);
     // The play triangle's weight is toward its flat side; nudge it right so it looks centered.
-    if ch
-        == egui_phosphor::regular::PLAY
-            .chars()
-            .next()
-            .unwrap_or_default()
-    {
+    if ch == egui_phosphor::regular::PLAY.chars().next().unwrap_or_default() {
         off.x -= 0.05;
     }
     let pos = egui::pos2(center.x - off.x * font.size, center.y - off.y * font.size);
-    p.text(
-        pos,
-        egui::Align2::CENTER_CENTER,
-        text,
-        FontId::new(font.size, icon_only(filled)),
-        color,
-    )
+    p.text(pos, egui::Align2::CENTER_CENTER, text, FontId::new(font.size, icon_only(filled)), color)
 }
 
 pub fn regular(size: f32) -> FontId {
@@ -422,68 +376,28 @@ pub fn filled_icon(size: f32) -> FontId {
 pub fn install(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     let add = |fonts: &mut FontDefinitions, name: &str, bytes: &'static [u8]| {
-        fonts
-            .font_data
-            .insert(name.into(), Arc::new(FontData::from_static(bytes)));
+        fonts.font_data.insert(name.into(), Arc::new(FontData::from_static(bytes)));
     };
     // Geist (Vercel, SIL Open Font License): crisp and compact, made for screens.
-    add(
-        &mut fonts,
-        "Geist-Regular",
-        include_bytes!("../assets/fonts/Geist-Regular.ttf"),
-    );
-    add(
-        &mut fonts,
-        "Geist-Medium",
-        include_bytes!("../assets/fonts/Geist-Medium.ttf"),
-    );
-    add(
-        &mut fonts,
-        "Geist-SemiBold",
-        include_bytes!("../assets/fonts/Geist-SemiBold.ttf"),
-    );
-    add(
-        &mut fonts,
-        "Geist-Bold",
-        include_bytes!("../assets/fonts/Geist-Bold.ttf"),
-    );
+    add(&mut fonts, "Geist-Regular", include_bytes!("../assets/fonts/Geist-Regular.ttf"));
+    add(&mut fonts, "Geist-Medium", include_bytes!("../assets/fonts/Geist-Medium.ttf"));
+    add(&mut fonts, "Geist-SemiBold", include_bytes!("../assets/fonts/Geist-SemiBold.ttf"));
+    add(&mut fonts, "Geist-Bold", include_bytes!("../assets/fonts/Geist-Bold.ttf"));
     // Inter covers more of the world's letters and symbols (Greek, Cyrillic, Vietnamese,
     // arrows); it fills in anything Geist doesn't have, in the same weight.
-    add(
-        &mut fonts,
-        "Inter-Regular",
-        include_bytes!("../assets/fonts/Inter-Regular.ttf"),
-    );
-    add(
-        &mut fonts,
-        "Inter-Medium",
-        include_bytes!("../assets/fonts/Inter-Medium.ttf"),
-    );
-    add(
-        &mut fonts,
-        "Inter-SemiBold",
-        include_bytes!("../assets/fonts/Inter-SemiBold.ttf"),
-    );
-    add(
-        &mut fonts,
-        "Inter-Bold",
-        include_bytes!("../assets/fonts/Inter-Bold.ttf"),
-    );
+    add(&mut fonts, "Inter-Regular", include_bytes!("../assets/fonts/Inter-Regular.ttf"));
+    add(&mut fonts, "Inter-Medium", include_bytes!("../assets/fonts/Inter-Medium.ttf"));
+    add(&mut fonts, "Inter-SemiBold", include_bytes!("../assets/fonts/Inter-SemiBold.ttf"));
+    add(&mut fonts, "Inter-Bold", include_bytes!("../assets/fonts/Inter-Bold.ttf"));
 
     // Geist first, then Inter; egui's built-in fonts stay as fallback for emoji / other scripts.
-    let fallback = fonts
-        .families
-        .get(&FontFamily::Proportional)
-        .cloned()
-        .unwrap_or_default();
+    let fallback = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
     let family = |weight: &str| {
         let mut v = vec![format!("Geist-{weight}"), format!("Inter-{weight}")];
         v.extend(fallback.iter().cloned());
         v
     };
-    fonts
-        .families
-        .insert(FontFamily::Proportional, family("Regular"));
+    fonts.families.insert(FontFamily::Proportional, family("Regular"));
     fonts.families.insert(medium(), family("Medium"));
     fonts.families.insert(semibold(), family("SemiBold"));
     fonts.families.insert(bold(), family("Bold"));
@@ -495,19 +409,11 @@ pub fn install(ctx: &egui::Context) {
             list.insert(1, "phosphor".into());
         }
     }
-    egui_phosphor::add_font_bytes_as_family(
-        &mut fonts,
-        "phosphor-fill",
-        egui_phosphor::Variant::Fill.font_bytes(),
-    );
+    egui_phosphor::add_font_bytes_as_family(&mut fonts, "phosphor-fill", egui_phosphor::Variant::Fill.font_bytes());
     // Icon-only families: the line box is Phosphor's own, so icons line up the same in
     // every theme instead of sitting on the text font's baseline.
-    fonts
-        .families
-        .insert(icon_only(false), vec!["phosphor".into()]);
-    fonts
-        .families
-        .insert(icon_only(true), vec!["phosphor-fill".into()]);
+    fonts.families.insert(icon_only(false), vec!["phosphor".into()]);
+    fonts.families.insert(icon_only(true), vec!["phosphor-fill".into()]);
 
     ctx.set_fonts(fonts);
 
@@ -518,16 +424,10 @@ pub fn install(ctx: &egui::Context) {
         style.spacing.scroll = egui::style::ScrollStyle::floating();
         style.spacing.scroll.bar_width = 8.0;
         style.interaction.selectable_labels = false;
-        style
-            .text_styles
-            .insert(egui::TextStyle::Body, regular(13.5));
+        style.text_styles.insert(egui::TextStyle::Body, regular(13.5));
         style.text_styles.insert(egui::TextStyle::Button, med(13.0));
-        style
-            .text_styles
-            .insert(egui::TextStyle::Small, regular(11.5));
-        style
-            .text_styles
-            .insert(egui::TextStyle::Heading, heavy(26.0));
+        style.text_styles.insert(egui::TextStyle::Small, regular(11.5));
+        style.text_styles.insert(egui::TextStyle::Heading, heavy(26.0));
     });
 }
 
@@ -578,11 +478,7 @@ pub fn set_active(ctx: &egui::Context, a: Active) {
     ACTIVE.store(Box::into_raw(Box::new(a)), Ordering::Relaxed);
     let p = pal();
     let light = is_light(p);
-    let mut v = if light {
-        Visuals::light()
-    } else {
-        Visuals::dark()
-    };
+    let mut v = if light { Visuals::light() } else { Visuals::dark() };
     v.panel_fill = p.bg;
     v.window_fill = p.surface;
     v.extreme_bg_color = p.surface;
@@ -595,12 +491,7 @@ pub fn set_active(ctx: &egui::Context, a: Active) {
     v.window_corner_radius = r_lg();
     v.menu_corner_radius = r_md();
     let shadow_a = if light { 40 } else { 140 };
-    v.popup_shadow = egui::Shadow {
-        offset: [0, 8],
-        blur: 24,
-        spread: 0,
-        color: Color32::from_black_alpha(shadow_a),
-    };
+    v.popup_shadow = egui::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(shadow_a) };
     v.window_shadow = v.popup_shadow;
     v.text_cursor.stroke = Stroke::new(1.5, p.accent_soft);
 
@@ -632,11 +523,7 @@ pub fn set_active(ctx: &egui::Context, a: Active) {
 fn luminance(c: Color32) -> f64 {
     let ch = |v: u8| {
         let v = v as f64 / 255.0;
-        if v <= 0.04045 {
-            v / 12.92
-        } else {
-            ((v + 0.055) / 1.055).powf(2.4)
-        }
+        if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
     };
     0.2126 * ch(c.r()) + 0.7152 * ch(c.g()) + 0.0722 * ch(c.b())
 }
@@ -650,22 +537,11 @@ pub fn contrast(a: Color32, b: Color32) -> f64 {
 /// Text that would be hard to read with this palette (WCAG AA needs 4.5:1).
 pub fn readability_problems(p: &Palette) -> Vec<String> {
     let mut checks = vec![];
-    for (bg_name, bg) in [
-        ("background", p.bg),
-        ("sidebar", p.sidebar),
-        ("cards", p.surface),
-        ("hovered rows", p.surface_hover),
-        ("selected rows", p.surface_active),
-    ] {
+    for (bg_name, bg) in [("background", p.bg), ("sidebar", p.sidebar), ("cards", p.surface), ("hovered rows", p.surface_hover), ("selected rows", p.surface_active)] {
         checks.push(("text", p.text, bg_name, bg));
         checks.push(("secondary text", p.text_muted, bg_name, bg));
     }
-    for (bg_name, bg) in [
-        ("background", p.bg),
-        ("sidebar", p.sidebar),
-        ("cards", p.surface),
-        ("player bar", p.player),
-    ] {
+    for (bg_name, bg) in [("background", p.bg), ("sidebar", p.sidebar), ("cards", p.surface), ("player bar", p.player)] {
         checks.push(("faint text", p.text_faint, bg_name, bg));
         checks.push(("accent text", p.accent_soft, bg_name, bg));
     }
@@ -684,15 +560,12 @@ pub fn readability_problems(p: &Palette) -> Vec<String> {
 mod tests {
     use super::*;
 
+
+
     /// Every text color must stay readable (WCAG AA, 4.5:1) on the backgrounds it is drawn on.
     #[test]
     fn text_colors_meet_wcag_aa() {
-        for (name, p) in [
-            ("DARK", &DARK),
-            ("LIGHT", &LIGHT),
-            ("HIGH_CONTRAST", &HIGH_CONTRAST),
-            ("HIGH_CONTRAST_LIGHT", &HIGH_CONTRAST_LIGHT),
-        ] {
+        for (name, p) in [("DARK", &DARK), ("LIGHT", &LIGHT), ("HIGH_CONTRAST", &HIGH_CONTRAST), ("HIGH_CONTRAST_LIGHT", &HIGH_CONTRAST_LIGHT)] {
             let problems = readability_problems(p);
             assert!(problems.is_empty(), "{name}: {problems:?}");
         }
@@ -711,10 +584,7 @@ mod icon_tests {
         assert!((play.x - 0.094).abs() < 0.01, "{play:?}");
         assert!(play.y.abs() < 0.02, "{play:?}");
         // Pause and repeat are centered.
-        for g in [
-            egui_phosphor::regular::PAUSE,
-            egui_phosphor::regular::REPEAT,
-        ] {
+        for g in [egui_phosphor::regular::PAUSE, egui_phosphor::regular::REPEAT] {
             let o = ink_offset(first(g), false);
             assert!(o.x.abs() < 0.01 && o.y.abs() < 0.02, "{o:?}");
         }

@@ -8,10 +8,7 @@ use egui::Color32;
 /// Matches the title bar to the theme. Cheap enough for every frame: Windows is only asked
 /// when the colours change.
 pub fn match_theme(frame: &eframe::Frame, ctx: &egui::Context) {
-    let fill = crate::theme::parts()
-        .sidebar
-        .fill
-        .unwrap_or(crate::theme::pal().sidebar);
+    let fill = crate::theme::parts().sidebar.fill.unwrap_or(crate::theme::pal().sidebar);
     let text = crate::theme::pal().text;
     let key = egui::Id::new("titlebar_colours");
     // Also a few times while the window settles in after opening: the windowing library
@@ -37,12 +34,7 @@ fn paint(frame: &eframe::Frame, fill: Color32, text: Color32) -> bool {
 
     #[link(name = "dwmapi")]
     unsafe extern "system" {
-        fn DwmSetWindowAttribute(
-            hwnd: isize,
-            attribute: u32,
-            value: *const core::ffi::c_void,
-            size: u32,
-        ) -> i32;
+        fn DwmSetWindowAttribute(hwnd: isize, attribute: u32, value: *const core::ffi::c_void, size: u32) -> i32;
     }
     #[link(name = "user32")]
     unsafe extern "system" {
@@ -78,8 +70,7 @@ fn paint(frame: &eframe::Frame, fill: Color32, text: Color32) -> bool {
     let colorref = |c: Color32| c.r() as u32 | (c.g() as u32) << 8 | (c.b() as u32) << 16;
     let set = |attribute: u32, value: u32| {
         // SAFETY: a live window of ours, and a 4-byte value as each of these attributes takes.
-        let hr =
-            unsafe { DwmSetWindowAttribute(hwnd, attribute, (&value as *const u32).cast(), 4) };
+        let hr = unsafe { DwmSetWindowAttribute(hwnd, attribute, (&value as *const u32).cast(), 4) };
         if debug {
             eprintln!("titlebar: hwnd {hwnd:#x} attribute {attribute} = {value:#x}: hr {hr:#x}");
         }

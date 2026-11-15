@@ -26,20 +26,12 @@ pub fn toggle(app: &mut App, ctx: &egui::Context) {
 
 /// Whether the side panel is showing.
 pub fn panel_open(app: &App, ctx: &egui::Context) -> bool {
-    app.saved.settings.lyrics_panel
-        && app.route != Route::Lyrics
-        && ctx.content_rect().width() >= PANEL_MIN_WINDOW
+    app.saved.settings.lyrics_panel && app.route != Route::Lyrics && ctx.content_rect().width() >= PANEL_MIN_WINDOW
 }
 
 pub fn lyrics_page(app: &mut App, ui: &mut Ui) {
     let Some(t) = app.current.clone() else {
-        empty_state(
-            ui,
-            icon::MICROPHONE_STAGE,
-            "Nothing playing",
-            "Play a song to see its lyrics here.",
-            None,
-        );
+        empty_state(ui, icon::MICROPHONE_STAGE, "Nothing playing", "Play a song to see its lyrics here.", None);
         return;
     };
 
@@ -51,11 +43,7 @@ pub fn lyrics_page(app: &mut App, ui: &mut Ui) {
         ui.vertical(|ui| {
             ui.add_space(6.0);
             ui.label(RichText::new(&t.title).font(heavy(20.0)).color(pal().text));
-            ui.label(
-                RichText::new(t.all_artists())
-                    .font(regular(13.0))
-                    .color(pal().text_muted),
-            );
+            ui.label(RichText::new(t.all_artists()).font(regular(13.0)).color(pal().text_muted));
         });
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             text_options(app, ui);
@@ -70,35 +58,19 @@ pub fn lyrics_page(app: &mut App, ui: &mut Ui) {
 pub fn lyrics_panel(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(tr("Lyrics"))
-                .font(heavy(17.0))
-                .color(pal().text),
-        );
+        ui.label(RichText::new(tr("Lyrics")).font(heavy(17.0)).color(pal().text));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             if icon_button(ui, icon::X, 16.0, pal().text_muted, tr("Close lyrics (L)")).clicked() {
                 app.saved.settings.lyrics_panel = false;
             }
-            if icon_button(
-                ui,
-                icon::ARROWS_OUT_SIMPLE,
-                16.0,
-                pal().text_muted,
-                tr("Open the lyrics page"),
-            )
-            .clicked()
-            {
+            if icon_button(ui, icon::ARROWS_OUT_SIMPLE, 16.0, pal().text_muted, tr("Open the lyrics page")).clicked() {
                 app.navigate(Route::Lyrics, &ctx);
             }
         });
     });
     let Some(t) = app.current.clone() else {
         ui.add_space(24.0);
-        ui.label(
-            RichText::new(tr("Play a song to see its lyrics here."))
-                .font(regular(13.0))
-                .color(pal().text_muted),
-        );
+        ui.label(RichText::new(tr("Play a song to see its lyrics here.")).font(regular(13.0)).color(pal().text_muted));
         return;
     };
     // The song, then the text options.
@@ -109,18 +81,8 @@ pub fn lyrics_panel(app: &mut App, ui: &mut Ui) {
         ui.vertical(|ui| {
             ui.set_width(ui.available_width());
             ui.add_space(2.0);
-            ui.add(
-                egui::Label::new(RichText::new(&t.title).font(semi(13.5)).color(pal().text))
-                    .truncate(),
-            );
-            ui.add(
-                egui::Label::new(
-                    RichText::new(t.all_artists())
-                        .font(regular(12.0))
-                        .color(pal().text_muted),
-                )
-                .truncate(),
-            );
+            ui.add(egui::Label::new(RichText::new(&t.title).font(semi(13.5)).color(pal().text)).truncate());
+            ui.add(egui::Label::new(RichText::new(t.all_artists()).font(regular(12.0)).color(pal().text_muted)).truncate());
         });
     });
     ui.add_space(4.0);
@@ -138,20 +100,14 @@ pub fn lyrics_panel(app: &mut App, ui: &mut Ui) {
     let last_user: f64 = ui.data(|d| d.get_temp(user_key)).unwrap_or(f64::MIN);
     let follow = now - last_user > 4.0;
     if !follow {
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_secs_f64(
-                (4.05 - (now - last_user)).max(0.05),
-            ));
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64((4.05 - (now - last_user)).max(0.05)));
     }
     let size = [14.5, 16.5, 20.0][app.saved.settings.lyrics_size.min(2) as usize];
-    egui::ScrollArea::vertical()
-        .id_salt("lyrics_panel_scroll")
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.add_space(8.0);
-            lyrics_body(app, ui, &t, size, "panel", follow);
-            ui.add_space(40.0);
-        });
+    egui::ScrollArea::vertical().id_salt("lyrics_panel_scroll").auto_shrink([false, false]).show(ui, |ui| {
+        ui.add_space(8.0);
+        lyrics_body(app, ui, &t, size, "panel", follow);
+        ui.add_space(40.0);
+    });
 }
 
 /// Text size (A−/A/A+) and alignment.
@@ -161,20 +117,8 @@ fn text_options(app: &mut App, ui: &mut Ui) {
     let s = &mut app.saved.settings;
     let mut sizes = [(0u8, "A−"), (1, "A"), (2, "A+")];
     let align = |ui: &mut Ui, s: &mut crate::settings::Settings| {
-        let align_icon = if s.lyrics_center {
-            icon::TEXT_ALIGN_CENTER
-        } else {
-            icon::TEXT_ALIGN_LEFT
-        };
-        if icon_button(
-            ui,
-            align_icon,
-            17.0,
-            pal().text_muted,
-            tr("Center or left-align"),
-        )
-        .clicked()
-        {
+        let align_icon = if s.lyrics_center { icon::TEXT_ALIGN_CENTER } else { icon::TEXT_ALIGN_LEFT };
+        if icon_button(ui, align_icon, 17.0, pal().text_muted, tr("Center or left-align")).clicked() {
             s.lyrics_center = !s.lyrics_center;
         }
     };
@@ -183,10 +127,7 @@ fn text_options(app: &mut App, ui: &mut Ui) {
         align(ui, s);
     }
     for (n, label) in sizes {
-        if pill(ui, label, s.lyrics_size == n)
-            .on_hover_text(tr("Text size"))
-            .clicked()
-        {
+        if pill(ui, label, s.lyrics_size == n).on_hover_text(tr("Text size")).clicked() {
             s.lyrics_size = n;
         }
     }
@@ -209,38 +150,21 @@ fn lyrics_body(app: &mut App, ui: &mut Ui, t: &Track, size: f32, place: &str, fo
     let lyr = match state {
         None => {
             if compact {
-                ui.label(
-                    RichText::new(tr("Loading…"))
-                        .font(regular(13.0))
-                        .color(pal().text_muted),
-                );
+                ui.label(RichText::new(tr("Loading…")).font(regular(13.0)).color(pal().text_muted));
             } else {
                 skeleton_rows(ui, 6);
             }
             return;
         }
         Some(Err(e)) if e.is_empty() => {
-            if notice(
-                ui,
-                compact,
-                icon::MICROPHONE_STAGE,
-                "No lyrics for this song yet",
-                "LRCLIB doesn't have them yet. Genius might.",
-                Some("Open on Genius"),
-            ) {
+            if notice(ui, compact, icon::MICROPHONE_STAGE, "No lyrics for this song yet", "LRCLIB doesn't have them yet. Genius might.", Some("Open on Genius"))
+            {
                 open_genius(&ctx, t);
             }
             return;
         }
         Some(Err(e)) => {
-            if notice(
-                ui,
-                compact,
-                icon::WIFI_SLASH,
-                "Couldn't load the lyrics",
-                &e,
-                Some("Try again"),
-            ) {
+            if notice(ui, compact, icon::WIFI_SLASH, "Couldn't load the lyrics", &e, Some("Try again")) {
                 app.lyrics.remove(&t.id);
             }
             return;
@@ -248,37 +172,19 @@ fn lyrics_body(app: &mut App, ui: &mut Ui, t: &Track, size: f32, place: &str, fo
         Some(Ok(l)) => l,
     };
     if lyr.instrumental && lyr.synced.is_empty() && lyr.plain.is_none() {
-        notice(
-            ui,
-            compact,
-            icon::MUSIC_NOTES,
-            "Instrumental",
-            "This song has no lyrics.",
-            None,
-        );
+        notice(ui, compact, icon::MUSIC_NOTES, "Instrumental", "This song has no lyrics.", None);
         return;
     }
 
     let center = app.saved.settings.lyrics_center;
-    let layout = if center {
-        Layout::top_down(Align::Center)
-    } else {
-        Layout::top_down(Align::Min)
-    };
-    let wrap = |ui: &mut Ui, text: RichText| -> egui::Response {
-        ui.add(egui::Label::new(text).wrap().sense(Sense::click()))
-    };
+    let layout = if center { Layout::top_down(Align::Center) } else { Layout::top_down(Align::Min) };
+    let wrap = |ui: &mut Ui, text: RichText| -> egui::Response { ui.add(egui::Label::new(text).wrap().sense(Sense::click())) };
 
     if lyr.synced.is_empty() {
         // Plain lyrics: no timing, so nothing to highlight.
         ui.with_layout(layout, |ui| {
             for line in lyr.plain.as_deref().unwrap_or("").lines() {
-                wrap(
-                    ui,
-                    RichText::new(if line.is_empty() { " " } else { line })
-                        .font(semi(size * 0.85))
-                        .color(pal().text),
-                );
+                wrap(ui, RichText::new(if line.is_empty() { " " } else { line }).font(semi(size * 0.85)).color(pal().text));
             }
         });
         ui.add_space(20.0);
@@ -287,11 +193,7 @@ fn lyrics_body(app: &mut App, ui: &mut Ui, t: &Track, size: f32, place: &str, fo
     }
 
     // Synced: highlight the line being sung.
-    let pos = if app.needs_load {
-        0.0
-    } else {
-        app.audio.position().as_secs_f32()
-    };
+    let pos = if app.needs_load { 0.0 } else { app.audio.position().as_secs_f32() };
     let current = lyr.line_at(pos);
     let scroll_key = egui::Id::new(("lyrics_scrolled", place, &t.id));
     let scrolled_to: Option<usize> = ui.data(|d| d.get_temp(scroll_key)).flatten();
@@ -299,28 +201,19 @@ fn lyrics_body(app: &mut App, ui: &mut Ui, t: &Track, size: f32, place: &str, fo
     ui.with_layout(layout, |ui| {
         ui.spacing_mut().item_spacing.y = size * 0.45;
         for (i, (at, line)) in lyr.synced.iter().enumerate() {
-            let text = if line.is_empty() {
-                "♪"
-            } else {
-                line.as_str()
-            };
+            let text = if line.is_empty() { "♪" } else { line.as_str() };
             let col = match current {
                 Some(c) if c == i => pal().text,
                 Some(c) if i < c => pal().text_faint,
                 _ => pal().text_muted,
             };
-            let r = wrap(ui, RichText::new(text).font(heavy(size)).color(col))
-                .on_hover_cursor(egui::CursorIcon::PointingHand);
+            let r = wrap(ui, RichText::new(text).font(heavy(size)).color(col)).on_hover_cursor(egui::CursorIcon::PointingHand);
             if r.clicked() {
                 seek = Some(*at);
             }
             // Keep the sung line in the middle of the view (once per new line).
             if follow && current == Some(i) && scrolled_to != Some(i) {
-                let anim = if reduce_motion() {
-                    egui::style::ScrollAnimation::none()
-                } else {
-                    egui::style::ScrollAnimation::duration(0.3)
-                };
+                let anim = if reduce_motion() { egui::style::ScrollAnimation::none() } else { egui::style::ScrollAnimation::duration(0.3) };
                 ui.scroll_to_rect_animation(r.rect, Some(Align::Center), anim);
                 ui.data_mut(|d| d.insert_temp(scroll_key, Some(i)));
             }
@@ -346,27 +239,13 @@ fn lyrics_body(app: &mut App, ui: &mut Ui, t: &Track, size: f32, place: &str, fo
 
 /// An empty-state message: the big one on the page, a short one in the panel.
 /// True when its button was clicked.
-fn notice(
-    ui: &mut Ui,
-    compact: bool,
-    glyph: &str,
-    title: &str,
-    body: &str,
-    button: Option<&str>,
-) -> bool {
+fn notice(ui: &mut Ui, compact: bool, glyph: &str, title: &str, body: &str, button: Option<&str>) -> bool {
     if !compact {
         return empty_state(ui, glyph, title, body, button);
     }
     ui.add_space(10.0);
     ui.label(RichText::new(tr(title)).font(semi(14.0)).color(pal().text));
-    ui.add(
-        egui::Label::new(
-            RichText::new(tr(body))
-                .font(regular(12.5))
-                .color(pal().text_muted),
-        )
-        .wrap(),
-    );
+    ui.add(egui::Label::new(RichText::new(tr(body)).font(regular(12.5)).color(pal().text_muted)).wrap());
     match button {
         Some(b) => {
             ui.add_space(6.0);
@@ -377,24 +256,10 @@ fn notice(
 }
 
 fn source_note(ui: &mut Ui, t: &Track) {
-    ui.add(
-        egui::Label::new(
-            RichText::new(tr("Lyrics from LRCLIB, a free, open lyrics database."))
-                .font(regular(11.5))
-                .color(pal().text_faint),
-        )
-        .wrap(),
-    );
+    ui.add(egui::Label::new(RichText::new(tr("Lyrics from LRCLIB, a free, open lyrics database.")).font(regular(11.5)).color(pal().text_faint)).wrap());
     // Wrong or incomplete lyrics: Genius's page for the song is one click away.
-    let r = ui.add(
-        egui::Label::new(
-            RichText::new(tr("See them on Genius"))
-                .font(regular(11.5))
-                .color(pal().text_muted)
-                .underline(),
-        )
-        .sense(egui::Sense::click()),
-    );
+    let r =
+        ui.add(egui::Label::new(RichText::new(tr("See them on Genius")).font(regular(11.5)).color(pal().text_muted).underline()).sense(egui::Sense::click()));
     if r.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
         open_genius(ui.ctx(), t);
     }
@@ -403,8 +268,5 @@ fn source_note(ui: &mut Ui, t: &Track) {
 /// Genius's search for the song, in the browser.
 fn open_genius(ctx: &egui::Context, t: &Track) {
     let q = format!("{} {}", t.artist.name, crate::youtube::core_title(&t.title));
-    ctx.open_url(egui::OpenUrl::new_tab(format!(
-        "https://genius.com/search?q={}",
-        crate::net::encode(&q)
-    )));
+    ctx.open_url(egui::OpenUrl::new_tab(format!("https://genius.com/search?q={}", crate::net::encode(&q))));
 }

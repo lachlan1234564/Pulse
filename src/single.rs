@@ -30,9 +30,7 @@ pub fn claim() -> bool {
 }
 
 fn knock(addr: SocketAddr) -> bool {
-    let Ok(mut s) = TcpStream::connect_timeout(&addr, Duration::from_millis(400)) else {
-        return false;
-    };
+    let Ok(mut s) = TcpStream::connect_timeout(&addr, Duration::from_millis(400)) else { return false };
     let _ = s.set_read_timeout(Some(Duration::from_millis(800)));
     if s.write_all(KNOCK).is_err() {
         return false;
@@ -43,9 +41,7 @@ fn knock(addr: SocketAddr) -> bool {
 
 /// In the running Pulse: shows the window whenever another Pulse knocks.
 pub fn listen(ctx: egui::Context) {
-    let Some(listener) = LISTENER.lock().unwrap().take() else {
-        return;
-    };
+    let Some(listener) = LISTENER.lock().unwrap().take() else { return };
     std::thread::Builder::new()
         .name("single-instance".into())
         .spawn(move || {

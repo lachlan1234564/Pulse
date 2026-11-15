@@ -25,9 +25,7 @@ pub struct Lyrics {
 
 impl Lyrics {
     pub fn is_empty(&self) -> bool {
-        self.synced.is_empty()
-            && self.plain.as_deref().is_none_or(|p| p.trim().is_empty())
-            && !self.instrumental
+        self.synced.is_empty() && self.plain.as_deref().is_none_or(|p| p.trim().is_empty()) && !self.instrumental
     }
 
     /// The line being sung at `secs` (its index), if the lyrics are synced.
@@ -76,10 +74,7 @@ enum Keep {
 }
 
 fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 pub fn dir() -> PathBuf {
@@ -112,10 +107,7 @@ pub fn get(t: &Track) -> Result<Option<Lyrics>, String> {
 
 /// LRCLIB's answer, falling back to AZLyrics when LRCLIB has none (or is down).
 /// Synced LRCLIB lyrics are never replaced.
-fn combine(
-    primary: Result<Option<Lyrics>, String>,
-    fallback: impl FnOnce() -> Result<Option<Lyrics>, String>,
-) -> Result<(Option<Lyrics>, Keep), String> {
+fn combine(primary: Result<Option<Lyrics>, String>, fallback: impl FnOnce() -> Result<Option<Lyrics>, String>) -> Result<(Option<Lyrics>, Keep), String> {
     match primary {
         Ok(Some(l)) => Ok((Some(l), Keep::Save { fallback: false })),
         Ok(None) => match fallback() {
@@ -133,10 +125,7 @@ fn combine(
 }
 
 fn plain(text: String) -> Lyrics {
-    Lyrics {
-        plain: Some(text),
-        ..Default::default()
-    }
+    Lyrics { plain: Some(text), ..Default::default() }
 }
 
 /// The saved answer, unless it's due to be asked again (a "none found" or a
@@ -151,11 +140,7 @@ fn store(path: &std::path::Path, lyrics: &Option<Lyrics>, fallback: bool) {
     if let Some(d) = path.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    if let Ok(json) = serde_json::to_string(&Saved {
-        at: now(),
-        lyrics: lyrics.clone(),
-        fallback,
-    }) {
+    if let Ok(json) = serde_json::to_string(&Saved { at: now(), lyrics: lyrics.clone(), fallback }) {
         let _ = std::fs::write(path, json);
     }
 }
@@ -163,18 +148,10 @@ fn store(path: &std::path::Path, lyrics: &Option<Lyrics>, fallback: bool) {
 fn fetch(t: &Track) -> Result<Option<Lyrics>, String> {
     // "Baby (feat. DaBaby)" is listed as "Baby".
     let title = crate::youtube::core_title(&t.title);
-    let title = if title.trim().is_empty() {
-        t.title.clone()
-    } else {
-        title
-    };
+    let title = if title.trim().is_empty() { t.title.clone() } else { title };
     let artist = t.artist.name.clone();
     let duration = t.duration.to_string();
-    let album = t
-        .album
-        .as_ref()
-        .map(|a| a.title.clone())
-        .unwrap_or_default();
+    let album = t.album.as_ref().map(|a| a.title.clone()).unwrap_or_default();
 
     // 1. Exact match: title, artist, album and length (LRCLIB allows ±2 seconds).
     let mut q: Vec<(&str, &str)> = vec![("track_name", &title), ("artist_name", &artist)];
@@ -190,57 +167,33 @@ fn fetch(t: &Track) -> Result<Option<Lyrics>, String> {
         Err(e) => return Err(e),
     }
     // 2. Search by title and artist; take the closest length.
-    let list = request::<Vec<Record>>(
-        "/search",
-        &[("track_name", &title), ("artist_name", &artist)],
-    )?
-    .unwrap_or_default();
+    let list = request::<Vec<Record>>("/search", &[("track_name", &title), ("artist_name", &artist)])?.unwrap_or_default();
     let best = list
         .into_iter()
         .filter(|r| r.synced_lyrics.is_some() || r.plain_lyrics.is_some() || r.instrumental)
-        .filter(|r| {
-            t.duration == 0 || r.duration == 0.0 || (r.duration - t.duration as f32).abs() <= 8.0
-        })
+        .filter(|r| t.duration == 0 || r.duration == 0.0 || (r.duration - t.duration as f32).abs() <= 8.0)
         .min_by(|a, b| {
-            let d = |r: &Record| {
-                (r.duration - t.duration as f32).abs()
-                    - if r.synced_lyrics.is_some() { 3.0 } else { 0.0 }
-            };
+            let d = |r: &Record| (r.duration - t.duration as f32).abs() - if r.synced_lyrics.is_some() { 3.0 } else { 0.0 };
             d(a).total_cmp(&d(b))
         });
     Ok(best.map(from_record))
 }
 
 /// One LRCLIB request; `Ok(None)` when it has nothing.
-fn request<T: for<'de> Deserialize<'de>>(
-    path: &str,
-    query: &[(&str, &str)],
-) -> Result<Option<T>, String> {
+fn request<T: for<'de> Deserialize<'de>>(path: &str, query: &[(&str, &str)]) -> Result<Option<T>, String> {
     let mut req = crate::net::api().get(format!("{API}{path}"));
     for (k, v) in query {
         req = req.query(*k, *v);
     }
     match req.call() {
-        Ok(mut resp) => resp
-            .body_mut()
-            .read_json::<T>()
-            .map(Some)
-            .map_err(|e| format!("Couldn't read the lyrics ({e})")),
+        Ok(mut resp) => resp.body_mut().read_json::<T>().map(Some).map_err(|e| format!("Couldn't read the lyrics ({e})")),
         Err(ureq::Error::StatusCode(404)) => Ok(None),
         Err(e) => Err(crate::net::friendly_error(e)),
     }
 }
 
 fn from_record(r: Record) -> Lyrics {
-    Lyrics {
-        synced: r
-            .synced_lyrics
-            .as_deref()
-            .map(parse_lrc)
-            .unwrap_or_default(),
-        plain: r.plain_lyrics.filter(|p| !p.trim().is_empty()),
-        instrumental: r.instrumental,
-    }
+    Lyrics { synced: r.synced_lyrics.as_deref().map(parse_lrc).unwrap_or_default(), plain: r.plain_lyrics.filter(|p| !p.trim().is_empty()), instrumental: r.instrumental }
 }
 
 /// Reads LRC text: "[01:02.50]Line" (a line can have several times: "[00:10][01:10]Chorus").
@@ -285,25 +238,12 @@ mod tests {
 
     #[test]
     fn lrc_lines_and_repeated_times_are_read() {
-        let l = parse_lrc(
-            "[ar:Someone]\n[00:01.50]First\n[00:10.00][00:30.00]Chorus\n[00:20.25]\n[bad]text",
-        );
-        assert_eq!(
-            l,
-            vec![
-                (1.5, "First".into()),
-                (10.0, "Chorus".into()),
-                (20.25, String::new()),
-                (30.0, "Chorus".into())
-            ]
-        );
+        let l = parse_lrc("[ar:Someone]\n[00:01.50]First\n[00:10.00][00:30.00]Chorus\n[00:20.25]\n[bad]text");
+        assert_eq!(l, vec![(1.5, "First".into()), (10.0, "Chorus".into()), (20.25, String::new()), (30.0, "Chorus".into())]);
     }
 
     fn synced() -> Lyrics {
-        Lyrics {
-            synced: parse_lrc("[00:01]a"),
-            ..Default::default()
-        }
+        Lyrics { synced: parse_lrc("[00:01]a"), ..Default::default() }
     }
 
     #[test]
@@ -315,27 +255,15 @@ mod tests {
     #[test]
     fn the_fallback_is_used_when_lrclib_has_none() {
         let r = combine(Ok(None), || Ok(Some(plain("words".into())))).unwrap();
-        assert_eq!(
-            r,
-            (Some(plain("words".into())), Keep::Save { fallback: true })
-        );
-        assert_eq!(
-            combine(Ok(None), || Ok(None)).unwrap(),
-            (None, Keep::Save { fallback: false })
-        );
+        assert_eq!(r, (Some(plain("words".into())), Keep::Save { fallback: true }));
+        assert_eq!(combine(Ok(None), || Ok(None)).unwrap(), (None, Keep::Save { fallback: false }));
         // A fallback that couldn't connect isn't remembered as "none".
-        assert_eq!(
-            combine(Ok(None), || Err("down".into())).unwrap(),
-            (None, Keep::Skip)
-        );
+        assert_eq!(combine(Ok(None), || Err("down".into())).unwrap(), (None, Keep::Skip));
     }
 
     #[test]
     fn lrclib_down_uses_the_fallback_without_saving_it() {
-        assert_eq!(
-            combine(Err("down".into()), || Ok(Some(plain("w".into())))).unwrap(),
-            (Some(plain("w".into())), Keep::Skip)
-        );
+        assert_eq!(combine(Err("down".into()), || Ok(Some(plain("w".into())))).unwrap(), (Some(plain("w".into())), Keep::Skip));
         assert_eq!(combine(Err("down".into()), || Ok(None)), Err("down".into()));
     }
 
@@ -354,10 +282,7 @@ mod tests {
 
     #[test]
     fn the_current_line_follows_the_time() {
-        let lyr = Lyrics {
-            synced: parse_lrc("[00:05]a\n[00:10]b\n[00:15]c"),
-            ..Default::default()
-        };
+        let lyr = Lyrics { synced: parse_lrc("[00:05]a\n[00:10]b\n[00:15]c"), ..Default::default() };
         assert_eq!(lyr.line_at(2.0), None);
         assert_eq!(lyr.line_at(5.0), Some(0));
         assert_eq!(lyr.line_at(12.0), Some(1));
