@@ -3222,14 +3222,17 @@ impl App {
             // Already being found (the pointer rested on it, or it's next in the queue):
             // wait for that instead of starting over, unless audio is ready on disk.
             if let Some(src) = offline_or_wait(&track, offline.as_deref(), &in_flight) {
+                crate::audio::trace("link: on this PC (downloaded or kept), or found by the lookup already running");
                 return src;
             }
             if let Some((src, at)) = prefetched.lock().unwrap().remove(&track.id)
                 && at.elapsed() < LINK_LIFETIME
             {
+                crate::audio::trace(&format!("link: found ahead of time, {} s ago", at.elapsed().as_secs()));
                 return Ok(kept_for_next_time(src, &track));
             }
             let known = ids.lock().unwrap().get(&track.id).cloned();
+            crate::audio::trace(if known.is_some() { "link: asking yt-dlp (video already known, no search)" } else { "link: searching YouTube, then asking yt-dlp" });
             match crate::youtube::resolve(&track, known, quality, status) {
                 Ok((src, video)) => {
                     ids.lock().unwrap().insert(track.id.clone(), video);

@@ -660,6 +660,7 @@ pub fn find_videos(tools: &Tools, track: &Track) -> Result<Vec<String>, String> 
     if let Some(video) = crate::fixes::video(&track.id) {
         return Ok(vec![video]);
     }
+    let searched = Instant::now();
     let [quoted, plain] = queries(track);
     let music_url = format!("https://music.youtube.com/search?q={}#songs", crate::net::encode(&plain));
     let (tx, rx) = std::sync::mpsc::channel::<(bool, Result<Vec<SearchEntry>, String>)>();
@@ -695,6 +696,7 @@ pub fn find_videos(tools: &Tools, track: &Track) -> Result<Vec<String>, String> 
         }
     }
     let ids: Vec<String> = rank(track, &entries).into_iter().map(|e| e.id.clone()).collect();
+    crate::audio::trace(&format!("search: {} results, best {}, in {} ms", entries.len(), ids.first().map(String::as_str).unwrap_or("none"), searched.elapsed().as_millis()));
     match (ids.is_empty(), error) {
         (false, _) => Ok(ids),
         (true, Some(e)) if entries.is_empty() => Err(e),
@@ -834,8 +836,10 @@ pub fn audio_source(tools: &Tools, video_id: &str, quality: Quality) -> Result<S
         "youtube:player_client=default,-tv_samsung".into(),
         format!("https://www.youtube.com/watch?v={video_id}"),
     ]);
-    let out = run(&tools.ytdlp, &args, Duration::from_secs(60))?;
-    source_from_info(&out)
+    let t = Instant::now();
+    let out = run(&tools.ytdlp, &args, Duration::from_secs(60));
+    crate::audio::trace(&format!("yt-dlp: audio link for {video_id}: {} in {} ms", if out.is_ok() { "ok" } else { "failed" }, t.elapsed().as_millis()));
+    source_from_info(&out?)
 }
 
 /// Everything needed to play `track` from YouTube. `known_video` skips the search
