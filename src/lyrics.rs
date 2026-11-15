@@ -26,6 +26,9 @@ const CACHE_VERSION: u32 = 3;
 /// Remove once the fallback is confirmed working.
 pub fn debug(msg: &str) {
     use std::io::Write;
+    if cfg!(test) {
+        return;
+    }
     let dir = crate::settings::data_dir().join("logs");
     let _ = std::fs::create_dir_all(&dir);
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("lyrics-debug.log")) {
@@ -115,13 +118,23 @@ fn file_for(t: &Track) -> PathBuf {
 /// The song's lyrics: from the disk copy if there is one, else from LRCLIB, else
 /// from AZLyrics. `Ok(None)` means neither has them.
 pub fn get(t: &Track) -> Result<Option<Lyrics>, String> {
-    let path = file_for(t);
     debug(&format!("--- lookup: \"{}\" by \"{}\" (id {}, {} s)", t.title, t.artist.name, t.id, t.duration));
-    if let Some(saved) = load(&path, now()) {
-        debug(&format!("cache: using saved answer ({})", describe(&saved)));
+    lookup(&file_for(t), now(), || fetch(t), || crate::azlyrics::fetch(t))
+}
+
+/// One lookup: the saved answer if it's still good, else LRCLIB, then AZLyrics if
+/// LRCLIB has nothing usable. The two providers are passed in so tests can stand in for them.
+fn lookup(
+    path: &std::path::Path,
+    now: u64,
+    lrclib: impl FnOnce() -> Result<Option<Lyrics>, String>,
+    azlyrics: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<Option<Lyrics>, String> {
+    if let Some(saved) = load(path, now) {
         return Ok(saved);
     }
-    let primary = fetch(t);
+    debug("LRCLIB: lookup");
+    let primary = lrclib();
     debug(&format!(
         "LRCLIB: {}",
         match &primary {
@@ -130,17 +143,14 @@ pub fn get(t: &Track) -> Result<Option<Lyrics>, String> {
         }
     ));
     let found = combine(primary, || {
-        debug("AZLyrics fallback: triggered");
-        let r = crate::azlyrics::fetch(t);
-        debug(&format!(
-            "AZLyrics: {}",
-            match &r {
-                Ok(Some(p)) => format!("found {} lines", p.lines().count()),
-                Ok(None) => "no confident match".into(),
-                Err(e) => format!("error: {e}"),
-            }
-        ));
-        r.map(|p| p.map(plain))
+        debug("AZLyrics: fallback attempt");
+        let r = azlyrics();
+        debug(&match &r {
+            Ok(Some(p)) => format!("AZLyrics: fallback succeeded, {} lines", p.lines().count()),
+            Ok(None) => "AZLyrics: fallback failed, no confident match".into(),
+            Err(e) => format!("AZLyrics: fallback failed, error: {e}"),
+        });
+        r.map(|p| p.filter(|p| !p.trim().is_empty()).map(plain))
     });
     debug(&format!(
         "result: {} ({})",
@@ -151,19 +161,21 @@ pub fn get(t: &Track) -> Result<Option<Lyrics>, String> {
         match &found {
             Ok((_, Keep::Save { fallback: true })) => "saved, from AZLyrics",
             Ok((_, Keep::Save { .. })) => "saved",
-            _ => "not saved",
+            _ => "not saved, will retry next time",
         }
     ));
     let (found, keep) = found?;
     if let Keep::Save { fallback } = keep {
-        store(&path, &found, fallback);
+        store(path, &found, fallback, now);
     }
     Ok(found)
 }
 
-/// LRCLIB's answer, falling back to AZLyrics when LRCLIB has none (or is down).
-/// Synced LRCLIB lyrics are never replaced.
+/// LRCLIB's answer, falling back to AZLyrics when LRCLIB has nothing usable (or is
+/// down). Synced LRCLIB lyrics are never replaced.
 fn combine(primary: Result<Option<Lyrics>, String>, fallback: impl FnOnce() -> Result<Option<Lyrics>, String>) -> Result<(Option<Lyrics>, Keep), String> {
+    // A record with no words and not marked instrumental is as good as none.
+    let primary = primary.map(|l| l.filter(|l| !l.is_empty()));
     match primary {
         Ok(Some(l)) => Ok((Some(l), Keep::Save { fallback: false })),
         Ok(None) => match fallback() {
@@ -199,28 +211,28 @@ fn plain(text: String) -> Lyrics {
 fn load(path: &std::path::Path, now: u64) -> Option<Option<Lyrics>> {
     let text = std::fs::read_to_string(path).ok()?;
     let Ok(saved) = serde_json::from_str::<Saved>(&text) else {
-        debug("cache: saved file unreadable, looking up again");
+        debug("cache: ignored unreadable entry");
         return None;
     };
     let age = now.saturating_sub(saved.at);
     let fresh = age < RETRY_MISSING_AFTER;
     let (keep, why) = match (&saved.lyrics, saved.fallback) {
-        (None, _) if saved.v < CACHE_VERSION => (false, format!("ignored: \"not found\" saved before AZLyrics (version {} < {CACHE_VERSION})", saved.v)),
-        (None, _) if !fresh => (false, "ignored: \"not found\" is over a week old".into()),
-        (None, _) => (true, "accepted: \"not found\" from LRCLIB and AZLyrics, under a week old".into()),
-        (Some(_), true) if !fresh => (false, "ignored: AZLyrics answer over a week old, checking LRCLIB for synced lyrics".into()),
-        (Some(_), true) => (true, "accepted: AZLyrics answer under a week old".into()),
-        (Some(_), false) => (true, "accepted: LRCLIB answer".into()),
+        (None, _) if saved.v < CACHE_VERSION => (false, format!("ignored legacy negative entry (version {} < {CACHE_VERSION}, AZLyrics never asked)", saved.v)),
+        (None, _) if !fresh => (false, "expired negative entry (over a week old)".into()),
+        (None, _) => (true, "negative hit (LRCLIB and AZLyrics had none, under a week ago)".into()),
+        (Some(_), true) if !fresh => (false, "expired AZLyrics entry (over a week old, checking LRCLIB for synced lyrics)".into()),
+        (Some(l), true) => (true, format!("positive hit from AZLyrics ({})", describe(&Some(l.clone())))),
+        (Some(l), false) => (true, format!("positive hit from LRCLIB ({})", describe(&Some(l.clone())))),
     };
-    debug(&format!("cache: {why} (saved {} h ago)", age / 3600));
+    debug(&format!("cache: {why}, saved {} h ago", age / 3600));
     keep.then_some(saved.lyrics)
 }
 
-fn store(path: &std::path::Path, lyrics: &Option<Lyrics>, fallback: bool) {
+fn store(path: &std::path::Path, lyrics: &Option<Lyrics>, fallback: bool, now: u64) {
     if let Some(d) = path.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    if let Ok(json) = serde_json::to_string(&Saved { at: now(), lyrics: lyrics.clone(), fallback, v: CACHE_VERSION }) {
+    if let Ok(json) = serde_json::to_string(&Saved { at: now, lyrics: lyrics.clone(), fallback, v: CACHE_VERSION }) {
         let _ = std::fs::write(path, json);
     }
 }
@@ -351,8 +363,8 @@ mod tests {
     fn fallback_answers_are_cached_then_rechecked_after_a_week() {
         let dir = std::env::temp_dir().join(format!("pulse-lyrics-test-{}", std::process::id()));
         let (az, lrc) = (dir.join("az.json"), dir.join("lrc.json"));
-        store(&az, &Some(plain("words".into())), true);
-        store(&lrc, &Some(synced()), false);
+        store(&az, &Some(plain("words".into())), true, now());
+        store(&lrc, &Some(synced()), false, now());
         let later = now() + RETRY_MISSING_AFTER + 1;
         assert_eq!(load(&az, now()), Some(Some(plain("words".into()))));
         assert_eq!(load(&az, later), None);
@@ -371,7 +383,7 @@ mod tests {
         assert_eq!(load(&old_miss, now()), None);
         assert_eq!(load(&old_hit, now()), Some(Some(synced())));
         // A new "not found" (both providers asked) is kept for a week.
-        store(&old_miss, &None, false);
+        store(&old_miss, &None, false, now());
         assert_eq!(load(&old_miss, now()), Some(None));
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -386,12 +398,122 @@ mod tests {
         std::fs::write(&f, format!(r#"{{"at":{},"v":2,"lyrics":null}}"#, now() - 2 * 24 * 3600)).unwrap();
         assert_eq!(load(&f, now()), None);
         // Once AZLyrics has been asked too, a "not found" is trusted for a week.
-        store(&f, &None, false);
+        store(&f, &None, false, now());
         assert_eq!(load(&f, now()), Some(None));
         // And AZLyrics' lyrics, once found, are used.
-        store(&f, &Some(plain("words".into())), true);
+        store(&f, &Some(plain("words".into())), true, now());
         assert_eq!(load(&f, now()), Some(Some(plain("words".into()))));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // ---- Whole lookups, with stand-ins for LRCLIB and AZLyrics (no network). ----
+
+    use std::cell::RefCell;
+
+    fn temp_file(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("pulse-lyrics-lookup-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("song.json")
+    }
+
+    /// Runs one lookup and returns its answer plus which providers were asked, in order.
+    fn run(path: &std::path::Path, at: u64, lrclib: Result<Option<Lyrics>, String>, az: Result<Option<String>, String>) -> (Result<Option<Lyrics>, String>, Vec<&'static str>) {
+        let calls = RefCell::new(vec![]);
+        let r = lookup(
+            path,
+            at,
+            || {
+                calls.borrow_mut().push("lrclib");
+                lrclib
+            },
+            || {
+                calls.borrow_mut().push("azlyrics");
+                az
+            },
+        );
+        (r, calls.into_inner())
+    }
+
+    /// A lookup that must be answered from the cache: any provider call fails the test.
+    fn cached_only(path: &std::path::Path, at: u64) -> Option<Lyrics> {
+        lookup(path, at, || panic!("LRCLIB asked despite a good saved answer"), || panic!("AZLyrics asked despite a good saved answer")).unwrap()
+    }
+
+    /// The original bug: an old "not found" (from the LRCLIB-only or Genius builds)
+    /// returned early, so AZLyrics never ran. It must reach LRCLIB, then AZLyrics,
+    /// and keep what AZLyrics found.
+    #[test]
+    fn regression_old_cached_none_does_not_block_the_fallback() {
+        for (name, old) in [("genius", r#"{"at":AT,"v":2,"lyrics":null}"#), ("lrclib-only", r#"{"at":AT,"lyrics":null}"#), ("az-v2", r#"{"at":AT,"lyrics":null,"fallback":false,"v":2}"#)] {
+            let f = temp_file(name);
+            let t0 = now();
+            std::fs::write(&f, old.replace("AT", &(t0 - 3600).to_string())).unwrap();
+            let (r, calls) = run(&f, t0, Ok(None), Ok(Some("found words\nsecond line".into())));
+            assert_eq!(calls, vec!["lrclib", "azlyrics"], "{name}: both providers, LRCLIB first");
+            assert_eq!(r.unwrap(), Some(plain("found words\nsecond line".into())), "{name}");
+            // Kept: the next lookup is answered from the cache.
+            assert_eq!(cached_only(&f, t0 + 60), Some(plain("found words\nsecond line".into())), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_new_cached_none_is_trusted_for_a_week_then_rechecked() {
+        let f = temp_file("negative");
+        let t0 = now();
+        let (r, calls) = run(&f, t0, Ok(None), Ok(None));
+        assert_eq!((r.unwrap(), calls), (None, vec!["lrclib", "azlyrics"]));
+        assert_eq!(cached_only(&f, t0 + 3600), None, "negative hit: no requests");
+        let (_, calls) = run(&f, t0 + RETRY_MISSING_AFTER + 1, Ok(None), Ok(None));
+        assert_eq!(calls, vec!["lrclib", "azlyrics"], "expired: asked again");
+    }
+
+    #[test]
+    fn synced_lrclib_lyrics_win_and_are_cached() {
+        let f = temp_file("synced");
+        let t0 = now();
+        let (r, calls) = run(&f, t0, Ok(Some(synced())), Ok(Some("plain words".into())));
+        assert_eq!((r.unwrap(), calls), (Some(synced()), vec!["lrclib"]));
+        assert_eq!(cached_only(&f, t0 + 2 * RETRY_MISSING_AFTER), Some(synced()), "LRCLIB answers don't expire");
+    }
+
+    #[test]
+    fn an_empty_lrclib_record_still_falls_back() {
+        let f = temp_file("empty");
+        let (r, calls) = run(&f, now(), Ok(Some(Lyrics::default())), Ok(Some("words".into())));
+        assert_eq!((r.unwrap(), calls), (Some(plain("words".into())), vec!["lrclib", "azlyrics"]));
+    }
+
+    #[test]
+    fn a_failed_fallback_is_not_cached() {
+        let f = temp_file("az-down");
+        let t0 = now();
+        let (r, _) = run(&f, t0, Ok(None), Err("AZLyrics unreachable".into()));
+        assert_eq!(r.unwrap(), None);
+        assert!(!f.exists(), "a network failure must not be saved as \"not found\"");
+        let (r, calls) = run(&f, t0 + 60, Ok(None), Ok(Some("words".into())));
+        assert_eq!((r.unwrap(), calls), (Some(plain("words".into())), vec!["lrclib", "azlyrics"]));
+    }
+
+    #[test]
+    fn lrclib_down_is_not_cached() {
+        let f = temp_file("lrclib-down");
+        let (r, calls) = run(&f, now(), Err("LRCLIB down".into()), Ok(None));
+        assert_eq!((r, calls), (Err("LRCLIB down".into()), vec!["lrclib", "azlyrics"]));
+        assert!(!f.exists());
+        let (r, _) = run(&f, now(), Err("LRCLIB down".into()), Ok(Some("words".into())));
+        assert_eq!(r.unwrap(), Some(plain("words".into())), "AZLyrics' words are shown");
+        assert!(!f.exists(), "but not kept, so LRCLIB is asked when it's back");
+    }
+
+    #[test]
+    fn an_expired_azlyrics_answer_gives_lrclib_another_chance() {
+        let f = temp_file("az-expired");
+        let t0 = now();
+        run(&f, t0, Ok(None), Ok(Some("words".into()))).0.unwrap();
+        let (r, calls) = run(&f, t0 + RETRY_MISSING_AFTER + 1, Ok(Some(synced())), Ok(None));
+        assert_eq!((r.unwrap(), calls), (Some(synced()), vec!["lrclib"]));
+        assert_eq!(cached_only(&f, t0 + 3 * RETRY_MISSING_AFTER), Some(synced()));
     }
 
     #[test]
