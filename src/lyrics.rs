@@ -31,7 +31,12 @@ pub fn debug(msg: &str) {
     }
     let dir = crate::settings::data_dir().join("logs");
     let _ = std::fs::create_dir_all(&dir);
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("lyrics-debug.log")) {
+    let path = dir.join("lyrics-debug.log");
+    // Kept small: past 512 KB the log starts over.
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 512 * 1024) {
+        let _ = std::fs::remove_file(&path);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
         let _ = writeln!(f, "[{}] {msg}", now());
     }
 }
