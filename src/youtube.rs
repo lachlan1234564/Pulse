@@ -842,12 +842,105 @@ fn measure_startup_once(tools: &Tools) {
     });
 }
 
+/// EXPERIMENT ONLY: yt-dlp run like `run`, but every stderr line is timed as it arrives
+/// (with `-v` that shows each stage: start-up, web page, player, JS challenge, API), and
+/// the process's own CPU time is read when it ends (Windows; Deno's isn't included).
+struct Measured {
+    out: Result<String, String>,
+    /// (ms after the start, line)
+    lines: Vec<(u128, String)>,
+    total_ms: u128,
+    cpu_ms: Option<u64>,
+}
+
+fn run_measured(program: &Path, args: &[String]) -> Measured {
+    let t = Instant::now();
+    let mut cmd = Command::new(program);
+    cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => return Measured { out: Err(e.to_string()), lines: vec![], total_ms: 0, cpu_ms: None },
+    };
+    let mut out_pipe = child.stdout.take().unwrap();
+    let err_pipe = child.stderr.take().unwrap();
+    let out_t = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = std::io::Read::read_to_string(&mut out_pipe, &mut s);
+        s
+    });
+    let err_t = std::thread::spawn(move || {
+        use std::io::BufRead;
+        std::io::BufReader::new(err_pipe).lines().map_while(Result::ok).map(|l| (t.elapsed().as_millis(), l)).collect::<Vec<_>>()
+    });
+    let status = child.wait();
+    let total_ms = t.elapsed().as_millis();
+    let cpu_ms = process_cpu_ms(&child);
+    let out = out_t.join().unwrap_or_default();
+    let lines = err_t.join().unwrap_or_default();
+    let ok = status.map(|s| s.success()).unwrap_or(false);
+    Measured { out: if ok { Ok(out) } else { Err(lines.last().map(|l| l.1.clone()).unwrap_or_default()) }, lines, total_ms, cpu_ms }
+}
+
+/// CPU time (user + kernel) a finished child process used, in ms.
+#[cfg(windows)]
+fn process_cpu_ms(child: &std::process::Child) -> Option<u64> {
+    use std::os::windows::io::AsRawHandle;
+    #[repr(C)]
+    #[derive(Default)]
+    struct FileTime(u32, u32);
+    unsafe extern "system" {
+        fn GetProcessTimes(process: *mut std::ffi::c_void, created: *mut FileTime, exited: *mut FileTime, kernel: *mut FileTime, user: *mut FileTime) -> i32;
+    }
+    let (mut c, mut e, mut k, mut u) = (FileTime::default(), FileTime::default(), FileTime::default(), FileTime::default());
+    let ok = unsafe { GetProcessTimes(child.as_raw_handle(), &mut c, &mut e, &mut k, &mut u) };
+    let ticks = |f: &FileTime| ((f.1 as u64) << 32) | f.0 as u64;
+    (ok != 0).then(|| (ticks(&k) + ticks(&u)) / 10_000)
+}
+
+#[cfg(not(windows))]
+fn process_cpu_ms(_child: &std::process::Child) -> Option<u64> {
+    None
+}
+
+/// The stage lines worth logging from `-v` output: everything but routine debug lines,
+/// plus the first debug line (start-up finished) and the JS challenge ones.
+fn stage_lines(lines: &[(u128, String)]) -> Vec<String> {
+    let mut out = vec![];
+    for (i, (ms, l)) in lines.iter().enumerate() {
+        let keep = i == 0 || !l.starts_with("[debug] ") || l.contains("jsc") || l.contains("JS ") || l.contains("Loaded") || l.contains("challenge");
+        if keep && out.len() < 30 {
+            out.push(format!("{ms:>5} ms  {}", l.chars().take(140).collect::<String>()));
+        }
+    }
+    out
+}
+
+/// Recently looked-up video ids, for the batch measurement.
+static RECENT_VIDEOS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
 /// EXPERIMENT ONLY, off unless the file `logs\ytdlp-experiment.on` exists in the data
-/// folder. After a real lookup, asks yt-dlp for the same video with other YouTube
-/// clients and logs how long each took and what it returned. The song always plays from
-/// the normal lookup; nothing here changes what Pulse uses. At most once a minute.
+/// folder. After a real lookup (at most once a minute), on a background thread, one at
+/// a time:
+/// 1. the same lookup with `-v`: when each stage happens, and the CPU it used;
+/// 2. the same video with other YouTube clients: time, result, and whether the link
+///    answers a range request like the normal one (so the streaming would work);
+/// 3. three recent videos plus one that doesn't exist, in ONE yt-dlp run (`-j -i`):
+///    when each result arrives, total time and CPU, and that the bad one fails alone.
+///
+/// The song always plays from the normal lookup; nothing here changes what Pulse uses.
 fn experiment_after(tools: &Tools, video_id: &str, quality: Quality) {
     static LAST: Mutex<Option<Instant>> = Mutex::new(None);
+    {
+        let mut recent = RECENT_VIDEOS.lock().unwrap_or_else(|e| e.into_inner());
+        recent.retain(|v| v != video_id);
+        recent.insert(0, video_id.to_string());
+        recent.truncate(6);
+    }
     if !crate::settings::data_dir().join("logs").join("ytdlp-experiment.on").is_file() {
         return;
     }
@@ -860,25 +953,76 @@ fn experiment_after(tools: &Tools, video_id: &str, quality: Quality) {
     }
     let (tools, video_id) = (tools.clone(), video_id.to_string());
     std::thread::spawn(move || {
-        for clients in ["android_vr", "tv_simply", "web_music", "ios"] {
+        let trace = |m: String| crate::audio::trace(&format!("experiment: {m}"));
+        let lookup_args = |clients: &str, extra: &[&str], targets: &[String]| {
             let mut args = base_args(&tools);
-            args.extend([
-                "--no-playlist".into(),
-                "-J".into(),
-                "-f".into(),
-                quality.ytdlp_format().into(),
-                "--extractor-args".into(),
-                format!("youtube:player_client={clients}"),
-                format!("https://www.youtube.com/watch?v={video_id}"),
-            ]);
-            let t = Instant::now();
-            let result = run(&tools.ytdlp, &args, Duration::from_secs(60)).and_then(|out| source_from_info(&out));
-            let what = match &result {
-                Ok(src) => format!("ok, {:?}, {} KB", src.codec, src.content_length.unwrap_or(0) / 1024),
-                Err(e) => format!("failed: {}", e.chars().take(80).collect::<String>()),
-            };
-            crate::audio::trace(&format!("experiment: {video_id} with client {clients}: {} ms, {what}", t.elapsed().as_millis()));
+            args.extend(extra.iter().map(|s| s.to_string()));
+            args.extend(["--no-playlist".into(), "-f".into(), quality.ytdlp_format().into(), "--extractor-args".into(), format!("youtube:player_client={clients}")]);
+            args.extend(targets.iter().map(|v| format!("https://www.youtube.com/watch?v={v}")));
+            args
+        };
+        // 1. Stages of the normal lookup.
+        let m = run_measured(&tools.ytdlp, &lookup_args("default,-tv_samsung", &["-J", "-v"], std::slice::from_ref(&video_id)));
+        trace(format!("{video_id} normal lookup with -v: {} ms total, yt-dlp CPU {} ms, {}", m.total_ms, m.cpu_ms.map(|c| c.to_string()).unwrap_or("?".into()), if m.out.is_ok() { "ok" } else { "failed" }));
+        for l in stage_lines(&m.lines) {
+            trace(format!("  {l}"));
         }
+        // 2. Other clients.
+        for clients in ["android_vr", "tv_simply", "web_music", "ios"] {
+            let m = run_measured(&tools.ytdlp, &lookup_args(clients, &["-J"], std::slice::from_ref(&video_id)));
+            let what = match m.out.and_then(|out| source_from_info(&out)) {
+                Ok(src) => {
+                    let ranges = match crate::net::get_range(&src.url, &src.headers, 0, Some(1023)) {
+                        Ok(r) if r.partial => "range request ok",
+                        Ok(_) => "no range support",
+                        Err(_) => "link didn't answer",
+                    };
+                    format!("ok, {:?}, {} KB, {ranges}", src.codec, src.content_length.unwrap_or(0) / 1024)
+                }
+                Err(e) => format!("failed: {}", e.chars().take(100).collect::<String>()),
+            };
+            trace(format!("{video_id} with client {clients}: {} ms, CPU {} ms, {what}", m.total_ms, m.cpu_ms.map(|c| c.to_string()).unwrap_or("?".into())));
+        }
+        // 3. Several videos in one run, one of them made up.
+        let mut batch: Vec<String> = RECENT_VIDEOS.lock().unwrap_or_else(|e| e.into_inner()).iter().take(3).cloned().collect();
+        batch.push("aaaaaaaaaaa".into());
+        let t = Instant::now();
+        let args = lookup_args("default,-tv_samsung", &["-j", "-i"], &batch);
+        // stdout lines are timed by reading them as they come.
+        let mut cmd = Command::new(&tools.ytdlp);
+        cmd.args(&args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000);
+        }
+        let Ok(mut child) = cmd.spawn() else { return };
+        let out = child.stdout.take().unwrap();
+        let err = child.stderr.take().unwrap();
+        let err_t = std::thread::spawn(move || {
+            use std::io::BufRead;
+            std::io::BufReader::new(err).lines().map_while(Result::ok).filter(|l| l.starts_with("ERROR")).collect::<Vec<_>>()
+        });
+        {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                let id = serde_json::from_str::<serde_json::Value>(&line).ok().and_then(|v| v.get("id").and_then(|i| i.as_str()).map(str::to_string)).unwrap_or("?".into());
+                let usable = source_from_info(&line).is_ok();
+                trace(format!("batch: {id} arrived at {} ms ({})", t.elapsed().as_millis(), if usable { "usable link" } else { "not usable" }));
+            }
+        }
+        let _ = child.wait();
+        let cpu = process_cpu_ms(&child);
+        let errors = err_t.join().unwrap_or_default();
+        trace(format!(
+            "batch of {} ({} real + 1 made up): {} ms total, CPU {} ms, {} error line(s): {}",
+            batch.len(),
+            batch.len() - 1,
+            t.elapsed().as_millis(),
+            cpu.map(|c| c.to_string()).unwrap_or("?".into()),
+            errors.len(),
+            errors.first().map(|e| e.chars().take(100).collect::<String>()).unwrap_or_default()
+        ));
     });
 }
 
