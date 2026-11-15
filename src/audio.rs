@@ -43,22 +43,49 @@ fn mark_pick() {
     *PICKED_AT.lock().unwrap() = Some(std::time::Instant::now());
 }
 
-/// One line in the playback log. Cheap: only called a handful of times per song.
+/// One line in the playback log. Cheap: a few lines per song, written by a logging
+/// thread (see `log_in_background`).
 pub fn trace(msg: &str) {
-    use std::io::Write;
     if cfg!(test) {
         return;
     }
     let since = PICKED_AT.lock().unwrap().map(|t| t.elapsed().as_millis()).unwrap_or(0);
-    let dir = crate::settings::data_dir().join("logs");
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("playback-debug.log");
-    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 512 * 1024) {
-        let _ = std::fs::remove_file(&path);
-    }
     let unix_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-        let _ = writeln!(f, "[{unix_ms}] +{since:>6} ms  {msg}");
+    log_in_background(crate::settings::data_dir().join("logs").join("playback-debug.log"), format!("[{unix_ms}] +{since:>6} ms  {msg}"));
+}
+
+/// Hands a log line to one logging thread, which writes it. The caller never touches the
+/// disk, so this is safe from the UI and audio threads (the first-sound line is written
+/// from the audio thread).
+pub fn log_in_background(path: std::path::PathBuf, line: String) {
+    static LOGGER: std::sync::OnceLock<std::sync::mpsc::Sender<(std::path::PathBuf, String)>> = std::sync::OnceLock::new();
+    let tx = LOGGER.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<(std::path::PathBuf, String)>();
+        std::thread::spawn(move || {
+            for (path, line) in rx {
+                append_log_line(&path, &line);
+            }
+        });
+        tx
+    });
+    let _ = tx.send((path, line));
+}
+
+/// Appends one line to a debug log: the whole line in a single write, one thread at a
+/// time (lines from different threads used to interleave mid-line). Starts the file over
+/// past 512 KB.
+pub fn append_log_line(path: &std::path::Path, line: &str) {
+    use std::io::Write;
+    static LOG_LOCK: Mutex<()> = Mutex::new(());
+    let _one_at_a_time = LOG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if std::fs::metadata(path).is_ok_and(|m| m.len() > 512 * 1024) {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = f.write_all(format!("{line}\n").as_bytes());
     }
 }
 
@@ -1451,6 +1478,30 @@ pub mod tests {
             println!("BENCH {file} per-connection 4 Mbit/s: whole song in {} ms", t0.elapsed().as_millis());
             drop(dec);
         }
+    }
+
+    #[test]
+    fn log_lines_from_many_threads_stay_whole() {
+        let path = std::env::temp_dir().join(format!("pulse-log-test-{}.log", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let threads: Vec<_> = (0..8)
+            .map(|t| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    for i in 0..200 {
+                        append_log_line(&path, &format!("[{t}] line {i} {}", "x".repeat(40)));
+                    }
+                })
+            })
+            .collect();
+        for th in threads {
+            th.join().unwrap();
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 1600);
+        assert!(lines.iter().all(|l| l.starts_with('[') && l.ends_with(&"x".repeat(40)) && l.matches('[').count() == 1));
+        let _ = std::fs::remove_file(&path);
     }
 
     fn source(url: String, codec: Codec) -> StreamSource {

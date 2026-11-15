@@ -959,6 +959,10 @@ fn group_menu(ui: &mut Ui, rows: &[usize], tracks: &[Track], cx: &TableCtx, ev: 
     }
 }
 
+/// How long the pointer rests on a song row before its audio link is looked up (seconds).
+/// Was 0.2; lower means more lookups for rows only passed over. See playback-debug.log.
+const HOVER_LOOKUP_DELAY: f64 = 0.12;
+
 #[allow(clippy::too_many_arguments)]
 fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks: &[Track], selected: &HashSet<usize>, cx: &TableCtx, ev: &mut Vec<TrackEvent>) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
@@ -997,9 +1001,10 @@ fn track_row(ui: &mut Ui, id: egui::Id, list: &str, i: usize, t: &Track, tracks:
         let (row, since) = ui.ctx().data(|d| d.get_temp::<(egui::Id, f64)>(key)).unwrap_or((egui::Id::NULL, now));
         if row != id {
             ui.ctx().data_mut(|d| d.insert_temp(key, (id, now)));
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(220));
-        } else if now - since > 0.2 {
-            // Sent while the pointer stays; the app starts it once.
+            ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(HOVER_LOOKUP_DELAY + 0.02));
+        } else if now - since > HOVER_LOOKUP_DELAY || resp.is_pointer_button_down_on() {
+            // Sent while the pointer stays (or the button is pressed, the start of a click
+            // or double-click); the app starts it once.
             ev.push(TrackEvent::Warm(t.clone()));
         }
     }

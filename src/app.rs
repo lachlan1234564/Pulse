@@ -515,10 +515,68 @@ fn offline_or_wait(track: &Track, downloaded: Option<&std::path::Path>, in_fligh
     }
     let started = Instant::now();
     while in_flight.lock().unwrap().contains(&track.id) && started.elapsed() < Duration::from_secs(12) {
-        std::thread::sleep(Duration::from_millis(40));
+        std::thread::sleep(Duration::from_millis(20));
     }
+    crate::audio::trace(&format!("link: waited {} ms for the lookup already running", started.elapsed().as_millis()));
     // A download may have finished while its link was being found.
     ready()
+}
+
+/// At most this many background link lookups (hovered rows, queue and list songs) run
+/// at once. A song you click, and the next song for gapless playback, never wait here.
+const BACKGROUND_LOOKUPS: usize = 2;
+
+/// Lets background lookups take turns. A hovered row goes ahead of queue and list songs.
+#[derive(Default)]
+pub struct LookupGate {
+    /// (lookups running, hovered rows waiting)
+    state: Mutex<(usize, usize)>,
+    free: std::sync::Condvar,
+}
+
+/// A place in the gate; leaving it (dropping) lets the next lookup in.
+pub struct GatePass<'a>(&'a LookupGate);
+
+impl LookupGate {
+    /// Waits for a free place. `None` if `still()` turns false while waiting (the job
+    /// isn't wanted any more). Only ever called on background threads.
+    pub fn enter(&self, hover: bool, still: impl Fn() -> bool) -> Option<GatePass<'_>> {
+        let mut st = self.state.lock().unwrap();
+        if hover {
+            st.1 += 1;
+        }
+        loop {
+            if !still() {
+                if hover {
+                    st.1 -= 1;
+                }
+                drop(st);
+                self.free.notify_all();
+                return None;
+            }
+            if st.0 < BACKGROUND_LOOKUPS && (hover || st.1 == 0) {
+                break;
+            }
+            st = self.free.wait_timeout(st, Duration::from_millis(100)).unwrap().0;
+        }
+        if hover {
+            st.1 -= 1;
+        }
+        st.0 += 1;
+        Some(GatePass(self))
+    }
+
+    #[cfg(test)]
+    fn running(&self) -> usize {
+        self.state.lock().unwrap().0
+    }
+}
+
+impl Drop for GatePass<'_> {
+    fn drop(&mut self) {
+        self.0.state.lock().unwrap().0 -= 1;
+        self.0.free.notify_all();
+    }
 }
 
 /// Loads one song ahead of time: its audio link, then (when played songs are kept) the
@@ -529,21 +587,39 @@ fn warm_one(
     prefetched: &Arc<Mutex<HashMap<String, (StreamSource, Instant)>>>,
     quality: crate::settings::Quality,
     failed: &Sender<String>,
-    linked: &dyn Fn(),
+    gate: &LookupGate,
+    in_flight: &Mutex<HashSet<String>>,
 ) {
+    // While its link is found the song counts as in flight (playing it waits for that);
+    // while it's downloaded ahead, as "dl:<id>" (playing it doesn't wait).
+    let dl = format!("dl:{}", t.id);
     let fresh = prefetched.lock().unwrap().get(&t.id).filter(|(_, at)| at.elapsed() < LINK_LIFETIME).map(|(s, _)| s.clone());
     let src = match fresh {
         Some(s) => s,
         None => {
-            let known = ids.lock().unwrap().get(&t.id).cloned();
-            match crate::youtube::resolve(t, known, quality, &|_| {}) {
-                Ok((src, video)) => {
-                    ids.lock().unwrap().insert(t.id.clone(), video);
-                    let mut p = prefetched.lock().unwrap();
-                    p.retain(|_, (_, at)| at.elapsed() < LINK_LIFETIME);
-                    p.insert(t.id.clone(), (src.clone(), Instant::now()));
-                    src
+            let Some(_pass) = gate.enter(false, || true) else { return };
+            // Clicked, hovered or prepared for gapless while this waited: leave it to that.
+            {
+                let mut f = in_flight.lock().unwrap();
+                if f.contains(&t.id) || prefetched.lock().unwrap().get(&t.id).is_some_and(|(_, at)| at.elapsed() < LINK_LIFETIME) {
+                    return;
                 }
+                // Only now does it count as in flight: a click never waits for a job that hasn't started.
+                f.insert(t.id.clone());
+            }
+            crate::audio::trace(&format!("ahead: lookup started for {}", t.id));
+            let known = ids.lock().unwrap().get(&t.id).cloned();
+            let found = crate::youtube::resolve(t, known, quality, &|_| {});
+            if let Ok((src, video)) = &found {
+                ids.lock().unwrap().insert(t.id.clone(), video.clone());
+                let mut p = prefetched.lock().unwrap();
+                p.retain(|_, (_, at)| at.elapsed() < LINK_LIFETIME);
+                p.insert(t.id.clone(), (src.clone(), Instant::now()));
+            }
+            // The link is ready (or failed): playing it no longer waits.
+            in_flight.lock().unwrap().remove(&t.id);
+            match found {
+                Ok((src, _)) => src,
                 Err(_) => {
                     let _ = failed.send(t.id.clone());
                     return;
@@ -551,13 +627,13 @@ fn warm_one(
             }
         }
     };
-    // The link is ready: playing it no longer waits for the rest (the download ahead).
-    linked();
     if !crate::audiocache::enabled() || crate::audiocache::has(&t.id) || src.url.starts_with("file://") {
         return;
     }
+    in_flight.lock().unwrap().insert(dl.clone());
     let ext = if src.codec == crate::audio::Codec::Mp3 { "mp3" } else { "m4a" };
     keep_ahead(&src, &crate::audiocache::path_for(&t.id, ext));
+    in_flight.lock().unwrap().remove(&dl);
 }
 
 /// Downloads a song into the kept-songs store at `dest`. False if it couldn't.
@@ -780,6 +856,10 @@ pub struct App {
     warm_queue: Arc<Mutex<VecDeque<Track>>>,
     /// True while the loading-ahead worker runs (there is only ever one).
     warm_busy: Arc<std::sync::atomic::AtomicBool>,
+    /// Background link lookups take turns here (see `LookupGate`).
+    lookup_gate: Arc<LookupGate>,
+    /// The latest hovered row waiting for a lookup; an older one waiting is dropped.
+    hover_wanted: Arc<Mutex<Option<String>>>,
     /// The list whose first songs were last loaded ahead (their ids), so it's done once per visit.
     warmed_list: Vec<String>,
     /// Songs whose lookup failed ahead of time (not retried in the background).
@@ -997,6 +1077,8 @@ impl App {
             prefetching: Arc::new(Mutex::new(HashSet::new())),
             warm_queue: Default::default(),
             warm_busy: Default::default(),
+            lookup_gate: Default::default(),
+            hover_wanted: Default::default(),
             warmed_list: vec![],
             prefetch_failed: HashSet::new(),
             prefetch_failed_tx,
@@ -3222,18 +3304,23 @@ impl App {
             // Already being found (the pointer rested on it, or it's next in the queue):
             // wait for that instead of starting over, unless audio is ready on disk.
             if let Some(src) = offline_or_wait(&track, offline.as_deref(), &in_flight) {
-                crate::audio::trace("link: on this PC (downloaded or kept), or found by the lookup already running");
+                crate::audio::trace("link: on this PC (downloaded or kept)");
                 return src;
             }
             if let Some((src, at)) = prefetched.lock().unwrap().remove(&track.id)
                 && at.elapsed() < LINK_LIFETIME
             {
-                crate::audio::trace(&format!("link: found ahead of time, {} s ago", at.elapsed().as_secs()));
+                crate::audio::trace(&format!("link: found ahead of time, ready {} ms before it was needed", at.elapsed().as_millis()));
                 return Ok(kept_for_next_time(src, &track));
             }
             let known = ids.lock().unwrap().get(&track.id).cloned();
-            crate::audio::trace(if known.is_some() { "link: asking yt-dlp (video already known, no search)" } else { "link: searching YouTube, then asking yt-dlp" });
-            match crate::youtube::resolve(&track, known, quality, status) {
+            crate::audio::trace(if known.is_some() { "link: asking yt-dlp now (video already known, no search)" } else { "link: searching YouTube now, then asking yt-dlp" });
+            // Straight away, ahead of all background work; marked in flight so a hover or
+            // queue job for the same song doesn't start a second lookup.
+            in_flight.lock().unwrap().insert(track.id.clone());
+            let found = crate::youtube::resolve(&track, known, quality, status);
+            in_flight.lock().unwrap().remove(&track.id);
+            match found {
                 Ok((src, video)) => {
                     ids.lock().unwrap().insert(track.id.clone(), video);
                     Ok(kept_for_next_time(src, &track))
@@ -3251,6 +3338,12 @@ impl App {
     /// ending) starts them right away.
     fn prefetch_next(&mut self) {
         let upcoming: Vec<Track> = self.queue.iter().skip(self.queue_pos + 1).take(2).cloned().collect();
+        // After skipping, songs that are no longer next (and not from the open list) leave
+        // the waiting line. Lookups already running finish and keep their links.
+        {
+            let keep: HashSet<&str> = upcoming.iter().map(|t| t.id.as_str()).chain(self.warmed_list.iter().map(String::as_str)).collect();
+            self.warm_queue.lock().unwrap().retain(|t| keep.contains(t.id.as_str()));
+        }
         self.warm(upcoming, true);
     }
 
@@ -3278,18 +3371,50 @@ impl App {
         if crate::perf::mode() == crate::perf::Mode::UltraLow || !self.needs_link(&t) {
             return;
         }
-        self.prefetching.lock().unwrap().insert(t.id.clone());
+        {
+            let mut w = self.hover_wanted.lock().unwrap();
+            if w.as_deref() == Some(t.id.as_str()) {
+                return; // already waiting for its turn
+            }
+            *w = Some(t.id.clone());
+        }
         let (ids, prefetched, in_flight) = (self.youtube_ids.clone(), self.prefetched.clone(), self.prefetching.clone());
+        let (gate, wanted) = (self.lookup_gate.clone(), self.hover_wanted.clone());
         let quality = self.saved.settings.stream_quality;
+        // Everything below runs on its own thread: the UI only set `hover_wanted`.
         std::thread::spawn(move || {
+            let still = || wanted.lock().unwrap().as_deref() == Some(t.id.as_str());
+            let Some(_pass) = gate.enter(true, still) else {
+                crate::audio::trace(&format!("hover: dropped {} (pointer moved on before its turn)", t.id));
+                return;
+            };
+            {
+                let mut w = wanted.lock().unwrap();
+                if w.as_deref() == Some(t.id.as_str()) {
+                    *w = None;
+                }
+            }
+            {
+                let mut f = in_flight.lock().unwrap();
+                let ready = prefetched.lock().unwrap().get(&t.id).is_some_and(|(_, at)| at.elapsed() < LINK_LIFETIME);
+                if f.contains(&t.id) || ready {
+                    crate::audio::trace(&format!("hover: skipped {} (already found or being found)", t.id));
+                    return;
+                }
+                f.insert(t.id.clone());
+            }
+            let started = Instant::now();
+            crate::audio::trace(&format!("hover: lookup started for {}", t.id));
             let known = ids.lock().unwrap().get(&t.id).cloned();
-            if let Ok((src, video)) = crate::youtube::resolve(&t, known, quality, &|_| {}) {
-                ids.lock().unwrap().insert(t.id.clone(), video);
+            let found = crate::youtube::resolve(&t, known, quality, &|_| {});
+            if let Ok((src, video)) = &found {
+                ids.lock().unwrap().insert(t.id.clone(), video.clone());
                 let mut p = prefetched.lock().unwrap();
                 p.retain(|_, (_, at)| at.elapsed() < LINK_LIFETIME);
-                p.insert(t.id.clone(), (src, Instant::now()));
+                p.insert(t.id.clone(), (src.clone(), Instant::now()));
             }
             in_flight.lock().unwrap().remove(&t.id);
+            crate::audio::trace(&format!("hover: {} for {} in {} ms", if found.is_ok() { "link ready" } else { "lookup failed" }, t.id, started.elapsed().as_millis()));
         });
     }
 
@@ -3347,6 +3472,7 @@ impl App {
         let in_flight = self.prefetching.clone();
         let failed = self.prefetch_failed_tx.clone();
         let quality = self.saved.settings.stream_quality;
+        let gate = self.lookup_gate.clone();
         std::thread::spawn(move || {
             loop {
                 let next = queue.lock().unwrap().pop_front();
@@ -3358,18 +3484,7 @@ impl App {
                     }
                     continue;
                 };
-                in_flight.lock().unwrap().insert(t.id.clone());
-                // While its link is found the song counts as in flight (playing it waits for
-                // that); while it's downloaded ahead, as "dl:<id>" (playing it doesn't wait).
-                let dl = format!("dl:{}", t.id);
-                warm_one(&t, &ids, &prefetched, quality, &failed, &|| {
-                    let mut f = in_flight.lock().unwrap();
-                    f.remove(&t.id);
-                    f.insert(dl.clone());
-                });
-                let mut f = in_flight.lock().unwrap();
-                f.remove(&t.id);
-                f.remove(&dl);
+                warm_one(&t, &ids, &prefetched, quality, &failed, &gate, &in_flight);
             }
         });
     }
@@ -4127,5 +4242,85 @@ mod rematch_tests {
         assert_eq!(ids.get("dz:1").map(String::as_str), Some("video"));
         assert_eq!(ids.get("imp:youtube:old").map(String::as_str), Some("video"));
         assert!(!ids.contains_key("dz:2"), "an unknown video isn't invented");
+    }
+}
+
+#[cfg(test)]
+mod lookup_gate_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    #[test]
+    fn no_more_than_two_background_lookups_at_once() {
+        let gate = Arc::new(LookupGate::default());
+        let (now, most) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let jobs: Vec<_> = (0..6)
+            .map(|i| {
+                let (gate, now, most) = (gate.clone(), now.clone(), most.clone());
+                std::thread::spawn(move || {
+                    let _p = gate.enter(i % 2 == 0, || true).unwrap();
+                    let n = now.fetch_add(1, Ordering::SeqCst) + 1;
+                    most.fetch_max(n, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(60));
+                    now.fetch_sub(1, Ordering::SeqCst);
+                })
+            })
+            .collect();
+        for j in jobs {
+            j.join().unwrap();
+        }
+        assert_eq!(most.load(Ordering::SeqCst), BACKGROUND_LOOKUPS);
+        assert_eq!(gate.running(), 0, "every place given back");
+    }
+
+    #[test]
+    fn a_hovered_row_goes_ahead_of_queue_songs() {
+        let gate = Arc::new(LookupGate::default());
+        // Both places taken.
+        let a = gate.enter(false, || true).unwrap();
+        let b = gate.enter(false, || true).unwrap();
+        let order = Arc::new(Mutex::new(vec![]));
+        let queue_job = {
+            let (gate, order) = (gate.clone(), order.clone());
+            std::thread::spawn(move || {
+                let _p = gate.enter(false, || true).unwrap();
+                order.lock().unwrap().push("queue");
+            })
+        };
+        std::thread::sleep(Duration::from_millis(50)); // the queue song waits first
+        let hover_job = {
+            let (gate, order) = (gate.clone(), order.clone());
+            std::thread::spawn(move || {
+                let _p = gate.enter(true, || true).unwrap();
+                order.lock().unwrap().push("hover");
+                std::thread::sleep(Duration::from_millis(50));
+            })
+        };
+        std::thread::sleep(Duration::from_millis(50));
+        drop(a); // one place frees up: the hovered row gets it
+        hover_job.join().unwrap();
+        drop(b);
+        queue_job.join().unwrap();
+        assert_eq!(*order.lock().unwrap(), vec!["hover", "queue"]);
+    }
+
+    #[test]
+    fn a_job_nobody_wants_any_more_leaves_the_line() {
+        let gate = Arc::new(LookupGate::default());
+        let _a = gate.enter(false, || true).unwrap();
+        let _b = gate.enter(false, || true).unwrap();
+        let wanted = Arc::new(AtomicBool::new(true));
+        let job = {
+            let (gate, wanted) = (gate.clone(), wanted.clone());
+            std::thread::spawn(move || gate.enter(true, || wanted.load(Ordering::SeqCst)).is_some())
+        };
+        std::thread::sleep(Duration::from_millis(30));
+        wanted.store(false, Ordering::SeqCst); // the pointer moved to another row
+        let t = Instant::now();
+        assert!(!job.join().unwrap(), "dropped, never ran");
+        assert!(t.elapsed() < Duration::from_millis(300), "leaves promptly");
+        // A queue song isn't held back by the hover that left.
+        drop(_a);
+        assert!(gate.enter(false, || true).is_some());
     }
 }

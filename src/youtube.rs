@@ -79,6 +79,7 @@ pub fn ensure_tools(status: &dyn Fn(&str)) -> Result<Tools, String> {
     let tools = installed_tools();
     if tools.ytdlp.is_file() && tools.deno.is_file() {
         update_in_background(&tools);
+        measure_startup_once(&tools);
         return Ok(tools);
     }
     std::fs::create_dir_all(&tools.dir).map_err(|e| format!("Couldn't create {} ({e})", tools.dir.display()))?;
@@ -823,6 +824,64 @@ fn source_from_info(json: &str) -> Result<StreamSource, String> {
     })
 }
 
+/// MEASUREMENT ONLY (for the playback log): how long yt-dlp and Deno take just to start,
+/// once per session, on a background thread. Tells how much of a ~1.8 s lookup is
+/// starting the programs (which looking up several songs in one run would save).
+fn measure_startup_once(tools: &Tools) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    let tools = tools.clone();
+    ONCE.call_once(move || {
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(5)); // not while the first song starts
+            for (name, program) in [("yt-dlp", &tools.ytdlp), ("Deno", &tools.deno)] {
+                let t = Instant::now();
+                let ok = run(program, &["--version".to_string()], Duration::from_secs(30)).is_ok();
+                crate::audio::trace(&format!("measure: {name} --version took {} ms ({})", t.elapsed().as_millis(), if ok { "ok" } else { "failed" }));
+            }
+        });
+    });
+}
+
+/// EXPERIMENT ONLY, off unless the file `logs\ytdlp-experiment.on` exists in the data
+/// folder. After a real lookup, asks yt-dlp for the same video with other YouTube
+/// clients and logs how long each took and what it returned. The song always plays from
+/// the normal lookup; nothing here changes what Pulse uses. At most once a minute.
+fn experiment_after(tools: &Tools, video_id: &str, quality: Quality) {
+    static LAST: Mutex<Option<Instant>> = Mutex::new(None);
+    if !crate::settings::data_dir().join("logs").join("ytdlp-experiment.on").is_file() {
+        return;
+    }
+    {
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if last.is_some_and(|t| t.elapsed() < Duration::from_secs(60)) {
+            return;
+        }
+        *last = Some(Instant::now());
+    }
+    let (tools, video_id) = (tools.clone(), video_id.to_string());
+    std::thread::spawn(move || {
+        for clients in ["android_vr", "tv_simply", "web_music", "ios"] {
+            let mut args = base_args(&tools);
+            args.extend([
+                "--no-playlist".into(),
+                "-J".into(),
+                "-f".into(),
+                quality.ytdlp_format().into(),
+                "--extractor-args".into(),
+                format!("youtube:player_client={clients}"),
+                format!("https://www.youtube.com/watch?v={video_id}"),
+            ]);
+            let t = Instant::now();
+            let result = run(&tools.ytdlp, &args, Duration::from_secs(60)).and_then(|out| source_from_info(&out));
+            let what = match &result {
+                Ok(src) => format!("ok, {:?}, {} KB", src.codec, src.content_length.unwrap_or(0) / 1024),
+                Err(e) => format!("failed: {}", e.chars().take(80).collect::<String>()),
+            };
+            crate::audio::trace(&format!("experiment: {video_id} with client {clients}: {} ms, {what}", t.elapsed().as_millis()));
+        }
+    });
+}
+
 /// Asks yt-dlp for the direct audio link of a YouTube video.
 pub fn audio_source(tools: &Tools, video_id: &str, quality: Quality) -> Result<StreamSource, String> {
     let mut args = base_args(tools);
@@ -839,7 +898,9 @@ pub fn audio_source(tools: &Tools, video_id: &str, quality: Quality) -> Result<S
     let t = Instant::now();
     let out = run(&tools.ytdlp, &args, Duration::from_secs(60));
     crate::audio::trace(&format!("yt-dlp: audio link for {video_id}: {} in {} ms", if out.is_ok() { "ok" } else { "failed" }, t.elapsed().as_millis()));
-    source_from_info(&out?)
+    let src = source_from_info(&out?)?;
+    experiment_after(tools, video_id, quality);
+    Ok(src)
 }
 
 /// Everything needed to play `track` from YouTube. `known_video` skips the search
