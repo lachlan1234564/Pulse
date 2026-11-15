@@ -21,9 +21,10 @@ const RETRY_MISSING_AFTER: u64 = 7 * 24 * 3600;
 /// - 3: LRCLIB, then AZLyrics
 const CACHE_VERSION: u32 = 3;
 
-/// TEMPORARY: a step-by-step log of each lyrics lookup, to find why the AZLyrics
-/// fallback doesn't show. Written to `<data folder>\logs\lyrics-debug.log`.
-/// Remove once the fallback is confirmed working.
+/// TEMPORARY: a step-by-step log of each lyrics lookup (cache, LRCLIB, AZLyrics), kept
+/// while the providers and cache are being tested. Written to
+/// `<data folder>\logs\lyrics-debug.log`. Only runs when lyrics are looked up, on the
+/// lyrics thread, never during playback. Remove or reduce once everything is stable.
 pub fn debug(msg: &str) {
     use std::io::Write;
     if cfg!(test) {
