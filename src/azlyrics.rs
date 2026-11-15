@@ -29,16 +29,39 @@ pub fn fetch(t: &Track) -> Result<Option<String>, String> {
             continue;
         }
         tried.push(url.clone());
+        crate::lyrics::debug(&format!("AZLyrics: GET {url}"));
         let html = match crate::net::api().get(&url).call() {
-            Ok(mut resp) => resp
-                .body_mut()
-                .read_to_string()
-                .map_err(|e| format!("Couldn't read the lyrics page ({e})"))?,
-            Err(ureq::Error::StatusCode(404)) => continue,
-            Err(e) => return Err(crate::net::friendly_error(e)),
+            Ok(mut resp) => {
+                let status = resp.status();
+                let body = resp.body_mut().read_to_string().map_err(|e| format!("Couldn't read the lyrics page ({e})"));
+                crate::lyrics::debug(&format!(
+                    "AZLyrics:   HTTP {status}, {} bytes, page title: {}",
+                    body.as_ref().map(|b| b.len()).unwrap_or(0),
+                    body.as_deref().ok().and_then(title_tag).unwrap_or("(none)".into())
+                ));
+                body?
+            }
+            Err(ureq::Error::StatusCode(404)) => {
+                crate::lyrics::debug("AZLyrics:   HTTP 404 (no page at this address)");
+                continue;
+            }
+            Err(e) => {
+                crate::lyrics::debug(&format!("AZLyrics:   request failed: {e}"));
+                return Err(crate::net::friendly_error(e));
+            }
         };
-        if let Some(lyrics) = lyrics_if_match(&html, artist, &title) {
-            return Ok(Some(lyrics));
+        let names = page_names(&html);
+        crate::lyrics::debug(&format!("AZLyrics:   page says: {names:?}"));
+        match lyrics_if_match(&html, artist, &title) {
+            Some(lyrics) => {
+                crate::lyrics::debug(&format!("AZLyrics:   matched {url}, {} lines extracted", lyrics.lines().count()));
+                return Ok(Some(lyrics));
+            }
+            None => crate::lyrics::debug(&format!(
+                "AZLyrics:   rejected (names match: {}, lyrics found: {})",
+                names.as_ref().is_some_and(|(a, t)| names_match(a, t, artist, &title)),
+                extract(&html).is_some()
+            )),
         }
     }
     Ok(None)
@@ -113,12 +136,21 @@ fn page_url(artist: &str, title: &str) -> Option<String> {
 /// The lyrics on `html`, but only if the page is for this artist and title.
 fn lyrics_if_match(html: &str, artist: &str, title: &str) -> Option<String> {
     let (page_artist, page_title) = page_names(html)?;
-    let artist_ok = similarity(&artist_slug(&page_artist), &artist_slug(artist)) >= MIN_MATCH;
-    let title_ok = similarity(&slug(&page_title), &slug(title)) >= MIN_MATCH;
-    if !(artist_ok && title_ok) {
+    if !names_match(&page_artist, &page_title, artist, title) {
         return None;
     }
     extract(html)
+}
+
+fn names_match(page_artist: &str, page_title: &str, artist: &str, title: &str) -> bool {
+    similarity(&artist_slug(page_artist), &artist_slug(artist)) >= MIN_MATCH && similarity(&slug(page_title), &slug(title)) >= MIN_MATCH
+}
+
+/// The page's <title>, for the debug log (a block page has a different one).
+fn title_tag(html: &str) -> Option<String> {
+    let i = html.find("<title>")? + 7;
+    let e = html[i..].find("</title>")?;
+    Some(decode(html[i..i + e].trim()))
 }
 
 /// The artist and title the page says it is for: `<b>Artist Lyrics</b>` then `<b>"Title"</b>`.
@@ -319,6 +351,17 @@ Fourth line&nbsp;ends<br>
             l,
             "First line & more\nSecond \"line\"\n\n[Chorus]\nThird line it's here\nFourth line ends"
         );
+    }
+
+    /// The layout of a real AZLyrics song page (Nov 2026), with the words replaced.
+    const REAL: &str = "<div class=\"div-share\"><h1>\"The Lady In Red\" lyrics</h1></div>\r\n\r\n<div class=\"lyricsh\">\r\n<h2><a href=\"//www.azlyrics.com/19/2hollis.html\"><b>2hollis Lyrics</b></a></h2>\r\n</div>\r\n <div class=\"ringtone\"> <span id=\"cf_text_top\"></span> </div> <b>\"The Lady In Red\"</b><br> <br> <div> <!-- Usage of azlyrics.com content by any third-party lyrics provider is prohibited by our licensing agreement. Sorry about that. -->\r\nLine 1 &amp; it&#039;s<br>\nLine 2<br>\n<br>\nLine 3<br>\nLine 4 <i>(yeah)</i><br>\nLine five is a longer one<br>\nLine six is a longer one too<br>\n</div>\r\n\r\n<br>\r\n<br>\r\n\r\n<!-- MxM banner -->\r\n<div class=\"noprint\" id=\"azmxmbanner\" style=\"display:none;\">\r\n<script>\r\nif (x) {}\r\n</script>\r\n</div>\r\n<b>\"Pirouette\"</b><div></div>";
+
+    #[test]
+    fn a_real_page_layout_is_read() {
+        assert_eq!(page_names(REAL), Some(("2hollis".into(), "The Lady In Red".into())));
+        let l = lyrics_if_match(REAL, "2hollis", "the lady in red").unwrap();
+        assert_eq!(l, "Line 1 & it's\nLine 2\n\nLine 3\nLine 4 (yeah)\nLine five is a longer one\nLine six is a longer one too");
+        assert_eq!(title_tag("<title>2hollis - The Lady In Red Lyrics | AZLyrics.com</title>").as_deref(), Some("2hollis - The Lady In Red Lyrics | AZLyrics.com"));
     }
 
     #[test]

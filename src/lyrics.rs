@@ -14,6 +14,21 @@ use std::path::PathBuf;
 const API: &str = "https://lrclib.net/api";
 /// "Not found" is asked again after a week (LRCLIB keeps adding songs).
 const RETRY_MISSING_AFTER: u64 = 7 * 24 * 3600;
+/// Which lookups a saved answer went through. 2 = LRCLIB, then AZLyrics. A "not found"
+/// saved by an older Pulse (LRCLIB only) is looked up again straight away.
+const CACHE_VERSION: u32 = 2;
+
+/// TEMPORARY: a step-by-step log of each lyrics lookup, to find why the AZLyrics
+/// fallback doesn't show. Written to `<data folder>\logs\lyrics-debug.log`.
+/// Remove once the fallback is confirmed working.
+pub fn debug(msg: &str) {
+    use std::io::Write;
+    let dir = crate::settings::data_dir().join("logs");
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("lyrics-debug.log")) {
+        let _ = writeln!(f, "[{}] {msg}", now());
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Lyrics {
@@ -62,6 +77,9 @@ struct Saved {
     /// after a week, in case it has added synced lyrics since.
     #[serde(default)]
     fallback: bool,
+    /// See CACHE_VERSION. Missing (0) in files saved before the fallback existed.
+    #[serde(default)]
+    v: u32,
 }
 
 /// What to remember about one lookup.
@@ -95,10 +113,45 @@ fn file_for(t: &Track) -> PathBuf {
 /// from AZLyrics. `Ok(None)` means neither has them.
 pub fn get(t: &Track) -> Result<Option<Lyrics>, String> {
     let path = file_for(t);
+    debug(&format!("--- lookup: \"{}\" by \"{}\" (id {}, {} s)", t.title, t.artist.name, t.id, t.duration));
     if let Some(saved) = load(&path, now()) {
+        debug(&format!("cache: using saved answer ({})", describe(&saved)));
         return Ok(saved);
     }
-    let (found, keep) = combine(fetch(t), || crate::azlyrics::fetch(t).map(|p| p.map(plain)))?;
+    let primary = fetch(t);
+    debug(&format!(
+        "LRCLIB: {}",
+        match &primary {
+            Ok(l) => describe(l),
+            Err(e) => format!("error: {e}"),
+        }
+    ));
+    let found = combine(primary, || {
+        debug("AZLyrics fallback: triggered");
+        let r = crate::azlyrics::fetch(t);
+        debug(&format!(
+            "AZLyrics: {}",
+            match &r {
+                Ok(Some(p)) => format!("found {} lines", p.lines().count()),
+                Ok(None) => "no confident match".into(),
+                Err(e) => format!("error: {e}"),
+            }
+        ));
+        r.map(|p| p.map(plain))
+    });
+    debug(&format!(
+        "result: {} ({})",
+        match &found {
+            Ok((l, _)) => describe(l),
+            Err(e) => format!("error: {e}"),
+        },
+        match &found {
+            Ok((_, Keep::Save { fallback: true })) => "saved, from AZLyrics",
+            Ok((_, Keep::Save { .. })) => "saved",
+            _ => "not saved",
+        }
+    ));
+    let (found, keep) = found?;
     if let Keep::Save { fallback } = keep {
         store(&path, &found, fallback);
     }
@@ -124,6 +177,16 @@ fn combine(primary: Result<Option<Lyrics>, String>, fallback: impl FnOnce() -> R
     }
 }
 
+fn describe(l: &Option<Lyrics>) -> String {
+    match l {
+        None => "none".into(),
+        Some(l) if !l.synced.is_empty() => format!("synced, {} lines", l.synced.len()),
+        Some(l) if l.plain.is_some() => "plain only".into(),
+        Some(l) if l.instrumental => "instrumental".into(),
+        Some(_) => "empty".into(),
+    }
+}
+
 fn plain(text: String) -> Lyrics {
     Lyrics { plain: Some(text), ..Default::default() }
 }
@@ -132,6 +195,10 @@ fn plain(text: String) -> Lyrics {
 /// fallback answer older than a week).
 fn load(path: &std::path::Path, now: u64) -> Option<Option<Lyrics>> {
     let saved: Saved = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    // A "not found" from before AZLyrics was added never asked AZLyrics: look again.
+    if saved.lyrics.is_none() && saved.v < CACHE_VERSION {
+        return None;
+    }
     let fresh = now.saturating_sub(saved.at) < RETRY_MISSING_AFTER;
     (fresh || (saved.lyrics.is_some() && !saved.fallback)).then_some(saved.lyrics)
 }
@@ -140,7 +207,7 @@ fn store(path: &std::path::Path, lyrics: &Option<Lyrics>, fallback: bool) {
     if let Some(d) = path.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    if let Ok(json) = serde_json::to_string(&Saved { at: now(), lyrics: lyrics.clone(), fallback }) {
+    if let Ok(json) = serde_json::to_string(&Saved { at: now(), lyrics: lyrics.clone(), fallback, v: CACHE_VERSION }) {
         let _ = std::fs::write(path, json);
     }
 }
@@ -277,6 +344,22 @@ mod tests {
         assert_eq!(load(&az, now()), Some(Some(plain("words".into()))));
         assert_eq!(load(&az, later), None);
         assert_eq!(load(&lrc, later), Some(Some(synced())));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn old_not_found_answers_are_looked_up_again() {
+        let dir = std::env::temp_dir().join(format!("pulse-lyrics-old-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let (old_miss, old_hit) = (dir.join("miss.json"), dir.join("hit.json"));
+        // Saved by Pulse 1.3.0: no "v", no "fallback".
+        std::fs::write(&old_miss, format!(r#"{{"at":{},"lyrics":null}}"#, now())).unwrap();
+        std::fs::write(&old_hit, format!(r#"{{"at":{},"lyrics":{{"synced":[[1.0,"a"]],"plain":null,"instrumental":false}}}}"#, now())).unwrap();
+        assert_eq!(load(&old_miss, now()), None);
+        assert_eq!(load(&old_hit, now()), Some(Some(synced())));
+        // A new "not found" (both providers asked) is kept for a week.
+        store(&old_miss, &None, false);
+        assert_eq!(load(&old_miss, now()), Some(None));
         let _ = std::fs::remove_dir_all(dir);
     }
 
