@@ -912,6 +912,9 @@ pub struct App {
     pub profile_editing: Option<crate::ui::ProfileForm>,
     /// The first-launch intro, or "Welcome back", while it shows.
     pub intro: Option<crate::ui::intro::Intro>,
+    /// Artist pages that are a small copy of another (Deezer lists some artists twice):
+    /// copy's Deezer id → main page's. Opening the copy opens the main page.
+    pub artist_alias: HashMap<String, String>,
     /// "Pick artists you like", while it's open.
     pub picker: Option<crate::ui::pick_artists::Picker>,
     /// First-time setup, while it's open (the first time Pulse opens on a computer).
@@ -1075,6 +1078,7 @@ impl App {
             views_rx,
             genre_rx: None,
             intro: None,
+            artist_alias: HashMap::new(),
             picker: None,
             setup: None,
             genre_failed: HashSet::new(),
@@ -1289,6 +1293,7 @@ impl App {
         // Your own public profile is part of your profile page (one page, not two).
         let route = match route {
             Route::User(name) if crate::account::session().is_some_and(|s| s.username == name) => Route::Profile,
+            Route::Artist(id) if self.artist_alias.contains_key(&id) => Route::Artist(self.artist_alias[&id].clone()),
             r => r,
         };
         if route == self.route {
@@ -1619,6 +1624,7 @@ impl App {
             }
         }
 
+        self.follow_artist_alias(ctx);
         if let Some(id) = self.audio.take_advanced() {
             self.advanced_to(&id, ctx);
         }
@@ -1681,6 +1687,19 @@ impl App {
         {
             self.toast = None;
         }
+    }
+
+    /// The artist page just loaded is a small copy of another (see `deezer::main_copy`):
+    /// show the main page in its place. The copy isn't kept in the history, so Back goes to
+    /// where you came from, not to the copy (which would open the main page again).
+    fn follow_artist_alias(&mut self, ctx: &egui::Context) {
+        let Route::Artist(id) = &self.route else { return };
+        let Some(Remote::Ready(page)) = self.cache.get(&format!("artist:{id}")) else { return };
+        let Page::Artist(p) = page.as_ref() else { return };
+        let Some(main) = p.same_as.clone().filter(|m| m != id) else { return };
+        self.artist_alias.insert(id.clone(), main.clone());
+        self.route = Route::Artist(main);
+        self.ensure_loaded(ctx);
     }
 
     pub fn submit_search(&mut self, ctx: &egui::Context) {

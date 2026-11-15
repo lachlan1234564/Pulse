@@ -1381,6 +1381,15 @@ fn album_grid_visits(app: &mut App, ui: &mut Ui, items: &[crate::app::Visit], ro
 
 fn artist_grid(app: &mut App, ui: &mut Ui, artists: &[ArtistInfo], rows: Option<usize>) {
     let ctx = ui.ctx().clone();
+    // Small copies of an artist's page (Deezer lists some artists twice) aren't shown once
+    // Pulse knows about them: opening one opens the main page anyway.
+    let kept: Vec<ArtistInfo>;
+    let artists = if artists.iter().any(|a| app.artist_alias.contains_key(&a.id)) {
+        kept = artists.iter().filter(|a| !app.artist_alias.contains_key(&a.id)).cloned().collect();
+        &kept[..]
+    } else {
+        artists
+    };
     let mut open = None;
     let mut radio = None;
     let mut preview = None;
