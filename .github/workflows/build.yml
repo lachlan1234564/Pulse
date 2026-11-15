@@ -74,7 +74,7 @@ jobs:
             $s = [Security.Cryptography.X509Certificates.X509Store]::new($store, "LocalMachine")
             $s.Open("ReadWrite"); $s.Add($cert); $s.Close()
           }
-          $exe = "target\\release\\pulse.exe"
+          $exe = "target\release\pulse.exe"
           & installer\Sign-Pulse.ps1 -ExePath $exe -CertDir $dir -PublicCerOut target\codesign\pulse-public.cer -Password $pw
           if ($LASTEXITCODE) { throw "Code signing failed" }
 
@@ -114,7 +114,7 @@ jobs:
             $s = [Security.Cryptography.X509Certificates.X509Store]::new($store, "LocalMachine")
             $s.Open("ReadWrite"); $s.Add($cert); $s.Close()
           }
-          $exe = (Get-ChildItem target\\installer\\PulseSetup-*.exe | Select-Object -First 1).FullName
+          $exe = (Get-ChildItem target\installer\PulseSetup-*.exe | Select-Object -First 1).FullName
           & installer\Sign-Pulse.ps1 -ExePath $exe -CertDir $dir -PublicCerOut target\codesign\pulse-public.cer -Password $pw
           if ($LASTEXITCODE) { throw "Code signing failed" }
 
