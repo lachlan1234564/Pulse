@@ -522,6 +522,69 @@ fn offline_or_wait(track: &Track, downloaded: Option<&std::path::Path>, in_fligh
     ready()
 }
 
+/// What playing a song from a list does.
+#[derive(Debug, PartialEq)]
+pub enum PlayAction {
+    /// It's already playing from this list: pause or resume.
+    Toggle,
+    /// The queue becomes this list. `restart`: start the song (false when that song is
+    /// already playing, from another list, so it carries on uninterrupted).
+    NewQueue { restart: bool },
+}
+
+/// `playing`: the song playing now (None if none, or not started). `queue_from`: where
+/// the queue came from. `here`: the page the song is played from.
+pub fn play_action(playing: Option<&str>, queue_from: Option<&Route>, here: &Route, wanted: &str) -> PlayAction {
+    match playing {
+        Some(id) if id == wanted && queue_from == Some(here) => PlayAction::Toggle,
+        Some(id) if id == wanted => PlayAction::NewQueue { restart: false },
+        _ => PlayAction::NewQueue { restart: true },
+    }
+}
+
+/// The queue for playing `tracks[index]`: the list itself, or with shuffle the chosen song
+/// first and the rest of the same list shuffled after it. Returns (queue, position, the
+/// unshuffled list to go back to when shuffle is turned off).
+pub fn build_queue(tracks: &[Track], index: usize, shuffle: bool, rng: &mut impl rand::Rng) -> (Vec<Track>, usize, Option<Vec<Track>>) {
+    if shuffle {
+        (shuffled_from(tracks, index, rng), 0, Some(tracks.to_vec()))
+    } else {
+        (tracks.to_vec(), index, None)
+    }
+}
+
+/// `list[pos]` first, then every other song of `list` in random order.
+fn shuffled_from(list: &[Track], pos: usize, rng: &mut impl rand::Rng) -> Vec<Track> {
+    use rand::seq::SliceRandom;
+    let mut rest = list.to_vec();
+    let current = rest.remove(pos);
+    rest.shuffle(rng);
+    rest.insert(0, current);
+    rest
+}
+
+/// The song after `pos` (for gapless and loading ahead): its position and the song.
+pub fn upcoming_in(queue: &[Track], pos: usize, repeat: Repeat) -> Option<(usize, Track)> {
+    match repeat {
+        Repeat::One => queue.get(pos).map(|t| (pos, t.clone())),
+        _ if pos + 1 < queue.len() => Some((pos + 1, queue[pos + 1].clone())),
+        Repeat::All if !queue.is_empty() => Some((0, queue[0].clone())),
+        _ => None,
+    }
+}
+
+/// Removes `id` from the songs still to come (not the one playing or those already played).
+fn drop_upcoming(queue: &mut Vec<Track>, pos: usize, unshuffled: &mut Option<Vec<Track>>, id: &str) {
+    let mut i = 0;
+    queue.retain(|t| {
+        i += 1;
+        i <= pos + 1 || t.id != id
+    });
+    if let Some(u) = unshuffled {
+        u.retain(|t| t.id != id || queue.get(pos).is_some_and(|c| c.id == id));
+    }
+}
+
 /// At most this many background link lookups (hovered rows, queue and list songs) run
 /// at once. A song you click, and the next song for gapless playback, never wait here.
 const BACKGROUND_LOOKUPS: usize = 2;
@@ -833,6 +896,9 @@ pub struct App {
     pub queue: Vec<Track>,
     pub queue_pos: usize,
     unshuffled: Option<Vec<Track>>,
+    /// The page the queue was started from (a playlist, an album…). The same song can be
+    /// in several lists, so "is this list playing?" goes by this, not by the song alone.
+    pub queue_from: Option<Route>,
     pub current: Option<Track>,
     /// The current track is shown but hasn't been streamed yet (restored from last session).
     pub needs_load: bool,
@@ -1067,6 +1133,7 @@ impl App {
             chart_genre: (0, "All genres".into()),
             queue_pos: 0, // set just below
             unshuffled: None,
+            queue_from: None,
             seek_preview: None,
             muted_volume: None,
             failures_in_row: 0,
@@ -1952,24 +2019,48 @@ impl App {
         self.current.is_some() && !self.needs_load && !self.audio.is_paused()
     }
 
-    /// Plays `tracks[index]` and queues up the rest of the list after it.
+    /// Plays `tracks[index]` and queues up the rest of the list after it. The queue becomes
+    /// this list (shuffled within it when shuffle is on); nothing from the list that was
+    /// playing before stays in it.
     pub fn play_list(&mut self, tracks: &[Track], index: usize, ctx: &egui::Context) {
         if tracks.is_empty() {
             return;
         }
         let index = index.min(tracks.len() - 1);
-        // Clicking the song that's already playing just pauses/resumes it.
-        if self.current.as_ref().is_some_and(|c| c.id == tracks[index].id) && !self.needs_load {
-            self.toggle_play(ctx);
-            return;
+        let playing = self.current.as_ref().filter(|_| !self.needs_load).map(|c| c.id.as_str());
+        match play_action(playing, self.queue_from.as_ref(), &self.route, &tracks[index].id) {
+            // Clicking the song that's already playing, in the list it's playing from,
+            // just pauses/resumes it.
+            PlayAction::Toggle => {
+                self.toggle_play(ctx);
+                return;
+            }
+            PlayAction::NewQueue { restart } => {
+                let (queue, pos, unshuffled) = build_queue(tracks, index, self.saved.shuffle, &mut rand::rng());
+                self.queue = queue;
+                self.queue_pos = pos;
+                self.unshuffled = unshuffled;
+                self.queue_from = Some(self.route.clone());
+                // A radio (or a pending autoplay lookup) belongs to the list before.
+                self.radio_pool.clear();
+                self.radio_seed = None;
+                self.autoplay_rx = None;
+                self.autoplay_for = None;
+                self.advance_when_autoplay_arrives = false;
+                if restart {
+                    self.start_current(ctx);
+                } else {
+                    // The same song, now playing from this list: it carries on, and the next
+                    // song (gapless) and the songs loaded ahead come from this list.
+                    self.told_next = None;
+                }
+            }
         }
-        self.queue = tracks.to_vec();
-        self.queue_pos = index;
-        self.unshuffled = None;
-        if self.saved.shuffle {
-            self.apply_shuffle();
-        }
-        self.start_current(ctx);
+    }
+
+    /// Is the song playing from this list (the page you're on)? For the Play buttons.
+    pub fn playing_from_here(&self, tracks: &[Track]) -> bool {
+        self.is_playing() && self.queue_from.as_ref() == Some(&self.route) && self.current.as_ref().is_some_and(|c| tracks.iter().any(|t| t.id == c.id))
     }
 
     fn start_current(&mut self, ctx: &egui::Context) {
@@ -1991,12 +2082,7 @@ impl App {
 
     /// The song that plays after the current one: its queue position and the song.
     fn upcoming(&self) -> Option<(usize, Track)> {
-        match self.saved.repeat {
-            Repeat::One => self.queue.get(self.queue_pos).map(|t| (self.queue_pos, t.clone())),
-            _ if self.queue_pos + 1 < self.queue.len() => Some((self.queue_pos + 1, self.queue[self.queue_pos + 1].clone())),
-            Repeat::All if !self.queue.is_empty() => Some((0, self.queue[0].clone())),
-            _ => None,
-        }
+        upcoming_in(&self.queue, self.queue_pos, self.saved.repeat)
     }
 
     /// Keeps the audio engine told which song is next (for gapless, crossfade, automix).
@@ -2161,14 +2247,11 @@ impl App {
 
     /// Keeps the current song first and shuffles everything else after it.
     fn apply_shuffle(&mut self) {
-        use rand::seq::SliceRandom;
         if self.queue.is_empty() {
             return;
         }
         self.unshuffled = Some(self.queue.clone());
-        let current = self.queue.remove(self.queue_pos);
-        self.queue.shuffle(&mut rand::rng());
-        self.queue.insert(0, current);
+        self.queue = shuffled_from(&self.queue, self.queue_pos, &mut rand::rng());
         self.queue_pos = 0;
     }
 
@@ -2458,6 +2541,11 @@ impl App {
         if let Some(p) = self.saved.playlists.get_mut(i) {
             p.tracks.retain(|t| t.id != id);
             p.added.remove(id);
+        }
+        // Playing from this playlist: the song leaves what's still to come too (the one
+        // playing now finishes).
+        if self.queue_from == Some(Route::Local(i)) {
+            drop_upcoming(&mut self.queue, self.queue_pos, &mut self.unshuffled, id);
         }
     }
 
@@ -2948,6 +3036,12 @@ impl App {
         fix(&mut self.route);
         self.back.iter_mut().for_each(fix);
         self.forward.iter_mut().for_each(fix);
+        // The queue keeps playing; it just no longer points at a playlist that moved or went.
+        if self.queue_from == Some(Route::Local(idx)) {
+            self.queue_from = None;
+        } else if let Some(r) = &mut self.queue_from {
+            fix(r);
+        }
         self.toast(&format!("Deleted “{}”", p.name), ctx);
     }
 
@@ -4322,5 +4416,138 @@ mod lookup_gate_tests {
         // A queue song isn't held back by the hover that left.
         drop(_a);
         assert!(gate.enter(false, || true).is_some());
+    }
+}
+
+#[cfg(test)]
+mod queue_isolation_tests {
+    use super::*;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    fn song(id: &str) -> Track {
+        Track { id: id.into(), title: id.into(), ..Default::default() }
+    }
+
+    /// Mercy Chill and Mercy Hype share some songs, like the real ones (17 shared).
+    fn lists() -> (Vec<Track>, Vec<Track>) {
+        let chill: Vec<Track> = (0..20).map(|i| song(&format!("chill{i}"))).chain((0..5).map(|i| song(&format!("both{i}")))).collect();
+        let hype: Vec<Track> = (0..5).map(|i| song(&format!("both{i}"))).chain((0..30).map(|i| song(&format!("hype{i}")))).collect();
+        (chill, hype)
+    }
+
+    fn ids(q: &[Track]) -> HashSet<String> {
+        q.iter().map(|t| t.id.clone()).collect()
+    }
+
+    const CHILL: Route = Route::Local(1);
+    const HYPE: Route = Route::Local(0);
+
+    #[test]
+    fn shuffle_stays_inside_the_playlist() {
+        let (chill, hype) = lists();
+        for seed in 0..200 {
+            let mut rng = StdRng::seed_from_u64(seed);
+            for list in [&chill, &hype] {
+                let start = seed as usize % list.len();
+                let (q, pos, unshuffled) = build_queue(list, start, true, &mut rng);
+                assert_eq!(ids(&q), ids(list), "same songs, nothing from the other playlist");
+                assert_eq!(q.len(), list.len());
+                assert_eq!((pos, q[0].id.as_str()), (0, list[start].id.as_str()), "the chosen song first");
+                assert_eq!(unshuffled.as_deref(), Some(list.as_slice()));
+            }
+        }
+    }
+
+    /// The bug: a song in both playlists is playing from Mercy Hype, and Mercy Chill is
+    /// started. The old check only looked at the song, so it paused and kept Hype's queue.
+    #[test]
+    fn starting_another_playlist_while_a_shared_song_plays_rebuilds_the_queue() {
+        let (chill, _) = lists();
+        let action = play_action(Some("both2"), Some(&HYPE), &CHILL, "both2");
+        assert_eq!(action, PlayAction::NewQueue { restart: false }, "the song carries on, the queue becomes Chill");
+        let i = chill.iter().position(|t| t.id == "both2").unwrap();
+        let (q, pos, _) = build_queue(&chill, i, true, &mut StdRng::seed_from_u64(7));
+        assert_eq!(ids(&q), ids(&chill));
+        assert_eq!(q[pos].id, "both2");
+        // In the list it's playing from, it's still just pause/resume.
+        assert_eq!(play_action(Some("both2"), Some(&CHILL), &CHILL, "both2"), PlayAction::Toggle);
+        // Another song, or nothing playing: start it.
+        assert_eq!(play_action(Some("both2"), Some(&CHILL), &CHILL, "chill3"), PlayAction::NewQueue { restart: true });
+        assert_eq!(play_action(None, Some(&CHILL), &CHILL, "both2"), PlayAction::NewQueue { restart: true });
+    }
+
+    #[test]
+    fn switching_back_and_forth_leaves_nothing_behind() {
+        let (chill, hype) = lists();
+        let mut rng = StdRng::seed_from_u64(3);
+        let mut queue = vec![];
+        for round in 0..10 {
+            let list = if round % 2 == 0 { &chill } else { &hype };
+            queue = build_queue(list, round % list.len(), round % 3 == 0, &mut rng).0;
+            assert_eq!(ids(&queue), ids(list), "round {round}");
+        }
+        assert_eq!(ids(&queue), ids(&hype));
+    }
+
+    #[test]
+    fn next_previous_and_gapless_stay_in_the_playlist() {
+        let (chill, _) = lists();
+        let (q, mut pos, _) = build_queue(&chill, 4, true, &mut StdRng::seed_from_u64(11));
+        let allowed = ids(&chill);
+        // Next all the way to the end, as gapless and Next would.
+        while let Some((next, t)) = upcoming_in(&q, pos, Repeat::Off) {
+            assert!(allowed.contains(&t.id));
+            // Loading ahead takes the next two.
+            assert!(q.iter().skip(pos + 1).take(2).all(|t| allowed.contains(&t.id)));
+            pos = next;
+        }
+        assert_eq!(pos, q.len() - 1);
+        // Previous walks back through the same songs.
+        while pos > 0 {
+            pos -= 1;
+            assert!(allowed.contains(&q[pos].id));
+        }
+        // Repeat all wraps within the list; repeat one stays.
+        assert_eq!(upcoming_in(&q, q.len() - 1, Repeat::All).unwrap().1.id, q[0].id);
+        assert_eq!(upcoming_in(&q, 3, Repeat::One).unwrap().0, 3);
+    }
+
+    #[test]
+    fn removing_a_song_from_the_playing_playlist_takes_it_out_of_whats_to_come() {
+        let (chill, _) = lists();
+        let (mut q, pos, mut unshuffled) = build_queue(&chill, 0, false, &mut StdRng::seed_from_u64(1));
+        let (pos, later, playing) = (pos + 2, q[5].id.clone(), q[2].id.clone());
+        drop_upcoming(&mut q, pos, &mut unshuffled, &later);
+        assert!(!q.iter().any(|t| t.id == later));
+        // The song playing now isn't cut off.
+        drop_upcoming(&mut q, pos, &mut unshuffled, &playing);
+        assert_eq!(q[pos].id, playing);
+        assert_eq!(q.len(), chill.len() - 1);
+        // With shuffle, the list to go back to loses it too.
+        let (mut q, pos, mut u) = build_queue(&chill, 0, true, &mut StdRng::seed_from_u64(2));
+        let later = q[4].id.clone();
+        drop_upcoming(&mut q, pos, &mut u, &later);
+        assert!(!u.unwrap().iter().any(|t| t.id == later));
+    }
+
+    #[test]
+    fn manually_queued_songs_stay_while_the_same_list_plays() {
+        let (chill, _) = lists();
+        let (mut q, pos, _) = build_queue(&chill, 0, false, &mut StdRng::seed_from_u64(1));
+        q.insert(pos + 1, song("my-pick")); // "Play next"
+        // Pressing the playing song again in the same list only pauses: the queue is kept.
+        assert_eq!(play_action(Some(q[pos].id.as_str()), Some(&CHILL), &CHILL, &q[pos].id), PlayAction::Toggle);
+        assert_eq!(upcoming_in(&q, pos, Repeat::Off).unwrap().1.id, "my-pick");
+    }
+
+    #[test]
+    fn whole_library_play_and_shuffle_work_as_before() {
+        let library: Vec<Track> = (0..1200).map(|i| song(&format!("lib{i}"))).collect();
+        let (q, pos, u) = build_queue(&library, 37, false, &mut StdRng::seed_from_u64(0));
+        assert_eq!((q.as_slice(), pos, u), (library.as_slice(), 37, None), "no shuffle: the list as it is");
+        let (q, pos, _) = build_queue(&library, 37, true, &mut StdRng::seed_from_u64(0));
+        assert_eq!((ids(&q), pos, q[0].id.as_str()), (ids(&library), 0, "lib37"));
+        assert_ne!(q, library, "actually shuffled");
     }
 }

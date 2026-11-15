@@ -1454,7 +1454,11 @@ fn shuffle_play(app: &mut App, tracks: &[Track], ctx: &egui::Context) {
     if !app.saved.shuffle {
         app.saved.shuffle = true;
     }
-    let start = rand::random_range(0..tracks.len().max(1));
+    let mut start = rand::random_range(0..tracks.len().max(1));
+    // Not the song already playing: that would only pause it.
+    if tracks.len() > 1 && app.current.as_ref().is_some_and(|c| c.id == tracks[start].id) {
+        start = (start + 1) % tracks.len();
+    }
     app.play_list(tracks, start, ctx);
 }
 
@@ -1926,7 +1930,7 @@ fn save_heart(ui: &mut Ui, liked: bool) -> egui::Response {
 fn action_row(app: &mut App, ui: &mut Ui, tracks: &[Track]) {
     let ctx = ui.ctx().clone();
     app.warm_list(tracks);
-    let playing_this = app.is_playing() && app.current.as_ref().is_some_and(|c| tracks.iter().any(|t| t.id == c.id));
+    let playing_this = app.playing_from_here(tracks);
     ui.horizontal(|ui| {
         if play_button(ui, 52.0, playing_this).clicked() {
             if playing_this {
@@ -2222,7 +2226,7 @@ fn pick_cover(app: &mut App, i: usize, ctx: &egui::Context) {
 /// The bar above a song list: play, shuffle, download · search, sort, more.
 fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<usize>, title: &str) {
     let ctx = ui.ctx().clone();
-    let playing_this = app.is_playing() && app.current.as_ref().is_some_and(|c| tracks.iter().any(|t| t.id == c.id));
+    let playing_this = app.playing_from_here(tracks);
     let view = crate::app::view_tracks(tracks, &app.list_view, None, &app.saved.album_genres);
     ui.horizontal(|ui| {
         ui.set_min_height(56.0);
