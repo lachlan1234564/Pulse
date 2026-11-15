@@ -240,7 +240,7 @@ r = await call("GET", "/fixes"); ok(r.status === 200 && Object.keys(r.data.fixes
   ok(!r.data.tracks.some((t) => t.isrc.startsWith("DE")), "never the namesake's songs");
   ok(r.data.tracks.some((t) => t.isrc === "USAAA2600003") && r.data.albums.length === 2, "follows TIDAL's next pages");
   r = await call("GET", "/artist-extra?artist=444&name=che&t=Nothing%20In%20Common");
-  ok(r.status === 200 && r.data.tidal === null && r.data.tracks.length === 0, "no shared titles: nothing added");
+  ok(r.status === 200 && r.data.tidal === null && r.data.tracks.length === 0 && /none shares a title/.test(r.data.why), "no shared titles: nothing added, and says why");
   const before = calls;
   r = await call("GET", "/artist-extra?artist=222&name=che&t=Matches");
   ok(r.data.tidal === null && calls === before, "notidal skips the TIDAL check");

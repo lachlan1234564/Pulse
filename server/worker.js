@@ -855,7 +855,7 @@ async function artistExtra(c) {
   if (skipTidal || !name || !titles.size || !c.env.TIDAL_CLIENT_ID) return c.reply(200, out);
 
   // The TIDAL part is the same for everyone, so it's kept for a day.
-  const cacheKey = new Request(`https://pulse-cache/artist-extra/v2/${country}/${artist}`);
+  const cacheKey = new Request(`https://pulse-cache/artist-extra/v3/${country}/${artist}`);
   const cache = typeof caches !== "undefined" ? caches.default : null;
   const hit = cache && (await cache.match(cacheKey));
   if (hit) return c.reply(200, { ...out, ...(await hit.json()) });
@@ -870,32 +870,37 @@ async function artistExtra(c) {
     if (!(e instanceof Reply)) console.error("artist-extra", e);
     return c.reply(200, out);
   }
-  if (cache) await cache.put(cacheKey, new Response(JSON.stringify(found), { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=86400" } }));
+  // A match is kept for a day; "no match" only for an hour, so it's soon asked again.
+  const keep = found.tidal ? 86400 : 3600;
+  if (cache) await cache.put(cacheKey, new Response(JSON.stringify(found), { headers: { "Content-Type": "application/json", "Cache-Control": `public, max-age=${keep}` } }));
   return c.reply(200, { ...out, ...found });
 }
 
 async function tidalArtistMatch(env, name, titles, country) {
-  const none = { tidal: null, tracks: [], albums: [] };
+  // `why`: when nothing matched, the reason (handy when checking an artist by hand).
+  const none = (why) => ({ tidal: null, tracks: [], albums: [], why });
   const search = await tidalGet(env, `/searchResults?filter[query]=${encodeURIComponent(name)}&countryCode=${country}&include=artists`);
   const result = Array.isArray(search.data) ? search.data[0] : search.data;
   const ids = (result?.relationships?.artists?.data || []).map((d) => d.id).slice(0, 10);
-  if (!ids.length) return none;
+  if (!ids.length) return none("TIDAL found no artists for that name");
   // Names: from the search reply when it has them, else asked for.
   let named = (search.included || []).filter((x) => x.type === "artists");
   if (!named.length) named = (await tidalGet(env, `/artists?countryCode=${country}&${ids.map((id) => `filter[id]=${encodeURIComponent(id)}`).join("&")}`)).data || [];
   const want = normTitle(name);
   const candidates = ids.filter((id) => named.some((a) => a.id === id && normTitle(a.attributes?.name) === want)).slice(0, 5);
+  if (!candidates.length) return none(`no TIDAL artist named exactly "${name}"`);
+  const popularity = (id) => named.find((a) => a.id === id)?.attributes?.popularity || 0;
 
   let best = null;
   for (const id of candidates) {
     // The first page of each is enough to tell namesakes apart.
     const [tracks, albums] = await Promise.all([tidalArtistItems(env, id, "tracks", country), tidalArtistItems(env, id, "albums", country)]);
     const shared = new Set([...tracks, ...albums].map((x) => normTitle(x.title)).filter((t) => titles.has(t))).size;
-    if (shared > 0 && (!best || shared > best.shared)) best = { id, shared, tracks, albums, tie: false };
-    else if (best && shared === best.shared) best.tie = true;
+    // Most shared titles wins. Equal: TIDAL often lists one artist twice, so the more
+    // popular entry is used (a namesake sharing as many titles is very unlikely).
+    if (shared > 0 && (!best || shared > best.shared || (shared === best.shared && popularity(id) > popularity(best.id)))) best = { id, shared, tracks, albums };
   }
-  // No shared titles, or two namesakes equally likely: better to add nothing.
-  if (!best || best.tie) return none;
+  if (!best) return none(`${candidates.length} TIDAL artist(s) named "${name}", but none shares a title with the Deezer page`);
   // More of the one that matched, so older releases count too.
   [best.tracks, best.albums] = await Promise.all([tidalArtistItems(env, best.id, "tracks", country, 2), tidalArtistItems(env, best.id, "albums", country, 3)]);
   return {
