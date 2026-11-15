@@ -45,7 +45,7 @@ written in Rust and drawn with DirectX 12, so it stays light enough to leave ope
 | While playing music | Pulse | Other popular music apps |
 | --- | --- | --- |
 | CPU | about 1% | up to 6% |
-| Memory | about 250 MB | 400 MB or more |
+| Memory | about 150 MB | 400 MB or more |
 | Account needed | no | usually |
 | Ads | none | often, on free plans |
 
