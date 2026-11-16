@@ -916,7 +916,20 @@ pub fn search(q: &str) -> Result<SearchResults, String> {
         let (title, channel) = crate::youtube::video_title(&video)?;
         return search(&song_from_video_title(&title, &channel));
     }
-    let r = search_once(q)?;
+    let mut r = search_once(q)?;
+    // Deezer's song search misses some songs entirely ("head in the clouds the beths" finds
+    // nothing, though the song is on The Beths' page). When no song matches every word
+    // typed, look for an artist named in the search and their songs with the rest as title.
+    if !r.tracks.iter().any(|t| matches_all_words(q, t))
+        && let Some((artist, songs)) = artist_and_song_in(q)
+    {
+        let have: std::collections::HashSet<String> = r.tracks.iter().map(|t| t.id.clone()).collect();
+        let mut front: Vec<Track> = songs.into_iter().filter(|t| !have.contains(&t.id)).collect();
+        front.append(&mut r.tracks);
+        r.tracks = front;
+        r.artists.retain(|a| a.id != artist.id);
+        r.artists.insert(0, artist);
+    }
     if !r.is_empty() {
         return Ok(r);
     }
@@ -943,6 +956,62 @@ pub fn search(q: &str) -> Result<SearchResults, String> {
         Some((shorter, _)) if !shorter.trim().is_empty() => search_once(shorter),
         _ => Ok(r),
     }
+}
+
+/// Every word typed is in the song's title or artists.
+fn matches_all_words(q: &str, t: &Track) -> bool {
+    let typed = crate::youtube::words(q);
+    let text = crate::youtube::words(&format!("{} {}", t.title, t.all_artists()));
+    let typed: Vec<&str> = typed.split_whitespace().collect();
+    !typed.is_empty() && typed.iter().all(|w| text.contains(&format!(" {w} ")))
+}
+
+/// The ways a search could be "song words + artist name" or "artist name + song words":
+/// (artist part, song part), longest artist part first, up to three words of artist.
+fn artist_song_splits(q: &str) -> Vec<(String, String)> {
+    let w: Vec<&str> = q.split_whitespace().collect();
+    let mut out = vec![];
+    for k in (1..=3.min(w.len().saturating_sub(1))).rev() {
+        out.push((w[w.len() - k..].join(" "), w[..w.len() - k].join(" ")));
+        out.push((w[..k].join(" "), w[k..].join(" ")));
+    }
+    out
+}
+
+/// Is `title` the song the search asked for (`wanted`, whatever the version)?
+fn same_song_title(title: &str, wanted: &str) -> bool {
+    use crate::youtube::{core_title, norm};
+    let title = core_title(title);
+    // "Head In The Clouds (Live)", "… - Remastered": the part before the version.
+    let cut = [" (", " [", " - "].iter().filter_map(|m| title.find(m)).min().unwrap_or(title.len());
+    let w = norm(wanted);
+    !w.is_empty() && (norm(&title) == w || norm(&title[..cut]) == w)
+}
+
+/// An artist named exactly in the search, and their songs whose title is the rest of it.
+/// Asks Deezer for each possible artist name at once (at most six small requests).
+fn artist_and_song_in(q: &str) -> Option<(ArtistInfo, Vec<Track>)> {
+    let splits = artist_song_splits(q);
+    let found: Vec<Option<ArtistInfo>> = std::thread::scope(|s| {
+        let jobs: Vec<_> = splits
+            .iter()
+            .map(|(artist, _)| {
+                s.spawn(move || {
+                    let list = get::<List<DzArtist>>("/search/artist", &[("q", artist.as_str()), ("limit", "3")]).ok()?;
+                    list.data.into_iter().map(ArtistInfo::from).find(|a| name_match(&a.name, artist) == 3)
+                })
+            })
+            .collect();
+        jobs.into_iter().map(|j| j.join().ok().flatten()).collect()
+    });
+    for ((_, song), artist) in splits.iter().zip(found) {
+        let Some(artist) = artist else { continue };
+        let songs: Vec<Track> = artist_top(&artist.id, 100).unwrap_or_default().into_iter().filter(|t| same_song_title(&t.title, song)).collect();
+        if !songs.is_empty() {
+            return Some((artist, songs));
+        }
+    }
+    None
 }
 
 /// "Artist - Song (Official Video)" → "Artist Song"; "Song [Lyrics]" by a channel →
@@ -1892,7 +1961,34 @@ mod main_copy_tests {
 
 #[cfg(test)]
 mod video_title_tests {
-    use super::song_from_video_title;
+    use super::*;
+
+    #[test]
+    fn searches_split_into_artist_and_song() {
+        let s = artist_song_splits("head in the clouds the beths");
+        assert_eq!(s[0], ("clouds the beths".to_string(), "head in the".to_string()), "longest artist part first");
+        assert!(s.contains(&("the beths".to_string(), "head in the clouds".to_string())));
+        assert!(artist_song_splits("the beths head in the clouds").contains(&("the beths".to_string(), "head in the clouds".to_string())));
+        assert!(artist_song_splits("adele").is_empty(), "one word: nothing to split");
+    }
+
+    #[test]
+    fn the_asked_song_whatever_the_version() {
+        assert!(same_song_title("Head In The Clouds", "head in the clouds"));
+        assert!(same_song_title("Head In The Clouds (Live)", "head in the clouds"));
+        assert!(!same_song_title("Head", "head in the clouds"));
+        assert!(!same_song_title("Clouds", "head in the clouds"));
+        assert!(!same_song_title("Head In The Clouds Again", "head in the clouds"), "only the whole title or a version of it");
+    }
+
+    #[test]
+    fn a_song_matches_when_every_word_is_in_it() {
+        let mut t = Track { title: "Head In The Clouds".into(), ..Default::default() };
+        t.artist.name = "The Beths".into();
+        assert!(matches_all_words("head in the clouds the beths", &t));
+        t.artist.name = "Eben".into();
+        assert!(!matches_all_words("head in the clouds the beths", &t));
+    }
 
     #[test]
     fn video_titles_become_artist_and_song() {
