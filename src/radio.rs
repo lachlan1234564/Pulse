@@ -50,11 +50,18 @@ pub struct RadioItem {
     pub kind: Kind,
 }
 
-/// Songs not to pick: what was just played and what's already queued.
+/// What the listener just heard and likes, all from what Pulse already keeps (no new
+/// tracking): songs not to pick (just played, already queued), artists heard in the last
+/// songs (so they don't come straight back), and artists they like (liked songs, saved
+/// in playlists, followed, played often).
 #[derive(Default)]
 pub struct Avoid {
     ids: HashSet<String>,
     songs: HashSet<String>,
+    /// Artist → times in the last songs played.
+    heard: HashMap<String, u32>,
+    /// Artist → how much they're liked (more is stronger).
+    liked: HashMap<String, u32>,
 }
 
 impl Avoid {
@@ -65,7 +72,31 @@ impl Avoid {
     pub fn contains(&self, t: &Track) -> bool {
         self.ids.contains(&t.id) || self.songs.contains(&song_key(t))
     }
+    /// A song among the last few played: its artist rests for a while.
+    pub fn heard(&mut self, t: &Track) {
+        *self.heard.entry(artist_key(t)).or_default() += 1;
+    }
+    /// An artist the listener likes, by name; `weight` adds up over calls.
+    pub fn like(&mut self, artist_name: &str, weight: u32) {
+        let k = norm(artist_name);
+        if !k.is_empty() {
+            *self.liked.entry(k).or_default() += weight;
+        }
+    }
+    fn likes(&self, p: &Pick) -> bool {
+        self.liked.get(&artist_key(&p.track)).is_some_and(|w| *w >= LIKED)
+    }
+    fn knows(&self, p: &Pick) -> bool {
+        let a = artist_key(&p.track);
+        self.liked.contains_key(&a) || self.heard.contains_key(&a)
+    }
 }
+
+/// How much liking makes an artist "one you like": a followed artist, or two liked or
+/// saved songs, or a few plays.
+const LIKED: u32 = 2;
+/// The liking a followed artist counts for (enough on its own).
+pub const FOLLOWED: u32 = LIKED;
 
 /// The same song whatever the version: "Get Lucky (Radio Edit - feat. …)" by Daft Punk
 /// and "Get Lucky" by Daft Punk share one key.
@@ -111,7 +142,7 @@ pub fn for_song(seed: &Track, video: Option<String>, avoid: &Avoid) -> Vec<Pick>
     if picks.len() + extra.len() < 12 {
         extra.extend(deezer_radio(seed).into_iter().map(|track| Pick { track, video: None }));
     }
-    tidy(seed, close_first(picks, extra, &close, &artist_key(seed)), avoid)
+    tidy(seed, close_first(picks, extra, &close, &artist_key(seed), avoid), avoid)
 }
 
 /// Artists whose fans also play the seed's artist, most alike first.
@@ -124,9 +155,17 @@ fn similar_artists(seed: &Track) -> Vec<deezer::ArtistInfo> {
 /// (`close`: the radio's own picks taking turns with `extra`, their best-known songs), one by
 /// the artist you picked (`seed_artist`), and one from further afield in the radio. Whatever
 /// runs out, the others fill its places.
-fn close_first(radio: Vec<Pick>, extra: Vec<Pick>, close: &HashSet<String>, seed_artist: &str) -> Vec<Pick> {
+///
+/// Within that, the listener's taste (`me`): among the artists like the one you picked,
+/// ones you like take turns with ones you don't know yet (yours first), and the song from
+/// further afield is someone new to you when the radio has one, for discovering.
+fn close_first(radio: Vec<Pick>, extra: Vec<Pick>, close: &HashSet<String>, seed_artist: &str, me: &Avoid) -> Vec<Pick> {
     let (own, rest): (Vec<Pick>, Vec<Pick>) = radio.into_iter().partition(|p| artist_key(&p.track) == seed_artist);
     let (near, far): (Vec<Pick>, Vec<Pick>) = rest.into_iter().partition(|p| close.contains(&artist_key(&p.track)));
+    let (liked, other): (Vec<Pick>, Vec<Pick>) = near.into_iter().partition(|p| me.likes(p));
+    let near = take_turns(liked, other);
+    let (new, known): (Vec<Pick>, Vec<Pick>) = far.into_iter().partition(|p| !me.knows(p));
+    let far: Vec<Pick> = new.into_iter().chain(known).collect();
     let (mut near, mut extra, mut own, mut far) = (near.into_iter(), extra.into_iter(), own.into_iter(), far.into_iter());
     let mut out = vec![];
     for turn in 0.. {
@@ -142,6 +181,18 @@ fn close_first(radio: Vec<Pick>, extra: Vec<Pick>, close: &HashSet<String>, seed
         }
     }
     out
+}
+
+/// `a`, `b`, `a`, `b`… keeping each list's order; the rest of the longer one at the end.
+fn take_turns(a: Vec<Pick>, b: Vec<Pick>) -> Vec<Pick> {
+    let (mut a, mut b) = (a.into_iter(), b.into_iter());
+    let mut out = vec![];
+    loop {
+        match (a.next(), b.next()) {
+            (None, None) => break out,
+            (x, y) => out.extend(x.into_iter().chain(y)),
+        }
+    }
 }
 
 // ---------------------------------------------------------------- YouTube Music's radio
@@ -332,13 +383,14 @@ pub fn tidy(seed: &Track, picks: Vec<Pick>, avoid: &Avoid) -> Vec<Pick> {
         })
         .collect();
     // A few songs per artist. The artist you picked comes back now and then (about one song
-    // in eight), but autoplay is for hearing other artists like them.
+    // in eight), but autoplay is for hearing other artists like them. Another artist heard
+    // in the last songs gets one song at most, or none if heard twice already.
     let seed_cap = (kept.len() / 8).clamp(2, 4);
     let kept: Vec<Pick> = kept
         .into_iter()
         .filter(|p| {
             let a = artist_key(&p.track);
-            let cap = if a == seed_artist { seed_cap } else { 2 };
+            let cap = if a == seed_artist { seed_cap } else { 2u32.saturating_sub(avoid.heard.get(&a).copied().unwrap_or(0)) as usize };
             let n = per_artist.entry(a).or_default();
             *n += 1;
             *n <= cap
@@ -522,9 +574,57 @@ mod tests {
         let close: HashSet<String> = ["a", "b", "e"].iter().map(|s| s.to_string()).collect();
         let radio = picks(&[("x1", "Pop hit", "X"), ("a1", "Song a", "A"), ("s1", "Song s", "S"), ("y1", "Other hit", "Y"), ("b1", "Song b", "B"), ("x2", "Pop hit 2", "X")]);
         let extra = picks(&[("e1", "Song e1", "E"), ("e2", "Song e2", "E")]);
-        let order: Vec<String> = close_first(radio, extra, &close, "s").into_iter().map(|p| p.track.id).collect();
+        let order: Vec<String> = close_first(radio, extra, &close, "s", &Avoid::default()).into_iter().map(|p| p.track.id).collect();
         // Like-S, like-S, S, like-S, like-S, then one from further afield; the rest after.
         assert_eq!(order, ["a1", "e1", "s1", "b1", "e2", "x1", "y1", "x2"]);
+    }
+
+    #[test]
+    fn artists_you_like_take_turns_with_new_ones() {
+        // A, B, C, D are all like S. You like C and D (liked songs, follows…); A and B are new to you.
+        let close: HashSet<String> = ["a", "b", "c", "d"].iter().map(|s| s.to_string()).collect();
+        let radio = picks(&[("a1", "Song a", "A"), ("b1", "Song b", "B"), ("c1", "Song c", "C"), ("d1", "Song d", "D")]);
+        let mut me = Avoid::default();
+        me.like("C", FOLLOWED);
+        me.like("D", 1);
+        me.like("D", 1);
+        me.like("A", 1); // one liked song: not enough to count as a favourite
+        let order: Vec<String> = close_first(radio, vec![], &close, "s", &me).into_iter().map(|p| p.track.id).collect();
+        assert_eq!(order, ["c1", "a1", "d1", "b1"], "yours first, then a new one, in turns");
+    }
+
+    #[test]
+    fn the_song_from_further_afield_is_someone_new_to_you() {
+        let close: HashSet<String> = ["a"].iter().map(|s| s.to_string()).collect();
+        // From further afield: X you play a lot, Y you heard just now, Z you've never heard.
+        let radio = picks(&[("x1", "Hit x", "X"), ("y1", "Hit y", "Y"), ("z1", "Hit z", "Z"), ("a1", "Song a", "A")]);
+        let mut me = Avoid::default();
+        me.like("X", 5);
+        me.heard(&song("y0", "Older y", "Y"));
+        let order: Vec<String> = close_first(radio, vec![], &close, "s", &me).into_iter().map(|p| p.track.id).collect();
+        assert_eq!(order[1], "z1", "the new artist gets the further-afield turn: {order:?}");
+        assert_eq!(order.len(), 4, "the others still play, later");
+    }
+
+    #[test]
+    fn artists_you_just_heard_dont_come_straight_back() {
+        let seed = song("s0", "Seed", "S");
+        let mut me = Avoid::default();
+        me.heard(&song("o1", "Old a", "A")); // A once in the last songs: one more at most
+        me.heard(&song("o2", "Old b", "B"));
+        me.heard(&song("o3", "Old b 2", "B")); // B twice: not now
+        let out = tidy(
+            &seed,
+            picks(&[("a1", "A one", "A"), ("c1", "C one", "C"), ("a2", "A two", "A"), ("b1", "B one", "B"), ("c2", "C two", "C"), ("d1", "D one", "D")]),
+            &me,
+        );
+        let ids: Vec<&str> = out.iter().map(|p| p.track.id.as_str()).collect();
+        assert_eq!(ids.iter().filter(|i| i.starts_with('a')).count(), 1);
+        assert!(!ids.contains(&"b1"));
+        assert_eq!(ids.iter().filter(|i| i.starts_with('c')).count(), 2, "artists not heard lately keep two");
+        // Without that history, everything is as before.
+        let before = tidy(&seed, picks(&[("a1", "A one", "A"), ("a2", "A two", "A"), ("b1", "B one", "B"), ("c1", "C one", "C")]), &Avoid::default());
+        assert_eq!(before.len(), 4);
     }
 
     #[test]

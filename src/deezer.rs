@@ -911,9 +911,23 @@ pub fn rank_songs(q: &str, list: Vec<Track>) -> Vec<Track> {
 }
 
 pub fn search(q: &str) -> Result<SearchResults, String> {
+    // A pasted YouTube video link: search for the song in the video's title.
+    if let Some(video) = crate::youtube::video_id_in_link(q) {
+        let (title, channel) = crate::youtube::video_title(&video)?;
+        return search(&song_from_video_title(&title, &channel));
+    }
     let r = search_once(q)?;
     if !r.is_empty() {
         return Ok(r);
+    }
+    // A video title ("The Beths - Head In The Clouds (Official Visualizer)"): Deezer
+    // doesn't know "(Official Visualizer)" or the dash, so search for "artist song".
+    let song = song_from_video_title(q, "");
+    if song != q && !song.is_empty() {
+        let r = search_once(&song)?;
+        if !r.is_empty() {
+            return Ok(r);
+        }
     }
     // Nothing found: try again more loosely (no punctuation, then without the last word,
     // which is often half-typed or misspelled).
@@ -929,6 +943,13 @@ pub fn search(q: &str) -> Result<SearchResults, String> {
         Some((shorter, _)) if !shorter.trim().is_empty() => search_once(shorter),
         _ => Ok(r),
     }
+}
+
+/// "Artist - Song (Official Video)" → "Artist Song"; "Song [Lyrics]" by a channel →
+/// "Channel Song". The words Deezer would search for.
+pub fn song_from_video_title(title: &str, channel: &str) -> String {
+    let (artist, song) = crate::import::split_video_title(title, channel);
+    [artist.as_str(), song.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(" ")
 }
 
 /// Songs, artists, albums and playlists, asked for all at once.
@@ -1866,5 +1887,21 @@ mod main_copy_tests {
         // Split between several namesakes: no clear main page.
         let mixed: Vec<_> = (0..6).map(|i| credit(&[(if i % 2 == 0 { "7" } else { "8" }, "Che")])).collect();
         assert_eq!(main_copy(&me, 60, 2, &mixed), None);
+    }
+}
+
+#[cfg(test)]
+mod video_title_tests {
+    use super::song_from_video_title;
+
+    #[test]
+    fn video_titles_become_artist_and_song() {
+        assert_eq!(song_from_video_title("The Beths - Head In The Clouds (Official Visualizer)", ""), "The Beths Head In The Clouds");
+        assert_eq!(song_from_video_title("Head In The Clouds [Official Audio]", "The Beths - Topic"), "The Beths Head In The Clouds");
+        assert_eq!(song_from_video_title("Head In The Clouds", "TheBethsVEVO"), "TheBeths Head In The Clouds");
+        // A normal search stays as typed (so the fallback isn't tried for nothing).
+        assert_eq!(song_from_video_title("head in the clouds", ""), "head in the clouds");
+        // Brackets that are part of the song name stay.
+        assert_eq!(song_from_video_title("Artist - Song (feat. Someone)", ""), "Artist Song (feat. Someone)");
     }
 }

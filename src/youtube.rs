@@ -842,6 +842,33 @@ fn measure_startup_once(tools: &Tools) {
     });
 }
 
+/// The video id in a YouTube link (youtube.com/watch?v=…, music.youtube.com, youtu.be/…,
+/// /shorts/…), if `text` is one. Ids are 11 letters, digits, `-` or `_`.
+pub fn video_id_in_link(text: &str) -> Option<String> {
+    let t = text.trim();
+    let lower = t.to_lowercase();
+    if !(lower.contains("youtube.com/") || lower.contains("youtu.be/")) || t.contains(char::is_whitespace) {
+        return None;
+    }
+    let after = ["v=", "youtu.be/", "/shorts/", "/live/"].iter().find_map(|m| t.find(m).map(|i| &t[i + m.len()..]))?;
+    let id: String = after.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+    (id.len() == 11).then_some(id)
+}
+
+/// A YouTube video's title and channel, from YouTube's public oEmbed page (no sign-in,
+/// no yt-dlp run). Used to search Pulse's catalog when a video link is pasted in search.
+pub fn video_title(video_id: &str) -> Result<(String, String), String> {
+    #[derive(Deserialize)]
+    struct OEmbed {
+        title: String,
+        #[serde(default)]
+        author_name: String,
+    }
+    let url = format!("https://www.youtube.com/oembed?format=json&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D{video_id}");
+    let o: OEmbed = serde_json::from_str(&crate::net::get_text(&url)?).map_err(|e| format!("Unexpected YouTube reply ({e})"))?;
+    Ok((o.title, o.author_name))
+}
+
 /// EXPERIMENT ONLY: yt-dlp run like `run`, but every stderr line is timed as it arrives
 /// (with `-v` that shows each stage: start-up, web page, player, JS challenge, API), and
 /// the process's own CPU time is read when it ends (Windows; Deno's isn't included).
@@ -1083,6 +1110,27 @@ pub fn resolve(track: &Track, known_video: Option<String>, quality: Quality, sta
             attempt(status)
         }
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::video_id_in_link;
+
+    #[test]
+    fn finds_the_video_in_youtube_links() {
+        for link in [
+            "https://www.youtube.com/watch?v=LGzannHdxxU",
+            "https://music.youtube.com/watch?v=LGzannHdxxU&si=abc",
+            "https://youtu.be/LGzannHdxxU?t=30",
+            "youtube.com/shorts/LGzannHdxxU",
+            "https://www.youtube.com/watch?app=desktop&v=LGzannHdxxU",
+        ] {
+            assert_eq!(video_id_in_link(link).as_deref(), Some("LGzannHdxxU"), "{link}");
+        }
+        for not in ["the beths head in the clouds", "https://open.spotify.com/track/x", "https://www.youtube.com/watch?v=short", "https://www.youtube.com/@thebeths"] {
+            assert_eq!(video_id_in_link(not), None, "{not}");
+        }
     }
 }
 

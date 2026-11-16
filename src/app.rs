@@ -3621,6 +3621,22 @@ impl App {
         for t in self.saved.recent.iter().take(50).chain(self.queue.iter()) {
             avoid.add(t);
         }
+        // The listener's taste, from what Pulse already keeps (nothing new is recorded).
+        for t in self.saved.recent.iter().take(20) {
+            avoid.heard(t);
+        }
+        for t in &self.saved.liked {
+            avoid.like(&t.artist.name, 1);
+        }
+        for t in self.saved.playlists.iter().flat_map(|p| &p.tracks) {
+            avoid.like(&t.artist.name, 1);
+        }
+        for a in &self.saved.followed_artists {
+            avoid.like(&a.name, crate::radio::FOLLOWED);
+        }
+        for v in &self.saved.played_artists {
+            avoid.like(&v.title, v.count.min(5));
+        }
         let (tx, rx) = channel();
         self.autoplay_rx = Some(rx);
         let ctx = ctx.clone();
