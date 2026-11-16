@@ -107,8 +107,8 @@ begin
   Result.Checked := On;
 end;
 
-{ Asked once Windows has confirmed the uninstall, so there's no second "Are you sure?". }
-procedure AskWhatToDelete();
+{ The plain fallback window, if Pulse's own one can't open. }
+procedure AskInPlainWindow();
 var
   Form: TSetupForm;
   Intro, Note: TNewStaticText;
@@ -157,6 +157,24 @@ begin
   finally
     Form.Free();
   end;
+end;
+
+{ Asked once Windows has confirmed the uninstall, so there's no second "Are you sure?".
+  Pulse asks in its own window and answers with its exit code: 16, plus 1 for temporary
+  files, 2 for downloaded songs and 4 for the library. }
+procedure AskWhatToDelete();
+var
+  Code: Integer;
+begin
+  if Exec(ExpandConstant('{app}\pulse.exe'), '--uninstall-options', '', SW_SHOW, ewWaitUntilTerminated, Code)
+    and (Code >= 16) and (Code <= 23) then
+  begin
+    DeleteCache := (Code and 1) <> 0;
+    DeleteSongs := (Code and 2) <> 0;
+    DeleteLibrary := (Code and 4) <> 0;
+  end
+  else
+    AskInPlainWindow();
 end;
 
 procedure DeleteFolder(Sub: String);

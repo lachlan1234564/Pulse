@@ -34,6 +34,7 @@ mod theme;
 mod themes;
 mod titlebar;
 mod ui;
+mod uninstall;
 mod update;
 mod widgets;
 mod youtube;
@@ -70,6 +71,10 @@ fn no_power_throttling() {}
 fn main() -> eframe::Result {
     // A crash leaves a report (on this PC only) that Pulse offers to copy next time.
     crash::install();
+    // Started by the uninstaller: ask what else to delete, answer with the exit code.
+    if uninstall::requested() {
+        std::process::exit(uninstall::run());
+    }
     // Already open: that window comes to the front instead. A separate profile
     // (PULSE_DATA_DIR) is a second Pulse of its own, so it opens alongside.
     let separate = settings::separate_profile().is_some();
