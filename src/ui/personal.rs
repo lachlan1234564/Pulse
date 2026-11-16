@@ -434,13 +434,18 @@ pub fn check_name(name: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-/// The "Create your profile" / "Edit profile" window.
+/// The "Create your profile" / "Edit profile" window: picture on the left (click to
+/// pick one, then crop it), name and bio on the right, pill buttons like Pulse's other
+/// windows. Enter saves, Esc cancels.
 pub fn profile_dialog(app: &mut App, ctx: &egui::Context) {
     let Some(mut form) = app.profile_editing.take() else { return };
     let mut keep = true;
     let mut save = false;
-    egui::Modal::new(egui::Id::new("profile_form")).show(ctx, |ui| {
-        ui.set_width(420.0);
+    let mut pick = false;
+    // The crop window is on top: this one waits under it.
+    let cropping = app.crop.is_some();
+    egui::Modal::new(egui::Id::new("profile_form")).frame(super::dialog_frame()).show(ctx, |ui| {
+        ui.set_width(440.0);
         if form.welcome {
             ui.vertical_centered(|ui| {
                 let (r, _) = ui.allocate_exact_size(Vec2::splat(56.0), Sense::hover());
@@ -456,61 +461,97 @@ pub fn profile_dialog(app: &mut App, ctx: &egui::Context) {
             });
         } else {
             ui.label(RichText::new(tr("Edit profile")).font(heavy(20.0)).color(pal().text));
+            ui.label(RichText::new(tr("How you appear on your profile and to friends.")).font(regular(13.0)).color(pal().text_muted));
         }
-        ui.add_space(14.0);
-        ui.horizontal(|ui| {
-            // Picture
-            let (r, resp) = ui.allocate_exact_size(Vec2::splat(96.0), Sense::click());
-            let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr("Choose picture"));
-            match &form.picture {
-                Some(p) => artwork(ui, r, Some(&crate::settings::file_uri(p)), CornerRadius::same(48)),
-                None => {
-                    ui.painter().circle_filled(r.center(), 48.0, pal().surface_active);
-                    paint_icon(ui.painter(), r.center(), icon::CAMERA, regular(30.0), pal().text_muted);
-                }
-            }
-            if resp.hovered() {
-                ui.painter().circle_stroke(r.center(), 48.0, Stroke::new(2.0, pal().accent_soft));
-            }
-            #[cfg(windows)]
-            if resp.clicked()
-                && let Some(file) = rfd::FileDialog::new().add_filter("Pictures", &["png", "jpg", "jpeg", "webp"]).pick_file()
-            {
-                form.picture = Some(file);
-            }
-            #[cfg(not(windows))]
-            let _ = resp;
-            ui.add_space(12.0);
+        ui.add_space(18.0);
+        ui.horizontal_top(|ui| {
+            // Picture, with a camera badge: click to choose one.
             ui.vertical(|ui| {
+                ui.set_width(112.0);
+                let (r, resp) = ui.allocate_exact_size(Vec2::splat(112.0), Sense::click());
+                let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+                a11y(ui, &resp, egui::WidgetType::Button, || tr("Choose picture").to_owned());
+                let c = r.center();
+                match &form.picture {
+                    Some(p) => artwork(ui, r, Some(&crate::settings::file_uri(p)), CornerRadius::same(56)),
+                    None => {
+                        ui.painter().circle_filled(c, 56.0, pal().surface_active);
+                        paint_icon(ui.painter(), c, icon::USER, regular(40.0), pal().text_muted);
+                    }
+                }
+                if resp.hovered() {
+                    ui.painter().circle_filled(c, 56.0, Color32::from_black_alpha(110));
+                    paint_icon(ui.painter(), c, icon::CAMERA, regular(26.0), Color32::WHITE);
+                }
+                ui.painter().circle_stroke(c, 56.0, Stroke::new(1.0, pal().border));
+                let badge = pos2(r.right() - 16.0, r.bottom() - 16.0);
+                ui.painter().circle_filled(badge, 15.0, pal().accent);
+                ui.painter().circle_stroke(badge, 15.0, Stroke::new(3.0, pal().surface));
+                paint_icon(ui.painter(), badge, icon::PENCIL_SIMPLE, regular(14.0), Color32::WHITE);
+                focus_ring(ui, &resp);
+                if resp.clicked() {
+                    pick = true;
+                }
+                if form.picture.is_some() {
+                    ui.add_space(6.0);
+                    ui.vertical_centered(|ui| {
+                        if ui.add(egui::Button::new(RichText::new(tr("Remove")).font(med(12.5)).color(pal().text_muted)).frame_when_inactive(false).corner_radius(12)).clicked() {
+                            form.picture = None;
+                        }
+                    });
+                }
+            });
+            ui.add_space(18.0);
+            ui.vertical(|ui| {
+                let field = |ui: &mut Ui, text: &mut String, hint: &str, limit: usize| {
+                    ui.add(
+                        egui::TextEdit::singleline(text)
+                            .hint_text(tr(hint))
+                            .char_limit(limit)
+                            .desired_width(f32::INFINITY)
+                            .margin(egui::Margin::symmetric(12, 9))
+                            .font(regular(14.0)),
+                    )
+                };
                 ui.label(RichText::new(tr("Username")).font(med(12.5)).color(pal().text_muted));
-                let r =
-                    ui.add(egui::TextEdit::singleline(&mut form.name).hint_text(tr("What should we call you?")).char_limit(30).desired_width(f32::INFINITY));
-                if form.welcome && form.name.is_empty() && !r.has_focus() {
+                ui.add_space(2.0);
+                let r = field(ui, &mut form.name, "What should we call you?", 30);
+                if form.welcome && form.name.is_empty() && !r.has_focus() && !cropping {
                     r.request_focus();
                 }
                 if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     save = true;
                 }
-                ui.add_space(6.0);
-                ui.label(RichText::new(tr("About you (optional)")).font(med(12.5)).color(pal().text_muted));
-                ui.add(egui::TextEdit::singleline(&mut form.bio).char_limit(120).desired_width(f32::INFINITY));
+                // The name's problem, right under it.
+                if let Some(p) = check_name(&form.name).err().filter(|_| !form.name.is_empty()) {
+                    ui.add_space(3.0);
+                    ui.label(RichText::new(tr(p)).font(regular(12.0)).color(pal().accent_soft));
+                }
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(tr("About you (optional)")).font(med(12.5)).color(pal().text_muted));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(RichText::new(format!("{}/120", form.bio.chars().count())).font(regular(11.5)).color(pal().text_muted));
+                    });
+                });
+                ui.add_space(2.0);
+                let r = field(ui, &mut form.bio, "A line about you or your music", 120);
+                if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    save = true;
+                }
             });
         });
         let problem = check_name(&form.name).err();
-        if let Some(p) = problem
-            && !form.name.is_empty()
-        {
-            ui.add_space(4.0);
-            ui.label(RichText::new(tr(p)).font(regular(12.0)).color(pal().accent_soft));
-        }
-        ui.add_space(14.0);
+        ui.add_space(20.0);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let label = if form.welcome { tr("Create profile") } else { tr("Save") };
-            if ui.add_enabled(problem.is_none(), egui::Button::new(RichText::new(label).color(Color32::WHITE)).fill(pal().accent)).clicked() {
+            let primary = egui::Button::new(RichText::new(label).font(med(14.0)).color(Color32::WHITE)).fill(pal().accent).corner_radius(16).min_size(vec2(84.0, 34.0));
+            if ui.add_enabled(problem.is_none(), primary).clicked() {
                 save = true;
             }
             let cancel = if form.welcome { tr("Later") } else { tr("Cancel") };
-            if ui.button(cancel).clicked() {
+            let secondary = egui::Button::new(RichText::new(cancel).font(med(14.0))).frame_when_inactive(false).corner_radius(16).min_size(vec2(0.0, 34.0));
+            if ui.add(secondary).clicked() || (!cropping && ui.input(|i| i.key_pressed(egui::Key::Escape))) {
                 keep = false;
                 if form.welcome {
                     app.saved.profile.skipped = true;
@@ -518,7 +559,14 @@ pub fn profile_dialog(app: &mut App, ctx: &egui::Context) {
             }
         });
     });
-    if save && check_name(&form.name).is_ok() {
+    // A picture to crop (round) before it's used.
+    #[cfg(windows)]
+    if pick && let Some(file) = rfd::FileDialog::new().add_filter("Pictures", &["png", "jpg", "jpeg", "webp"]).pick_file() {
+        app.crop = Some(super::crop::CropJob::open(file, super::crop::CropFor::Profile));
+    }
+    #[cfg(not(windows))]
+    let _ = pick;
+    if save && !cropping && check_name(&form.name).is_ok() {
         if let Err(e) = app.save_profile(&form) {
             app.toast(&e, ctx);
         }

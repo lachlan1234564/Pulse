@@ -1056,6 +1056,8 @@ pub struct App {
     pub import_running: Option<ImportJob>,
     /// The profile form, when open (first-launch welcome or "Edit profile").
     pub profile_editing: Option<crate::ui::ProfileForm>,
+    /// A picture being cropped (for the profile or a playlist cover).
+    pub crop: Option<crate::ui::crop::CropJob>,
     /// The first-launch intro, or "Welcome back", while it shows.
     pub intro: Option<crate::ui::intro::Intro>,
     /// Artist pages that are a small copy of another (Deezer lists some artists twice):
@@ -1220,6 +1222,7 @@ impl App {
             import_url: String::new(),
             import_running: None,
             profile_editing: None,
+            crop: None,
             views_queue: Default::default(),
             views_pending: HashSet::new(),
             views_failed: HashSet::new(),
@@ -2460,7 +2463,6 @@ impl App {
     }
 
     /// Copies a picture into Pulse's data folder and makes it the playlist's cover.
-    #[cfg_attr(not(windows), allow(dead_code))] // the picture picker is Windows-only
     pub fn set_playlist_cover(&mut self, i: usize, picture: &std::path::Path) -> Result<(), String> {
         let dir = crate::settings::data_dir().join("covers");
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -2472,6 +2474,25 @@ impl App {
             let _ = std::fs::remove_file(old);
         }
         Ok(())
+    }
+
+    /// A cropped picture is ready (a PNG in the temp folder): the profile form shows it
+    /// (it's copied when the form is saved), or it becomes the playlist's cover now.
+    pub fn picture_cropped(&mut self, target: crate::ui::crop::CropFor, path: std::path::PathBuf, ctx: &egui::Context) {
+        match target {
+            crate::ui::crop::CropFor::Profile => match &mut self.profile_editing {
+                Some(form) => form.picture = Some(path),
+                None => {
+                    let _ = std::fs::remove_file(path);
+                }
+            },
+            crate::ui::crop::CropFor::Playlist(i) => {
+                if let Err(e) = self.set_playlist_cover(i, &path) {
+                    self.toast(&e, ctx);
+                }
+                let _ = std::fs::remove_file(path);
+            }
+        }
     }
 
     pub fn remove_playlist_cover(&mut self, i: usize) {
@@ -2491,6 +2512,10 @@ impl App {
             let ext = src.extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
             let dest = dir.join(format!("profile-{}.{ext}", now_unix()));
             std::fs::copy(src, &dest).map_err(|e| format!("Couldn't copy the picture ({e})"))?;
+            // A cropped picture was only a temporary file.
+            if src.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("pulse-crop-")) {
+                let _ = std::fs::remove_file(src);
+            }
             if let Some(old) = self.saved.profile.picture.take() {
                 let _ = std::fs::remove_file(old);
             }

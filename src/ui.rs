@@ -7,6 +7,7 @@ use crate::i18n::tr;
 use crate::theme::*;
 use crate::widgets::*;
 
+pub mod crop;
 mod diag_page;
 pub mod intro;
 mod lyrics_page;
@@ -2219,14 +2220,14 @@ fn local_collection(app: &mut App, ui: &mut Ui, title: &str, sub: &str, glyph: &
 
 /// Asks for a picture (Windows file dialog) and makes it the playlist cover.
 fn pick_cover(app: &mut App, i: usize, ctx: &egui::Context) {
+    // Cropped first (a square); the crop window then sets the cover.
     #[cfg(windows)]
-    if let Some(file) = rfd::FileDialog::new().add_filter("Pictures", &["png", "jpg", "jpeg", "webp"]).pick_file()
-        && let Err(e) = app.set_playlist_cover(i, &file)
-    {
-        app.toast(&e, ctx);
+    if let Some(file) = rfd::FileDialog::new().add_filter("Pictures", &["png", "jpg", "jpeg", "webp"]).pick_file() {
+        app.crop = Some(crop::CropJob::open(file, crop::CropFor::Playlist(i)));
     }
+    let _ = ctx;
     #[cfg(not(windows))]
-    let _ = (app, i, ctx);
+    let _ = (app, i);
 }
 
 /// The bar above a song list: play, shuffle, download · search, sort, more.
@@ -2693,7 +2694,7 @@ fn player_bar(app: &mut App, ui: &mut Ui) {
 // ---------------------------------------------------------------------------
 
 /// The frame every dialog uses.
-fn dialog_frame() -> Frame {
+pub(crate) fn dialog_frame() -> Frame {
     Frame::new().fill(pal().surface).corner_radius(r_lg()).inner_margin(24).stroke(Stroke::new(1.0, pal().border))
 }
 
@@ -2997,6 +2998,8 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
     import_dialog(app, ctx);
     online::account_dialog(app, ctx);
     personal::profile_dialog(app, ctx);
+    // After the profile form, so cropping its picture shows on top of it.
+    crop::crop_dialog(app, ctx);
     // "Pick artists you like": once, when you're starting out, after the other welcome windows.
     if app.picker.is_none() && !app.saved.artists_picked && app.account_dialog.is_none() && app.profile_editing.is_none() && app.intro.is_none() {
         if app.saved.followed_artists.is_empty() && app.saved.played_artists.len() < 5 {
