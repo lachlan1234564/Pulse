@@ -1628,6 +1628,12 @@ fn search(app: &mut App, ui: &mut Ui, q: &str) {
                 album_grid(app, ui, list, if all { Some(1) } else { None });
             }
         }
+        // Searched for a song by name and artist: songs by others like it.
+        if let Some((title, songs)) = &r.like_song
+            && (all || filter == 1)
+        {
+            suggestion_row(app, ui, "search_like_song", &crate::deezer::Suggestion::SongsLike(title.clone(), songs.clone()));
+        }
         if all && !r.users.is_empty() {
             section_title(ui, "Profiles", None);
             ui.horizontal_wrapped(|ui| {

@@ -174,6 +174,9 @@ pub struct SearchResults {
     pub playlists: Vec<PlaylistInfo>,
     /// When the top result is an artist: who their listeners also play, and songs like theirs.
     pub around: Option<(String, Vec<ArtistInfo>, Vec<Track>)>,
+    /// When the search names a song and its artist ("osamason baghdad"): the song's title
+    /// and songs by other artists like it.
+    pub like_song: Option<(String, Vec<Track>)>,
     /// Pulse users whose names start with what was typed.
     pub users: Vec<crate::account::User>,
 }
@@ -930,6 +933,10 @@ pub fn search(q: &str) -> Result<SearchResults, String> {
         r.artists.retain(|a| a.id != artist.id);
         r.artists.insert(0, artist);
     }
+    // A search for a song by name and artist: more around it.
+    if let Some(song) = r.tracks.first().filter(|t| matches_all_words(q, t) && names_artist(q, t) && t.has_artist_page()).cloned() {
+        around_song(&mut r, &song);
+    }
     if !r.is_empty() {
         return Ok(r);
     }
@@ -956,6 +963,73 @@ pub fn search(q: &str) -> Result<SearchResults, String> {
         Some((shorter, _)) if !shorter.trim().is_empty() => search_once(shorter),
         _ => Ok(r),
     }
+}
+
+/// The search names the song's main artist (every word of their name was typed).
+fn names_artist(q: &str, t: &Track) -> bool {
+    let typed = crate::youtube::words(q);
+    let name = crate::youtube::words(&t.artist.name);
+    let name: Vec<&str> = name.split_whitespace().filter(|w| *w != "the").collect();
+    !name.is_empty() && name.iter().all(|w| typed.contains(&format!(" {w} ")))
+}
+
+/// Results for "song + artist": the song first, then more of the artist's songs; their
+/// albums first among the albums (the song's own album leading); the artist first among
+/// the artists; and songs by others like it. Four requests side by side.
+fn around_song(r: &mut SearchResults, song: &Track) {
+    let id = song.artist.id.as_str();
+    let (top, albums, artist, like) = std::thread::scope(|s| {
+        let top = s.spawn(|| artist_top(id, 20).unwrap_or_default());
+        let albums = s.spawn(|| get::<List<DzAlbum>>(&format!("/artist/{id}/albums"), &[("limit", "50")]).unwrap_or_default());
+        let artist = s.spawn(|| get::<DzArtist>(&format!("/artist/{id}"), &[]).ok());
+        let like = songs_like(song);
+        (top.join().unwrap_or_default(), albums.join().unwrap_or_default(), artist.join().ok().flatten(), like)
+    });
+    let me = artist.as_ref().map(artist_ref);
+    let mut releases: Vec<AlbumInfo> = albums.data.into_iter().map(|a| album_info(a, me.as_ref())).collect();
+    sort_newest_first(&mut releases);
+    merge_around_song(r, song, top, releases);
+    if let Some(a) = artist {
+        let a = ArtistInfo::from(a);
+        r.artists.retain(|x| x.id != a.id);
+        r.artists.insert(0, a);
+    }
+    if like.len() >= 3 {
+        r.like_song = Some((song.title.clone(), like));
+    }
+}
+
+/// The ordering part of `around_song` (no network, for tests).
+fn merge_around_song(r: &mut SearchResults, song: &Track, top: Vec<Track>, releases: Vec<AlbumInfo>) {
+    // The song whatever the version: "Baghdad (Sped Up)" and "Baghdad" are one.
+    let key = |t: &Track| {
+        let title = crate::youtube::core_title(&t.title);
+        let cut = [" (", " [", " - "].iter().filter_map(|m| title.find(m)).min().unwrap_or(title.len());
+        crate::youtube::norm(&title[..cut])
+    };
+    // Songs: the ones that match the search (the song, its versions), then the artist's
+    // other songs (one of each), then whatever else the search found.
+    let (asked, rest): (Vec<Track>, Vec<Track>) = std::mem::take(&mut r.tracks).into_iter().partition(|t| t.artist.id == song.artist.id && key(t) == key(song));
+    let mut titles: std::collections::HashSet<String> = asked.iter().map(&key).collect();
+    let mut out = asked;
+    for t in top.into_iter().chain(rest) {
+        if (t.artist.id == song.artist.id && !titles.insert(key(&t))) || out.iter().any(|o| o.id == t.id) {
+            continue;
+        }
+        out.push(t);
+    }
+    r.tracks = out;
+    // Albums: the song's album, then the artist's others, then the rest of the search.
+    let album_id = song.album.as_ref().map(|a| a.id.as_str()).unwrap_or_default();
+    let (mine, others): (Vec<AlbumInfo>, Vec<AlbumInfo>) = std::mem::take(&mut r.albums).into_iter().chain(releases).partition(|a| a.id == album_id);
+    let mut seen = std::collections::HashSet::new();
+    r.albums = mine
+        .into_iter()
+        .take(1)
+        .chain(others.iter().filter(|a| a.artist.id == song.artist.id).cloned())
+        .chain(others.iter().filter(|a| a.artist.id != song.artist.id).cloned())
+        .filter(|a| seen.insert(a.id.clone()))
+        .collect();
 }
 
 /// Every word typed is in the song's title or artists.
@@ -1048,6 +1122,7 @@ fn search_once(q: &str) -> Result<SearchResults, String> {
         artists: ranked,
         around,
         users,
+        like_song: None,
         albums: albums.data.into_iter().map(|a| album_info(a, None)).collect(),
         playlists: playlists.data.iter().map(playlist_info).collect(),
     })
@@ -1979,6 +2054,44 @@ mod video_title_tests {
         assert!(!same_song_title("Head", "head in the clouds"));
         assert!(!same_song_title("Clouds", "head in the clouds"));
         assert!(!same_song_title("Head In The Clouds Again", "head in the clouds"), "only the whole title or a version of it");
+    }
+
+    fn by(id: &str, title: &str, artist_id: &str, artist: &str, album: &str) -> Track {
+        let mut t = Track { id: id.into(), title: title.into(), ..Default::default() };
+        t.artist.id = artist_id.into();
+        t.artist.name = artist.into();
+        t.album = Some(AlbumRef { id: album.into(), title: String::new() });
+        t
+    }
+    fn alb(id: &str, artist_id: &str) -> AlbumInfo {
+        AlbumInfo { id: id.into(), title: id.into(), artist: ArtistRef { id: artist_id.into(), ..Default::default() }, ..Default::default() }
+    }
+
+    #[test]
+    fn a_song_search_names_its_artist() {
+        let t = by("1", "Baghdad", "9", "OsamaSon", "flex");
+        assert!(names_artist("osamason baghdad", &t));
+        assert!(names_artist("Osamason - Baghdad", &t));
+        assert!(!names_artist("baghdad", &t), "just the song: no artist named");
+        let beths = by("2", "Head In The Clouds", "8", "The Beths", "x");
+        assert!(names_artist("head in the clouds beths", &beths), "\"the\" can be left out");
+    }
+
+    #[test]
+    fn a_song_search_brings_the_artists_songs_and_albums() {
+        let song = by("1", "Baghdad", "9", "OsamaSon", "flex");
+        let mut r = SearchResults {
+            tracks: vec![song.clone(), by("5", "Baghdad", "7", "Someone Else", "z")],
+            albums: vec![alb("other-album", "7"), alb("flex", "9")],
+            ..Default::default()
+        };
+        let top = vec![by("2", "Troops", "9", "OsamaSon", "a"), by("1b", "Baghdad (Sped Up)", "9", "OsamaSon", "b"), by("3", "Lil O", "9", "OsamaSon", "c")];
+        let releases = vec![alb("psykotic", "9"), alb("flex", "9"), alb("osama-season", "9")];
+        merge_around_song(&mut r, &song, top, releases);
+        let ids: Vec<&str> = r.tracks.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, ["1", "2", "3", "5"], "the song, the artist's other songs (no second Baghdad), then the rest");
+        let albums: Vec<&str> = r.albums.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(albums, ["flex", "psykotic", "osama-season", "other-album"], "the song's album, the artist's others, then the rest");
     }
 
     #[test]
