@@ -1033,7 +1033,7 @@ fn page(app: &mut App, ui: &mut Ui) {
             }
         }
         Route::Liked => {
-            let tracks = app.saved.liked.clone();
+            let tracks = app.liked_snapshot();
             let sub = song_count(tracks.len());
             local_collection(app, ui, "Liked Songs", &sub, icon::HEART, &tracks, None);
         }
