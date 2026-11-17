@@ -1108,9 +1108,11 @@ fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, sha
         let shared = shared.clone();
         let next_generation = next_generation.clone();
         std::thread::spawn(move || {
+            let retained = Arc::new(AtomicBool::new(false));
             let still = {
                 let next_generation = next_generation.clone();
-                move || next_generation.load(Ordering::SeqCst) == generation
+                let retained = retained.clone();
+                move || retained.load(Ordering::SeqCst) || next_generation.load(Ordering::SeqCst) == generation
             };
             let Ok(src) = resolver(&|_| {}) else { return };
             if !still() {
@@ -1121,6 +1123,9 @@ fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, sha
             let mut sh = shared.lock().unwrap();
             if still() && sh.next.as_ref().is_some_and(|n| n.id == id) {
                 let duration = known_or_long(decoder.total_duration(), duration);
+                // From here the decoder's readers own the download. Changing Next must
+                // not cancel it after this song starts; dropping it still cancels normally.
+                retained.store(true, Ordering::SeqCst);
                 sh.prepared = Some(Prepared { id, decoder, duration, buffered });
             }
         });
@@ -1393,4 +1398,109 @@ const UNKNOWN_LENGTH: Duration = Duration::from_secs(24 * 3600);
 /// would move on to the next song at once).
 fn known_or_long(own: Option<Duration>, expected: Duration) -> Duration {
     own.filter(|d| !d.is_zero()).or(Some(expected).filter(|d| !d.is_zero())).unwrap_or(UNKNOWN_LENGTH)
+}
+
+#[cfg(test)]
+mod prepared_download_tests {
+    use super::*;
+    use std::io::Write;
+    use std::net::TcpListener;
+    use std::time::Instant;
+
+    fn wav_source(url: String) -> StreamSource {
+        StreamSource { url, headers: vec![], codec: Codec::Wav, content_length: None, notice: None, duration: None, keep_as: None }
+    }
+
+    #[test]
+    fn a_prepared_song_keeps_downloading_after_next_changes() {
+        for transition in ["next", "gapless", "crossfade"] {
+            check_prepared_download(transition);
+        }
+    }
+
+    fn check_prepared_download(transition: &str) {
+        // Generate a WAV here: this regression must run without external audio fixtures.
+        const SAMPLES: u32 = 400_000;
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + SAMPLES * 2).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt \x10\0\0\0\x01\0\x01\0");
+        wav.extend_from_slice(&48_000u32.to_le_bytes());
+        wav.extend_from_slice(&96_000u32.to_le_bytes());
+        wav.extend_from_slice(b"\x02\0\x10\0data");
+        wav.extend_from_slice(&(SAMPLES * 2).to_le_bytes());
+        for _ in 0..SAMPLES {
+            wav.extend_from_slice(&8_192i16.to_le_bytes());
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/audio", listener.local_addr().unwrap());
+        let (release, wait) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut req = [0; 4096];
+            s.read(&mut req).unwrap();
+            write!(s, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", wav.len()).unwrap();
+            s.write_all(&wav[..128_000]).unwrap();
+            // Hold the rest until the prepared song has started and Next has changed.
+            wait.recv_timeout(Duration::from_secs(15)).unwrap();
+            let _ = s.write_all(&wav[128_000..]);
+        });
+
+        // A player with an in-memory output: never opens or plays through a real device.
+        let (deck, mut output) = Player::new();
+        let (other_deck, other_output) = Player::new();
+        let engine = AudioEngine {
+            _device: None,
+            shared: Arc::new(Mutex::new(Shared {
+                decks: vec![Arc::new(deck), Arc::new(other_deck)],
+                playing: Some(Playing { id: "first".into(), deck: 0, ctl: Arc::default(), duration: Duration::from_secs(3) }),
+                queued: None, fading_out: None, next: None, prepared: None, advanced: None,
+                paused: false, volume: 1.0, buffered: Arc::new(Mutex::new(1.0)), pending_seek: None, ctx: None,
+            })),
+            effects: Arc::default(), generation: Arc::default(), next_generation: Arc::default(),
+            load_state: Arc::new(Mutex::new((0, LoadState::Idle))), notice: Arc::default(),
+            timing: Arc::default(), alive: Arc::default(), device_error: None,
+        };
+        engine.set_next(Some(("second".into(), Duration::from_secs(50), Box::new(move |_| Ok(wav_source(url))))));
+        {
+            let mut sh = engine.shared.lock().unwrap();
+            monitor_step(&mut sh, &Effects::default(), &engine.effects, &engine.shared, &engine.next_generation);
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while engine.shared.lock().unwrap().prepared.is_none() {
+            assert!(Instant::now() < deadline, "song should open before the server sends the rest");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let mut started_samples = 0;
+        if transition == "next" {
+            engine.load("second", Duration::from_secs(50), Box::new(|_| panic!("must use the prepared song")), false, egui::Context::default());
+            while engine.load_state() != LoadState::Ready {
+                assert!(Instant::now() < deadline, "prepared song should start");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        } else {
+            let fx = Effects { gapless: transition == "gapless", crossfade: if transition == "crossfade" { 1.0 } else { 0.0 }, ..Default::default() };
+            let mut sh = engine.shared.lock().unwrap();
+            sh.playing.as_mut().unwrap().duration = Duration::ZERO;
+            monitor_step(&mut sh, &fx, &engine.effects, &engine.shared, &engine.next_generation);
+            if transition == "gapless" {
+                // Claim the first sample before checking the handoff. This works both
+                // with queue-length detection and with actual source-start detection.
+                assert!(output.next().unwrap() > 0.0);
+                started_samples = 1;
+            }
+            monitor_step(&mut sh, &fx, &engine.effects, &engine.shared, &engine.next_generation);
+            assert_eq!(sh.advanced.as_deref(), Some("second"));
+        }
+        assert!(engine.buffered() < 1.0);
+        engine.set_next(Some(("third".into(), Duration::from_secs(50), Box::new(|_| Err("not needed".into())))));
+        release.send(()).unwrap();
+        let output = if transition == "crossfade" { other_output } else { output };
+        let audible = started_samples + output.take(SAMPLES as usize + 8_000).filter(|s| *s > 0.0).count();
+        server.join().unwrap();
+        // A fade starts at zero until the processor's first 256-frame refresh.
+        let expected = if transition == "crossfade" { SAMPLES as usize - 256 } else { SAMPLES as usize };
+        assert!(audible >= expected, "{transition}: changing Next truncated the song to {audible} samples");
+    }
+
 }
