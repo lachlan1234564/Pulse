@@ -419,6 +419,101 @@ fn wait_to_retry(tries: u64, still: &dyn Fn() -> bool) -> bool {
     still()
 }
 
+#[cfg(test)]
+mod stale_loader_tests {
+    use super::*;
+    use std::time::Instant;
+
+    struct InstallGate {
+        entered: std::sync::mpsc::Sender<()>,
+        resume: std::sync::mpsc::Receiver<()>,
+        finished: std::sync::mpsc::Sender<()>,
+    }
+
+    static INSTALL_GATES: Mutex<Vec<(std::sync::Weak<Mutex<Shared>>, InstallGate)>> = Mutex::new(Vec::new());
+
+    pub(super) fn wait_to_install(shared: &Arc<Mutex<Shared>>) -> Option<std::sync::mpsc::Sender<()>> {
+        let gate = {
+            let mut gates = INSTALL_GATES.lock().unwrap();
+            gates.iter().position(|(owner, _)| owner.ptr_eq(&Arc::downgrade(shared))).map(|i| gates.remove(i).1)
+        };
+        gate.map(|g| {
+            g.entered.send(()).unwrap();
+            g.resume.recv().unwrap();
+            g.finished // Dropped when this loader exits, even if it is rejected.
+        })
+    }
+
+    fn wav_source(url: String) -> StreamSource {
+        StreamSource { url, headers: vec![], codec: Codec::Wav, content_length: None, notice: None, duration: None, keep_as: None }
+    }
+
+    #[test]
+    fn a_loader_waiting_to_install_cannot_replace_a_newer_song() {
+        let file = std::env::temp_dir().join(format!("pulse-loader-{}.wav", std::process::id()));
+        let mut wav = b"RIFF".to_vec();
+        wav.extend_from_slice(&8_036u32.to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt \x10\0\0\0\x01\0\x01\0");
+        wav.extend_from_slice(&48_000u32.to_le_bytes());
+        wav.extend_from_slice(&96_000u32.to_le_bytes());
+        wav.extend_from_slice(b"\x02\0\x10\0data");
+        wav.extend_from_slice(&8_000u32.to_le_bytes());
+        wav.extend_from_slice(&vec![32; 8_000]);
+        std::fs::write(&file, wav).unwrap();
+        let (deck, mut output) = Player::new();
+        let running = Arc::new(AtomicBool::new(true));
+        let alive = running.clone();
+        let consumer = std::thread::spawn(move || {
+            while alive.load(Ordering::SeqCst) {
+                for _ in 0..512 { output.next(); }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        });
+        let engine = AudioEngine {
+            _device: None,
+            shared: Arc::new(Mutex::new(Shared {
+                decks: vec![Arc::new(deck)], playing: None, queued: None, fading_out: None,
+                next: None, prepared: None, advanced: None, paused: false, volume: 1.0,
+                buffered: Arc::new(Mutex::new(0.0)), pending_seek: None, ctx: None,
+            })),
+            effects: Arc::default(), generation: Arc::default(), next_generation: Arc::default(),
+            load_state: Arc::new(Mutex::new((0, LoadState::Idle))), notice: Arc::default(), timing: Arc::default(),
+            alive: Arc::default(), device_error: None,
+        };
+        // Hold the old loader at the installation boundary, after its last unlocked
+        // generation check. A blocking resolver alone would only exercise an earlier guard.
+        for stop in [false, true] {
+            let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+            let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+            let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+            INSTALL_GATES.lock().unwrap().push((Arc::downgrade(&engine.shared), InstallGate { entered: entered_tx, resume: resume_rx, finished: finished_tx }));
+            let url = format!("file://{}", file.display());
+            engine.load("old", Duration::from_secs(1), Box::new(move |_| Ok(wav_source(url))), false, egui::Context::default());
+            entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            if stop {
+                engine.stop();
+            } else {
+                let url = format!("file://{}", file.display());
+                engine.load("new", Duration::from_secs(1), Box::new(move |_| Ok(wav_source(url))), false, egui::Context::default());
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while engine.load_state() != LoadState::Ready {
+                    assert!(Instant::now() < deadline, "new song should finish loading");
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+            resume_tx.send(()).unwrap();
+            // Disconnection acknowledges that the old loader returned, without sleeps.
+            assert!(matches!(finished_rx.recv_timeout(Duration::from_secs(5)), Err(std::sync::mpsc::RecvTimeoutError::Disconnected)));
+            let actual = engine.shared.lock().unwrap().playing.as_ref().map(|p| p.id.clone());
+            assert_eq!(actual.as_deref(), if stop { None } else { Some("new") }, "a stale loader installed after the newer request");
+        }
+        running.store(false, Ordering::SeqCst);
+        consumer.join().unwrap();
+        std::fs::remove_file(file).unwrap();
+    }
+
+}
+
 /// Pieces of a file downloading side by side, added to the buffer in order.
 struct ParallelPieces {
     url: String,
@@ -856,8 +951,15 @@ impl AudioEngine {
             let duration = known_or_long(decoder.total_duration(), expected);
             let ctl = Arc::new(TrackCtl::default());
             let source = Processor::new(decoder, effects, ctl.clone(), 1.0, false);
+            #[cfg(test)]
+            let _finished = stale_loader_tests::wait_to_install(&shared);
             {
                 let mut sh = shared.lock().unwrap();
+                // Another request may have cleared the decks while this loader waited
+                // for the lock. Check again before replacing the current source.
+                if !current() {
+                    return;
+                }
                 let deck = 0;
                 sh.decks[deck].clear();
                 sh.decks[deck].append(source);
