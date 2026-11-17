@@ -64,10 +64,19 @@ pub fn download(t: &Track, known_video: Option<String>, quality: Quality, dir: &
 /// Downloads `url` into the file `to`: several pieces side by side when the server allows
 /// it, else one after another. Returns the number of bytes saved.
 pub fn fetch(url: &str, headers: &[(String, String)], size_hint: Option<u64>, to: &Path, progress: &(dyn Fn(f32) + Sync)) -> Result<u64, String> {
+    let file = std::fs::File::create(to).map_err(|e| format!("Couldn't save the song ({e})"))?;
+    let result = fetch_to_file(url, headers, size_hint, file, progress);
+    // fetch_to_file has closed the file, so cleanup also works on Windows.
+    if result.is_err() {
+        let _ = std::fs::remove_file(to);
+    }
+    result
+}
+
+fn fetch_to_file(url: &str, headers: &[(String, String)], size_hint: Option<u64>, mut file: std::fs::File, progress: &(dyn Fn(f32) + Sync)) -> Result<u64, String> {
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
     let save = |e: std::io::Error| format!("Couldn't save the song ({e})");
-    let mut file = std::fs::File::create(to).map_err(save)?;
 
     // The first piece also tells us the size, and whether pieces are possible at all.
     let mut first = with_retries(|| crate::net::get_range(url, headers, 0, Some(PIECE - 1)))?;
@@ -133,11 +142,9 @@ pub fn fetch(url: &str, headers: &[(String, String)], size_hint: Option<u64>, to
 fn sequential(url: &str, headers: &[(String, String)], mut file: std::fs::File, mut have: u64, progress: &(dyn Fn(f32) + Sync)) -> Result<u64, String> {
     const CHUNK: u64 = 4 * 1024 * 1024;
     loop {
-        let mut r = match with_retries(|| crate::net::get_range(url, headers, have, Some(have + CHUNK - 1))) {
-            Ok(r) => r,
-            // Asking past the end is how the end shows itself.
-            Err(_) if have > 0 => return Ok(have),
-            Err(e) => return Err(e),
+        let mut r = match with_retries(|| crate::net::get_range_or_eof(url, headers, have, Some(have + CHUNK - 1)))? {
+            Some(r) => r,
+            None => return Ok(have),
         };
         let mut v = Vec::new();
         r.body.read_to_end(&mut v).map_err(|e| format!("Download interrupted ({e})"))?;
@@ -173,6 +180,78 @@ fn with_retries<T>(mut f: impl FnMut() -> Result<T, String>) -> Result<T, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Clone, Copy)]
+    enum RangeFault { ServerError, Interrupted, WrongEnd, End }
+
+    fn unknown_size_server(fault: RangeFault) -> (String, std::thread::JoinHandle<usize>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!("http://{}/song", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let requests = if matches!(fault, RangeFault::ServerError | RangeFault::WrongEnd) { 6 } else { 2 };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            for i in 0..requests {
+                let mut s = loop {
+                    match listener.accept() {
+                        Ok((s, _)) => break s,
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(std::time::Instant::now() < deadline, "download did not make the expected requests");
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                        }
+                        Err(e) => panic!("{e}"),
+                    }
+                };
+                // Windows can inherit the listener's nonblocking mode on accept.
+                s.set_nonblocking(false).unwrap();
+                s.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n") {
+                    let mut byte = [0];
+                    s.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                let request = String::from_utf8(request).unwrap().to_lowercase();
+                assert!(request.contains(if i == 0 { "range: bytes=0-" } else { "range: bytes=65536-" }));
+                if i == 0 {
+                    s.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Length: 65536\r\nContent-Range: bytes 0-65535/*\r\nConnection: close\r\n\r\n").unwrap();
+                    s.write_all(&vec![42; 65_536]).unwrap();
+                } else {
+                    let reply = match fault {
+                        RangeFault::ServerError => "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        RangeFault::Interrupted => "HTTP/1.1 206 Partial Content\r\nContent-Length: 100\r\nContent-Range: bytes 65536-65635/*\r\nConnection: close\r\n\r\nshort",
+                        RangeFault::WrongEnd => "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nContent-Range: bytes */99999\r\nConnection: close\r\n\r\n",
+                        RangeFault::End => "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nContent-Range: bytes */65536\r\nConnection: close\r\n\r\n",
+                    };
+                    s.write_all(reply.as_bytes()).unwrap();
+                }
+            }
+            requests
+        });
+        (url, server)
+    }
+
+    #[test]
+    fn unknown_size_download_errors_are_not_saved_as_complete() {
+        for (n, fault) in [RangeFault::ServerError, RangeFault::Interrupted, RangeFault::WrongEnd].into_iter().enumerate() {
+            let path = std::env::temp_dir().join(format!("pulse-fault-{}-{n}.part", std::process::id()));
+            let (url, server) = unknown_size_server(fault);
+            let result = fetch(&url, &[], None, &path, &|_| {});
+            server.join().unwrap();
+            assert!(result.is_err(), "a failed range request was accepted as a complete song: {result:?}");
+            assert!(!path.exists(), "the failed partial file must be removed");
+        }
+    }
+
+    #[test]
+    fn a_confirmed_end_of_an_unknown_size_download_succeeds_without_retries() {
+        let path = std::env::temp_dir().join(format!("pulse-range-end-{}.part", std::process::id()));
+        let (url, server) = unknown_size_server(RangeFault::End);
+        assert_eq!(fetch(&url, &[], None, &path, &|_| {}).unwrap(), 65_536);
+        assert_eq!(server.join().unwrap(), 2);
+        assert_eq!(std::fs::read(&path).unwrap(), vec![42; 65_536]);
+        std::fs::remove_file(path).unwrap();
+    }
 
     /// A 6 MB file from a server that limits each connection (like YouTube): the pieces
     /// arrive side by side, much sooner than one connection could, and in the right places.
