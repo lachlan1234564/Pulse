@@ -523,6 +523,91 @@ fn build_decoder(reader: StreamReader, codec: Codec, total: Option<u64>, anywher
     builder.build().map_err(|e| format!("Couldn't decode this song ({e})"))
 }
 
+#[cfg(test)]
+mod gapless_queue_tests {
+    use super::*;
+
+    fn gapless_test_engine() -> (AudioEngine, rodio::queue::SourcesQueueOutput) {
+        let (deck, output) = Player::new();
+        deck.append(rodio::buffer::SamplesBuffer::new(2.try_into().unwrap(), 48_000.try_into().unwrap(), vec![0.25; 512]));
+        let engine = AudioEngine {
+            _device: None,
+            shared: Arc::new(Mutex::new(Shared {
+                decks: vec![Arc::new(deck)],
+                playing: Some(Playing { id: "current".into(), deck: 0, ctl: Arc::default(), duration: Duration::from_secs(1) }),
+                queued: None, fading_out: None, next: None, prepared: None, advanced: None,
+                paused: false, volume: 1.0, buffered: Arc::new(Mutex::new(0.5)), pending_seek: None, ctx: None,
+            })),
+            effects: Arc::default(), generation: Arc::default(), next_generation: Arc::default(),
+            load_state: Arc::new(Mutex::new((0, LoadState::Ready))), notice: Arc::default(),
+            timing: Arc::default(), alive: Arc::default(), device_error: None,
+        };
+        (engine, output)
+    }
+
+    fn gapless_prepared(id: &str, sample: i16) -> Prepared {
+        let mut wav = b"RIFF".to_vec();
+        wav.extend_from_slice(&1_060u32.to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt \x10\0\0\0\x01\0\x02\0");
+        wav.extend_from_slice(&48_000u32.to_le_bytes());
+        wav.extend_from_slice(&192_000u32.to_le_bytes());
+        wav.extend_from_slice(b"\x04\0\x10\0data");
+        wav.extend_from_slice(&1_024u32.to_le_bytes());
+        for _ in 0..512 { wav.extend_from_slice(&sample.to_le_bytes()); }
+        let total = wav.len() as u64;
+        let buf = Arc::new(StreamBuffer::default());
+        *buf.state.lock().unwrap() = BufState { bytes: wav, total: Some(total), done: true, cancelled: false };
+        let decoder = build_decoder(StreamReader::new(&buf), Codec::Wav, Some(total), true).unwrap();
+        Prepared { id: id.into(), decoder: StreamDecoder::new(decoder, None, None), duration: Duration::from_secs(1), buffered: Arc::new(Mutex::new(1.0)) }
+    }
+
+    fn queue_gapless_test_song(engine: &AudioEngine, id: &str, sample: i16) {
+        engine.set_next(Some((id.into(), Duration::from_secs(1), Box::new(|_| Err("test supplies a prepared decoder".into())))));
+        let mut sh = engine.shared.lock().unwrap();
+        sh.next.as_mut().unwrap().resolver = None;
+        sh.prepared = Some(gapless_prepared(id, sample));
+        monitor_step(&mut sh, &Effects { gapless: true, ..Default::default() }, &engine.effects, &engine.shared, &engine.next_generation);
+    }
+
+    #[test]
+    fn changing_a_queued_gapless_song_preserves_every_current_sample() {
+        for replace in [false, true] {
+            let (engine, mut output) = gapless_test_engine();
+            assert!(output.by_ref().take(128).all(|s| s == 0.25));
+            queue_gapless_test_song(&engine, "removed", 16_384);
+            if replace {
+                queue_gapless_test_song(&engine, "replacement", 24_576);
+            } else {
+                engine.pause();
+                engine.set_next(None);
+                engine.play();
+            }
+            assert!(output.by_ref().take(384).all(|s| s == 0.25), "the current song must remain uninterrupted");
+            let expected = if replace { 0.75 } else { 0.0 };
+            assert!(output.by_ref().take(512).all(|s| s == expected), "the removed song played (or the replacement had a gap)");
+            let mut sh = engine.shared.lock().unwrap();
+            monitor_step(&mut sh, &Effects::default(), &engine.effects, &engine.shared, &engine.next_generation);
+            assert_eq!(sh.advanced.as_deref(), if replace { Some("replacement") } else { None });
+        }
+    }
+
+    #[test]
+    fn keeping_the_queued_song_or_changing_next_after_it_starts_does_not_cut_it_off() {
+        let (engine, mut output) = gapless_test_engine();
+        assert!(output.by_ref().take(128).all(|s| s == 0.25));
+        queue_gapless_test_song(&engine, "queued", 16_384);
+        engine.set_next(Some(("queued".into(), Duration::from_secs(1), Box::new(|_| panic!("already queued")))));
+        assert!(output.by_ref().take(384).all(|s| s == 0.25));
+        assert_eq!(output.next(), Some(0.5)); // The queued song really started.
+        engine.set_next(None);
+        assert!(output.by_ref().take(511).all(|s| s == 0.5), "changing Next must not stop a song that has already started");
+        let mut sh = engine.shared.lock().unwrap();
+        monitor_step(&mut sh, &Effects::default(), &engine.effects, &engine.shared, &engine.next_generation);
+        assert_eq!(sh.playing.as_ref().unwrap().id, "queued");
+    }
+
+}
+
 // ---------------------------------------------------------------------------
 // The engine the UI talks to.
 // ---------------------------------------------------------------------------
@@ -609,13 +694,69 @@ struct NextRequest {
     resolver: Option<Resolver>,
 }
 
+/// A gapless song stays removable until the audio thread claims its first sample.
+struct GaplessSlot {
+    source: Option<Processor<Dec>>,
+    started: bool,
+}
+
+struct Queued {
+    playing: Playing,
+    slot: Arc<Mutex<GaplessSlot>>,
+    buffered: Arc<Mutex<f32>>,
+}
+
+struct GaplessSource {
+    slot: Arc<Mutex<GaplessSlot>>,
+    inner: Option<Processor<Dec>>,
+    channels: rodio::ChannelCount,
+    rate: rodio::SampleRate,
+    duration: Option<Duration>,
+}
+
+impl GaplessSource {
+    fn new(source: Processor<Dec>) -> Self {
+        let (channels, rate, duration) = (source.channels(), source.sample_rate(), source.total_duration());
+        Self { slot: Arc::new(Mutex::new(GaplessSlot { source: Some(source), started: false })), inner: None, channels, rate, duration }
+    }
+}
+
+impl Iterator for GaplessSource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        if self.inner.is_none() {
+            let mut slot = self.slot.lock().unwrap();
+            self.inner = slot.source.take();
+            slot.started = self.inner.is_some();
+        }
+        self.inner.as_mut()?.next()
+    }
+}
+
+impl Source for GaplessSource {
+    fn current_span_len(&self) -> Option<usize> { None }
+    fn channels(&self) -> rodio::ChannelCount { self.channels }
+    fn sample_rate(&self) -> rodio::SampleRate { self.rate }
+    fn total_duration(&self) -> Option<Duration> { self.duration }
+    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
+        if let Some(inner) = &mut self.inner {
+            inner.try_seek(pos)
+        } else if let Some(source) = &mut self.slot.lock().unwrap().source {
+            source.try_seek(pos)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// State shared by the engine, its loading threads and the monitor thread.
 struct Shared {
     /// Two players ("decks") so one song can fade out while the next fades in.
     decks: Vec<Arc<Player>>,
     playing: Option<Playing>,
     /// Gapless: the next song, already queued behind the current one on the same deck.
-    queued: Option<Playing>,
+    queued: Option<Queued>,
     /// The previous song while it fades out.
     fading_out: Option<(usize, Arc<TrackCtl>)>,
     next: Option<NextRequest>,
@@ -879,16 +1020,18 @@ impl AudioEngine {
         let mut sh = self.shared.lock().unwrap();
         let same = match (&next, &sh.next) {
             (Some((id, _, _)), Some(n)) => *id == n.id,
-            (None, None) => true,
+            (None, None) => sh.queued.is_none(),
             _ => false,
         };
         let same_prepared = match (&next, &sh.prepared) {
             (Some((id, _, _)), Some(p)) => *id == p.id,
             _ => false,
         };
-        if same || same_prepared {
+        let same_queued = next.as_ref().is_some_and(|(id, _, _)| sh.queued.as_ref().is_some_and(|q| q.playing.id == *id));
+        if same || same_prepared || same_queued {
             return;
         }
+        settle_gapless(&mut sh, true);
         self.next_generation.fetch_add(1, Ordering::SeqCst);
         sh.prepared = None;
         sh.next = next.map(|(id, duration, resolver)| NextRequest { id, duration, resolver: Some(resolver) });
@@ -1052,6 +1195,27 @@ fn arrived(to: Duration, duration: Duration, have: f32) -> bool {
     have >= (at + 0.04).min(1.0)
 }
 
+/// Serialize cancellation with the audio thread claiming the queued source. Once it
+/// has started it is the current song, so a Next change must leave it playing.
+fn settle_gapless(sh: &mut Shared, cancel_pending: bool) {
+    let Some(q) = sh.queued.take() else { return };
+    let started = {
+        let mut slot = q.slot.lock().unwrap();
+        if cancel_pending && !slot.started {
+            slot.source = None; // Drop its decoder/readers and stop its download now.
+        }
+        slot.started
+    };
+    if started {
+        sh.advanced = Some(q.playing.id.clone());
+        sh.playing = Some(q.playing);
+        sh.buffered = q.buffered;
+        if let Some(ctx) = &sh.ctx { ctx.request_repaint(); }
+    } else if !cancel_pending {
+        sh.queued = Some(q);
+    }
+}
+
 /// One check of the monitor thread: finish fades, notice gapless switches,
 /// open the next song early, and start transitions.
 fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, shared: &Arc<Mutex<Shared>>, next_generation: &Arc<AtomicU64>) {
@@ -1063,17 +1227,7 @@ fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, sha
         sh.fading_out = None;
     }
 
-    // Gapless: the queued song has started once the deck holds only one song again.
-    if let Some(q) = &sh.queued
-        && sh.decks[q.deck].len() <= 1
-    {
-        let q = sh.queued.take().unwrap();
-        sh.advanced = Some(q.id.clone());
-        sh.playing = Some(q);
-        if let Some(ctx) = &sh.ctx {
-            ctx.request_repaint();
-        }
-    }
+    settle_gapless(sh, false);
 
     let Some(p) = &sh.playing else {
         sh.pending_seek = None;
@@ -1166,9 +1320,10 @@ fn monitor_step(sh: &mut Shared, fx: &Effects, effects: &Arc<SharedEffects>, sha
         let pr = sh.prepared.take().unwrap();
         sh.next = None;
         let ctl = Arc::new(TrackCtl::default());
-        sh.decks[cur_deck].append(Processor::new(pr.decoder, effects.clone(), ctl.clone(), 1.0, false));
-        sh.buffered = pr.buffered;
-        sh.queued = Some(Playing { id: pr.id, deck: cur_deck, ctl, duration: pr.duration });
+        let source = GaplessSource::new(Processor::new(pr.decoder, effects.clone(), ctl.clone(), 1.0, false));
+        let slot = source.slot.clone();
+        sh.decks[cur_deck].append(source);
+        sh.queued = Some(Queued { playing: Playing { id: pr.id, deck: cur_deck, ctl, duration: pr.duration }, slot, buffered: pr.buffered });
     }
 }
 
