@@ -3218,6 +3218,8 @@ impl App {
         let in_flight = self.prefetching.clone();
         let offline = self.saved.downloads.get(&track.id).cloned();
         let quality = self.saved.settings.stream_quality;
+        // Songs are being played: keep a yt-dlp ready for the next one.
+        crate::youtube::get_ready(quality);
         Box::new(move |status| {
             // Already being found (the pointer rested on it, or it's next in the queue):
             // wait for that instead of starting over, unless audio is ready on disk.
@@ -3262,6 +3264,7 @@ impl App {
         if crate::perf::mode() != crate::perf::Mode::Normal {
             return;
         }
+        crate::youtube::get_ready(self.saved.settings.stream_quality);
         // A new list replaces the last one's songs that haven't started yet.
         self.warm_queue.lock().unwrap().clear();
         self.warm(tracks.iter().take(3).cloned().collect(), false);
@@ -3275,6 +3278,7 @@ impl App {
         if crate::perf::mode() == crate::perf::Mode::UltraLow || !self.needs_link(&t) {
             return;
         }
+        crate::youtube::get_ready(self.saved.settings.stream_quality);
         self.prefetching.lock().unwrap().insert(t.id.clone());
         let (ids, prefetched, in_flight) = (self.youtube_ids.clone(), self.prefetched.clone(), self.prefetching.clone());
         let quality = self.saved.settings.stream_quality;
