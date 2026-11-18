@@ -2163,7 +2163,8 @@ fn local_collection(app: &mut App, ui: &mut Ui, title: &str, sub: &str, glyph: &
     app.ensure_featured(tracks);
     // Imported songs: look again on Deezer, and give coverless songs their video's picture.
     app.rematch_imports(tracks, &ctx);
-    let coverless: Vec<Track> = tracks.iter().filter(|t| t.cover_small.is_none() && !crate::local::is_local(&t.id)).cloned().collect();
+    // ensure_views only considers the first 60 candidates.
+    let coverless: Vec<Track> = tracks.iter().filter(|t| t.cover_small.is_none() && !crate::local::is_local(&t.id)).take(60).cloned().collect();
     app.ensure_views(&coverless);
     list_toolbar(app, ui, tracks, playlist, title);
     let chips = crate::app::genre_chips(tracks, &app.saved.album_genres);
@@ -2243,10 +2244,10 @@ fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<u
             ui.painter().circle_filled(pos2(r.right() - 20.0, r.center().y + 18.0), 2.0, pal().accent_soft);
         }
         // Download: all songs here, or a check once they're all saved.
-        let online: Vec<Track> = tracks.iter().filter(|t| !crate::local::is_local(&t.id)).cloned().collect();
-        if !online.is_empty() {
-            let all = online.iter().all(|t| app.is_downloaded(&t.id));
-            let busy = !all && online.iter().any(|t| app.download_queue.iter().any(|q| q.id == t.id) || app.downloading.iter().any(|(d, _)| d.id == t.id));
+        let online = || tracks.iter().filter(|t| !crate::local::is_local(&t.id));
+        if online().next().is_some() {
+            let all = online().all(|t| app.is_downloaded(&t.id));
+            let busy = !all && online().any(|t| app.download_queue.iter().any(|q| q.id == t.id) || app.downloading.iter().any(|(d, _)| d.id == t.id));
             if busy {
                 ui.add_space(6.0);
                 ui.spinner().on_hover_text(tr("Downloading…"));
@@ -2255,7 +2256,7 @@ fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<u
                     // Already downloaded: nothing to do.
                 }
             } else if icon_button(ui, icon::ARROW_CIRCLE_DOWN, 26.0, pal().text_muted, tr("Download")).clicked() {
-                app.download(&online, &ctx);
+                app.download(&online().cloned().collect::<Vec<_>>(), &ctx);
             }
         }
         if let Some(i) = playlist {
