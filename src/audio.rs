@@ -6,10 +6,11 @@
 //!    from that buffer, waiting briefly whenever it catches up with the download.
 
 use crate::dsp::{Processor, SharedEffects, TrackCtl};
+use crate::resample::Resampled;
 use rodio::Source;
 use rodio::{Decoder, MixerDeviceSink, Player};
 use std::io::{self, Read, Seek, SeekFrom};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 pub use crate::dsp::Effects;
 use std::sync::{Arc, Condvar, Mutex};
@@ -262,8 +263,9 @@ struct Reopen {
 
 /// A song's decoder. For audio that plays while it downloads, going back in the song opens
 /// the (already downloaded) audio again from the start and moves forward from there.
+/// Its sound comes out already at the sound card's rate (see `resample`).
 pub struct StreamDecoder {
-    inner: Decoder<StreamReader>,
+    inner: Resampled<Decoder<StreamReader>>,
     reopen: Option<Reopen>,
     /// Where the last jump landed, and the samples played since.
     base: Duration,
@@ -274,7 +276,7 @@ pub struct StreamDecoder {
 
 impl StreamDecoder {
     fn new(inner: Decoder<StreamReader>, reopen: Option<Reopen>, known_duration: Option<Duration>) -> Self {
-        StreamDecoder { inner, reopen, base: Duration::ZERO, samples: 0, known_duration }
+        StreamDecoder { inner: Resampled::new(inner, out_rate()), reopen, base: Duration::ZERO, samples: 0, known_duration }
     }
 
     fn played(&self) -> Duration {
@@ -318,7 +320,7 @@ impl Source for StreamDecoder {
             let done = r.buf.state.lock().unwrap().done;
             let fresh =
                 build_decoder(StreamReader::new(&r.buf), r.codec, r.total, done).map_err(|e| rodio::source::SeekError::Other(Arc::new(io::Error::other(e))))?;
-            self.inner = fresh;
+            self.inner = Resampled::new(fresh, out_rate());
             if done {
                 self.reopen = None;
             }
@@ -328,6 +330,14 @@ impl Source for StreamDecoder {
         self.samples = 0;
         Ok(())
     }
+}
+
+/// The sound card's sample rate (0 until one opens). Songs are converted to it as they're
+/// decoded (see `resample`), so rodio's rough converter never has to.
+static OUT_RATE: AtomicU32 = AtomicU32::new(0);
+
+fn out_rate() -> rodio::SampleRate {
+    rodio::SampleRate::new(OUT_RATE.load(Ordering::Relaxed)).unwrap_or(rodio::SampleRate::new(48_000).unwrap())
 }
 
 /// Reads `body` into the buffer, resuming with range requests if the connection drops,
@@ -725,6 +735,9 @@ impl AudioEngine {
             }
             Err(e) => (None, vec![], Some(format!("No audio output device found ({e})"))),
         };
+        if let Some(d) = &device {
+            OUT_RATE.store(d.config().sample_rate().get(), Ordering::Relaxed);
+        }
         let engine = Self {
             _device: device,
             shared: Arc::new(Mutex::new(Shared {

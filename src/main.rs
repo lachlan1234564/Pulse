@@ -24,6 +24,7 @@ mod net;
 mod perf;
 mod radio;
 mod report;
+mod resample;
 mod settings;
 mod share;
 mod single;
