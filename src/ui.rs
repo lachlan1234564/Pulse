@@ -2166,7 +2166,7 @@ fn local_collection(app: &mut App, ui: &mut Ui, title: &str, sub: &str, glyph: &
     // ensure_views only considers the first 60 candidates.
     let coverless: Vec<Track> = tracks.iter().filter(|t| t.cover_small.is_none() && !crate::local::is_local(&t.id)).take(60).cloned().collect();
     app.ensure_views(&coverless);
-    list_toolbar(app, ui, tracks, playlist, title);
+    list_toolbar(app, ui, tracks, playlist, title, added.as_ref());
     let chips = crate::app::genre_chips(tracks, &app.saved.album_genres);
     if !chips.is_empty() {
         ui.horizontal_wrapped(|ui| {
@@ -2221,22 +2221,23 @@ fn pick_cover(app: &mut App, i: usize, ctx: &egui::Context) {
 }
 
 /// The bar above a song list: play, shuffle, download · search, sort, more.
-fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<usize>, title: &str) {
+fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<usize>, title: &str, added: Option<&std::collections::HashMap<String, u64>>) {
     let ctx = ui.ctx().clone();
     let playing_this = app.is_playing() && app.current.as_ref().is_some_and(|c| tracks.iter().any(|t| t.id == c.id));
-    let view = crate::app::view_tracks(tracks, &app.list_view, None, &app.saved.album_genres);
     ui.horizontal(|ui| {
         ui.set_min_height(56.0);
         if play_button(ui, 52.0, playing_this).clicked() {
             if playing_this {
                 app.toggle_play(&ctx);
             } else {
+                let view = crate::app::view_tracks(tracks, &app.list_view, added, &app.saved.album_genres);
                 app.play_list(&view, 0, &ctx);
             }
         }
         ui.add_space(4.0);
         let sh_col = if app.saved.shuffle { pal().accent_soft } else { pal().text_muted };
         if icon_toggle(ui, icon::SHUFFLE, 26.0, sh_col, tr("Shuffle"), tr("Shuffle"), app.saved.shuffle).clicked() {
+            let view = crate::app::view_tracks(tracks, &app.list_view, added, &app.saved.album_genres);
             shuffle_play(app, &view, &ctx);
         }
         if app.saved.shuffle {
