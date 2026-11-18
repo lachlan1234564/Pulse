@@ -1,6 +1,32 @@
 **Download `PulseSetup` below and run it** to install Pulse (no administrator password needed).
 Works on any 64-bit Windows 10 or 11 PC.
 
+## Pulse 1.4
+<!-- x: Crop your profile picture and playlist covers, smarter search, lyrics when LRCLIB has none, cleaner sound, songs that start sooner, steadier skipping and a faster Liked Songs page. -->
+
+**New**
+- Crop your profile picture and your playlist covers when you pick a photo: a circle for profiles, a square for playlists. Edit profile has a new look too.
+- Search finds songs that Deezer's search misses when you type the artist and the song. Search for an artist and a song together to see more songs by that artist, their albums and "Songs like ...". You can also paste a YouTube link to search for that song.
+- No synced lyrics? Pulse now also tries AZLyrics, which gives plain text lyrics.
+- Uninstalling Pulse asks what else to delete from its data folder: temporary files, downloaded songs and your library.
+
+**Better playback**
+- Cleaner sound: songs are converted to your sound card's rate properly.
+- Songs start sooner, with a quicker YouTube lookup. Songs you point at are ready first, and lookups no longer pile up.
+- Skipping is steadier. An older song can't replace the one you just picked, prepared songs keep downloading when the next song changes, and removing the next song removes its gapless audio too.
+- Each playlist keeps its own queue. Playing one no longer mixes in another playlist that shares songs with it.
+- Autoplay leans toward artists you like and doesn't repeat one artist too often.
+
+**More reliable**
+- Failed downloads are no longer saved as complete songs.
+- Pulse can recover your library from the spare copy or an older backup.
+
+**Big libraries**
+- Large song lists, Liked Songs and list search stay responsive.
+- Play and Shuffle follow the order you see, and the selection clears when you sort or filter a list.
+
+Thanks to Lachlan for the sound, download and big-list fixes.
+
 ## Pulse 1.3
 <!-- x: A new look, a guided first-time setup, smarter autoplay, cleaner search, artist pages that find songs Deezer filed in the wrong place, and far less memory. Music also keeps playing while Pulse is minimized. -->
 
