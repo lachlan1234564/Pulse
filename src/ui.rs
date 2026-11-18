@@ -2082,8 +2082,43 @@ fn pretty_date(d: &str) -> String {
     }
 }
 
+fn clear_changed_list_selection(before: &crate::app::ListView, after: &crate::app::ListView, selection: &mut (String, std::collections::HashSet<usize>, Option<usize>)) {
+    if selection.0 == "local" && (before.sort != after.sort || before.search != after.search || before.genre != after.genre) {
+        selection.1.clear();
+        selection.2 = None;
+    }
+}
+
+#[cfg(test)]
+mod list_selection_tests {
+    use super::*;
+    use crate::app::{ListView, SortBy};
+
+    #[test]
+    fn changing_list_contents_clears_rows_and_anchor() {
+        let before = ListView::default();
+        let selected = || ("local".to_string(), [1].into_iter().collect(), Some(1));
+        for after in [
+            ListView { sort: SortBy::Title, ..before.clone() },
+            ListView { search: "song".into(), ..before.clone() },
+            ListView { genre: Some("Rock".into()), ..before.clone() },
+        ] {
+            let mut selection = selected();
+            clear_changed_list_selection(&before, &after, &mut selection);
+            assert!(selection.1.is_empty());
+            assert_eq!(selection.2, None);
+        }
+        let mut selection = selected();
+        let after = ListView { search_open: true, ..before.clone() };
+        clear_changed_list_selection(&before, &after, &mut selection);
+        assert_eq!(selection, selected());
+    }
+}
+
 fn local_collection(app: &mut App, ui: &mut Ui, title: &str, sub: &str, glyph: &str, tracks: &[Track], playlist: Option<usize>) {
     let ctx = ui.ctx().clone();
+    // How the list was sorted and filtered before this pass (see `clear_changed_list_selection`).
+    let previous_view = app.list_view.clone();
     let kind = if playlist.is_some() { "Playlist" } else { "Library" };
     // Cover: your own picture, else the first song's artwork.
     let custom = playlist.and_then(|i| app.saved.playlists.get(i)).and_then(|p| p.cover.as_ref()).map(|c| crate::settings::file_uri(c));
@@ -2180,6 +2215,7 @@ fn local_collection(app: &mut App, ui: &mut Ui, title: &str, sub: &str, glyph: &
         ui.add_space(8.0);
     }
 
+    clear_changed_list_selection(&previous_view, &app.list_view, &mut app.selection);
     let view = crate::app::view_tracks(tracks, &app.list_view, added.as_ref(), &app.saved.album_genres);
     if view.is_empty() {
         ui.add_space(20.0);
