@@ -54,6 +54,12 @@ pub struct RangeResponse {
 
 /// Requests bytes `start..=end` (or `start..` if `end` is None) of `url`.
 pub fn get_range(url: &str, headers: &[(String, String)], start: u64, end: Option<u64>) -> Result<RangeResponse, String> {
+    get_range_or_eof(url, headers, start, end)?.ok_or_else(|| "The requested range is past the end of the file.".into())
+}
+
+/// Like `get_range`, but a 416 confirming the file ends exactly at `start` is EOF.
+/// A failed request, or a 416 with no matching file size, remains an error.
+pub fn get_range_or_eof(url: &str, headers: &[(String, String)], start: u64, end: Option<u64>) -> Result<Option<RangeResponse>, String> {
     let range = match end {
         Some(e) => format!("bytes={start}-{e}"),
         None => format!("bytes={start}-"),
@@ -65,19 +71,27 @@ pub fn get_range(url: &str, headers: &[(String, String)], start: u64, end: Optio
             req = req.header(k.as_str(), v.as_str());
         }
     }
-    let resp = req.call().map_err(friendly_error)?;
+    let resp = req.config().http_status_as_error(false).build().call().map_err(friendly_error)?;
+    let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
+    if resp.status() == 416 && start > 0
+        && header("content-range").and_then(|cr| cr.trim().strip_prefix("bytes */").and_then(|n| n.parse::<u64>().ok())) == Some(start)
+    {
+        return Ok(None);
+    }
+    if resp.status().is_client_error() || resp.status().is_server_error() {
+        return Err(friendly_error(ureq::Error::StatusCode(resp.status().as_u16())));
+    }
     let partial = resp.status() == 206;
     if !partial && start > 0 {
         return Err("The server can't resume this download.".into());
     }
-    let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
     let total = if partial {
         header("content-range").and_then(|cr| cr.rsplit('/').next().and_then(|t| t.trim().parse::<u64>().ok()))
     } else {
         header("content-length").and_then(|v| v.parse::<u64>().ok())
     };
     let body = resp.into_body().into_with_config().limit(u64::MAX).reader();
-    Ok(RangeResponse { body: Box::new(body), total, partial })
+    Ok(Some(RangeResponse { body: Box::new(body), total, partial }))
 }
 
 /// Downloads `url` into memory, reporting progress as (bytes so far, total if known).
