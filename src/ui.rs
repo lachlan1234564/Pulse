@@ -1034,7 +1034,7 @@ fn page(app: &mut App, ui: &mut Ui) {
             }
         }
         Route::Liked => {
-            let tracks = app.saved.liked.clone();
+            let tracks = app.liked_snapshot();
             let sub = song_count(tracks.len());
             local_collection(app, ui, "Liked Songs", &sub, icon::HEART, &tracks, None);
         }
@@ -2093,8 +2093,43 @@ fn pretty_date(d: &str) -> String {
     }
 }
 
+fn clear_changed_list_selection(before: &crate::app::ListView, after: &crate::app::ListView, selection: &mut (String, std::collections::HashSet<usize>, Option<usize>)) {
+    if selection.0 == "local" && (before.sort != after.sort || before.search != after.search || before.genre != after.genre) {
+        selection.1.clear();
+        selection.2 = None;
+    }
+}
+
+#[cfg(test)]
+mod list_selection_tests {
+    use super::*;
+    use crate::app::{ListView, SortBy};
+
+    #[test]
+    fn changing_list_contents_clears_rows_and_anchor() {
+        let before = ListView::default();
+        let selected = || ("local".to_string(), [1].into_iter().collect(), Some(1));
+        for after in [
+            ListView { sort: SortBy::Title, ..before.clone() },
+            ListView { search: "song".into(), ..before.clone() },
+            ListView { genre: Some("Rock".into()), ..before.clone() },
+        ] {
+            let mut selection = selected();
+            clear_changed_list_selection(&before, &after, &mut selection);
+            assert!(selection.1.is_empty());
+            assert_eq!(selection.2, None);
+        }
+        let mut selection = selected();
+        let after = ListView { search_open: true, ..before.clone() };
+        clear_changed_list_selection(&before, &after, &mut selection);
+        assert_eq!(selection, selected());
+    }
+}
+
 fn local_collection(app: &mut App, ui: &mut Ui, title: &str, sub: &str, glyph: &str, tracks: &[Track], playlist: Option<usize>) {
     let ctx = ui.ctx().clone();
+    // How the list was sorted and filtered before this pass (see `clear_changed_list_selection`).
+    let previous_view = app.list_view.clone();
     let kind = if playlist.is_some() { "Playlist" } else { "Library" };
     // Cover: your own picture, else the first song's artwork.
     let custom = playlist.and_then(|i| app.saved.playlists.get(i)).and_then(|p| p.cover.as_ref()).map(|c| crate::settings::file_uri(c));
@@ -2174,9 +2209,10 @@ fn local_collection(app: &mut App, ui: &mut Ui, title: &str, sub: &str, glyph: &
     app.ensure_featured(tracks);
     // Imported songs: look again on Deezer, and give coverless songs their video's picture.
     app.rematch_imports(tracks, &ctx);
-    let coverless: Vec<Track> = tracks.iter().filter(|t| t.cover_small.is_none() && !crate::local::is_local(&t.id)).cloned().collect();
+    // ensure_views only considers the first 60 candidates.
+    let coverless: Vec<Track> = tracks.iter().filter(|t| t.cover_small.is_none() && !crate::local::is_local(&t.id)).take(60).cloned().collect();
     app.ensure_views(&coverless);
-    list_toolbar(app, ui, tracks, playlist, title);
+    list_toolbar(app, ui, tracks, playlist, title, added.as_ref());
     let chips = crate::app::genre_chips(tracks, &app.saved.album_genres);
     if !chips.is_empty() {
         ui.horizontal_wrapped(|ui| {
@@ -2190,6 +2226,7 @@ fn local_collection(app: &mut App, ui: &mut Ui, title: &str, sub: &str, glyph: &
         ui.add_space(8.0);
     }
 
+    clear_changed_list_selection(&previous_view, &app.list_view, &mut app.selection);
     let view = crate::app::view_tracks(tracks, &app.list_view, added.as_ref(), &app.saved.album_genres);
     if view.is_empty() {
         ui.add_space(20.0);
@@ -2231,22 +2268,23 @@ fn pick_cover(app: &mut App, i: usize, ctx: &egui::Context) {
 }
 
 /// The bar above a song list: play, shuffle, download · search, sort, more.
-fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<usize>, title: &str) {
+fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<usize>, title: &str, added: Option<&std::collections::HashMap<String, u64>>) {
     let ctx = ui.ctx().clone();
     let playing_this = app.playing_from_here(tracks);
-    let view = crate::app::view_tracks(tracks, &app.list_view, None, &app.saved.album_genres);
     ui.horizontal(|ui| {
         ui.set_min_height(56.0);
         if play_button(ui, 52.0, playing_this).clicked() {
             if playing_this {
                 app.toggle_play(&ctx);
             } else {
+                let view = crate::app::view_tracks(tracks, &app.list_view, added, &app.saved.album_genres);
                 app.play_list(&view, 0, &ctx);
             }
         }
         ui.add_space(4.0);
         let sh_col = if app.saved.shuffle { pal().accent_soft } else { pal().text_muted };
         if icon_toggle(ui, icon::SHUFFLE, 26.0, sh_col, tr("Shuffle"), tr("Shuffle"), app.saved.shuffle).clicked() {
+            let view = crate::app::view_tracks(tracks, &app.list_view, added, &app.saved.album_genres);
             shuffle_play(app, &view, &ctx);
         }
         if app.saved.shuffle {
@@ -2254,10 +2292,10 @@ fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<u
             ui.painter().circle_filled(pos2(r.right() - 20.0, r.center().y + 18.0), 2.0, pal().accent_soft);
         }
         // Download: all songs here, or a check once they're all saved.
-        let online: Vec<Track> = tracks.iter().filter(|t| !crate::local::is_local(&t.id)).cloned().collect();
-        if !online.is_empty() {
-            let all = online.iter().all(|t| app.is_downloaded(&t.id));
-            let busy = !all && online.iter().any(|t| app.download_queue.iter().any(|q| q.id == t.id) || app.downloading.iter().any(|(d, _)| d.id == t.id));
+        let online = || tracks.iter().filter(|t| !crate::local::is_local(&t.id));
+        if online().next().is_some() {
+            let all = online().all(|t| app.is_downloaded(&t.id));
+            let busy = !all && online().any(|t| app.download_queue.iter().any(|q| q.id == t.id) || app.downloading.iter().any(|(d, _)| d.id == t.id));
             if busy {
                 ui.add_space(6.0);
                 ui.spinner().on_hover_text(tr("Downloading…"));
@@ -2266,7 +2304,7 @@ fn list_toolbar(app: &mut App, ui: &mut Ui, tracks: &[Track], playlist: Option<u
                     // Already downloaded: nothing to do.
                 }
             } else if icon_button(ui, icon::ARROW_CIRCLE_DOWN, 26.0, pal().text_muted, tr("Download")).clicked() {
-                app.download(&online, &ctx);
+                app.download(&online().cloned().collect::<Vec<_>>(), &ctx);
             }
         }
         if let Some(i) = playlist {

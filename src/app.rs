@@ -871,10 +871,45 @@ const LINK_LIFETIME: Duration = Duration::from_secs(4 * 3600);
 // The app
 // ---------------------------------------------------------------------------
 
+#[derive(Default)]
+struct LikedSnapshot(Option<Arc<[Track]>>);
+
+impl LikedSnapshot {
+    fn get(&mut self, tracks: &[Track]) -> Arc<[Track]> {
+        Arc::clone(self.0.get_or_insert_with(|| Arc::from(tracks)))
+    }
+
+    fn invalidate(&mut self) {
+        self.0 = None;
+    }
+}
+
+#[cfg(test)]
+mod liked_snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_is_reused_until_library_changes() {
+        let mut cache = LikedSnapshot::default();
+        let mut tracks = vec![Track { id: "one".into(), title: "First".into(), ..Default::default() }];
+        let old = cache.get(&tracks);
+        assert!(Arc::ptr_eq(&old, &cache.get(&tracks)));
+        tracks[0].title = "Updated".into();
+        tracks.push(Track { id: "two".into(), ..Default::default() });
+        cache.invalidate();
+        let new = cache.get(&tracks);
+        assert!(!Arc::ptr_eq(&old, &new));
+        assert_eq!(old.len(), 1);
+        assert_eq!(new[0].title, "Updated");
+        assert_eq!(new.len(), 2);
+    }
+}
+
 pub struct App {
     pub audio: AudioEngine,
     pub saved: Saved,
     pub liked_ids: HashSet<String>,
+    liked_snapshot: LikedSnapshot,
 
     // navigation
     pub route: Route,
@@ -1113,6 +1148,7 @@ impl App {
         let mut app = Self {
             audio,
             liked_ids: saved.liked.iter().map(|t| t.id.clone()).collect(),
+            liked_snapshot: LikedSnapshot::default(),
             current: saved.last_track.clone(),
             needs_load: saved.last_track.is_some(),
             // The queue comes back as it was, if it still holds the last song.
@@ -1995,6 +2031,7 @@ impl App {
             return;
         }
         crate::backup::restore_into(&mut self.saved, lib);
+        self.liked_snapshot.invalidate();
         self.liked_ids = self.saved.liked.iter().map(|t| t.id.clone()).collect();
         // Playlist numbers may mean other playlists now, so drop anything that holds one.
         let local = |r: &Route| matches!(r, Route::Local(_));
@@ -2633,6 +2670,7 @@ impl App {
 
     /// Changes every copy of song `id`: playlists, likes, history, queue and loaded pages.
     fn update_track(&mut self, id: &str, mut f: impl FnMut(&mut Track)) {
+        self.liked_snapshot.invalidate();
         let lists = self.saved.playlists.iter_mut().flat_map(|p| p.tracks.iter_mut());
         let others = self.saved.liked.iter_mut().chain(self.saved.recent.iter_mut()).chain(self.queue.iter_mut()).chain(self.current.iter_mut());
         for t in lists.chain(others).filter(|t| t.id == id) {
@@ -3020,7 +3058,13 @@ impl App {
 
     // ---------------------------------------------------------------- library
 
+    /// A stable snapshot for drawing while actions can still change the library.
+    pub fn liked_snapshot(&mut self) -> Arc<[Track]> {
+        self.liked_snapshot.get(&self.saved.liked)
+    }
+
     pub fn toggle_like(&mut self, t: &Track, ctx: &egui::Context) {
+        self.liked_snapshot.invalidate();
         if self.liked_ids.remove(&t.id) {
             self.saved.liked.retain(|x| x.id != t.id);
             self.saved.liked_added.remove(&t.id);
@@ -3366,6 +3410,7 @@ impl App {
         match found {
             Some(id) => {
                 self.saved.artist_ids.insert(name.clone(), id.clone());
+                self.liked_snapshot.invalidate();
                 // Every saved song by them links straight to the page from now on.
                 let lists = self.saved.playlists.iter_mut().flat_map(|p| p.tracks.iter_mut());
                 let others = self.saved.liked.iter_mut().chain(self.saved.recent.iter_mut()).chain(self.queue.iter_mut()).chain(self.current.iter_mut());
@@ -3419,6 +3464,8 @@ impl App {
         let in_flight = self.prefetching.clone();
         let offline = self.saved.downloads.get(&track.id).cloned();
         let quality = self.saved.settings.stream_quality;
+        // Songs are being played: keep a yt-dlp ready for the next one.
+        crate::youtube::get_ready(quality);
         Box::new(move |status| {
             // Already being found (the pointer rested on it, or it's next in the queue):
             // wait for that instead of starting over, unless audio is ready on disk.
@@ -3477,6 +3524,7 @@ impl App {
         if crate::perf::mode() != crate::perf::Mode::Normal {
             return;
         }
+        crate::youtube::get_ready(self.saved.settings.stream_quality);
         // A new list replaces the last one's songs that haven't started yet.
         self.warm_queue.lock().unwrap().clear();
         self.warm(tracks.iter().take(3).cloned().collect(), false);
@@ -3490,6 +3538,7 @@ impl App {
         if crate::perf::mode() == crate::perf::Mode::UltraLow || !self.needs_link(&t) {
             return;
         }
+        crate::youtube::get_ready(self.saved.settings.stream_quality);
         {
             let mut w = self.hover_wanted.lock().unwrap();
             if w.as_deref() == Some(t.id.as_str()) {
@@ -3857,6 +3906,7 @@ impl App {
                 TrackEvent::NewPlaylistWithMany(list) => self.new_playlist = Some((String::new(), list)),
                 TrackEvent::Like(t) => {
                     if !self.liked_ids.contains(&t.id) {
+                        self.liked_snapshot.invalidate();
                         self.liked_ids.insert(t.id.clone());
                         self.saved.liked_added.insert(t.id.clone(), now_unix());
                         self.saved.liked.insert(0, t);

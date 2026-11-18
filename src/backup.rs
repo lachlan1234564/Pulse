@@ -182,24 +182,26 @@ fn load_from(saved: Option<String>, main_file: Option<&Path>, spare: &Path, back
     }
     let main_bytes = main_file.and_then(|f| std::fs::read(f).ok()).unwrap_or_default();
     let damaged = saved.is_some() || main_bytes.windows(14).any(|w| w == b"pulse_state_v1");
-    if !damaged {
+    let spare_lib = std::fs::read_to_string(spare).ok().and_then(|t| ron::from_str::<Saved>(&t).ok());
+    let mut candidates = std::fs::read_dir(backups)
+        .map(|rd| rd.flatten().filter_map(|e| info(&e.path())).collect::<Vec<_>>())
+        .unwrap_or_default();
+    candidates.sort_by_key(|b| std::cmp::Reverse(b.made));
+    // A save interrupted before its storage key was written looks just like a new
+    // profile. Check the recovery copies before deciding there's no library yet.
+    if !damaged && spare_lib.is_none() && candidates.is_empty() {
         return (Saved::default(), None); // the first time Pulse opens
     }
     // Keep the damaged file, in case there's something in it worth getting back.
     let kept = backups.join(format!("damaged-library-{}.ron", crate::crash::now()));
     let _ = std::fs::create_dir_all(backups);
     let _ = std::fs::write(&kept, &main_bytes);
-    if let Some(lib) = std::fs::read_to_string(spare).ok().and_then(|t| ron::from_str::<Saved>(&t).ok()) {
+    if let Some(lib) = spare_lib {
         return (lib, Some("Your library file was damaged, so Pulse opened its spare copy. Nothing was lost.".into()));
     }
-    let newest = std::fs::read_dir(backups)
-        .map(|rd| rd.flatten().filter_map(|e| info(&e.path())).collect::<Vec<_>>())
-        .unwrap_or_default()
-        .into_iter()
-        .max_by_key(|b| b.made);
-    if let Some(b) = newest
-        && let Ok(lib) = read(&b.path)
-    {
+    // Metadata/counts can still be readable when the library itself is damaged.
+    // Try each backup in order until a complete library can be restored.
+    if let Some((b, lib)) = candidates.into_iter().find_map(|b| read(&b.path).ok().map(|lib| (b, lib))) {
         let mut out = Saved::default();
         restore_into(&mut out, lib);
         let days = crate::crash::now().saturating_sub(b.made) / 86_400;
@@ -355,6 +357,69 @@ mod tests {
     fn counts_are_read_without_building_the_library() {
         let c: Counts = serde_json::from_str(r#"{"liked":[{"id":"a"},{"id":"b"}],"playlists":[{"name":"x","tracks":[]}],"profile":{}}"#).unwrap();
         assert_eq!((c.liked, c.playlists), (2, 1));
+    }
+
+    #[test]
+    fn an_empty_or_missing_main_file_still_recovers_the_library() {
+        let dir = std::env::temp_dir().join(format!("pulse-empty-main-test-{}", std::process::id()));
+        let backups = dir.join("backups");
+        let spare = dir.join("library.ron");
+        let main = dir.join("app.ron");
+        std::fs::create_dir_all(&backups).unwrap();
+        // A new profile with no saved library must still open without a recovery warning.
+        let (got, note) = load_from(None, Some(&main), &spare, &backups);
+        assert!(got.liked.is_empty() && note.is_none());
+
+        let mut lib = Saved::default();
+        lib.liked.push(crate::deezer::Track { id: "dz:42".into(), title: "Kept song".into(), ..Default::default() });
+        lib.playlists.push(crate::app::LocalPlaylist { name: "Kept playlist".into(), tracks: lib.liked.clone(), ..Default::default() });
+        write_whole(&spare, ron::ser::to_string(&lib).unwrap().as_bytes()).unwrap();
+        write_to(&lib, &backups.join("library-day-1.json")).unwrap();
+
+        // A crash can truncate the main file before even its storage key was written.
+        // Also cover a removed file and a missing storage path (e.g. eframe can't open it).
+        for main_text in [None, Some(""), Some("{")] {
+            if let Some(text) = main_text {
+                std::fs::write(&main, text).unwrap();
+            }
+            for path in [Some(main.as_path()), None] {
+                let (got, note) = load_from(None, path, &spare, &backups);
+                assert_eq!(got.liked, lib.liked, "recover likes with main {main_text:?}");
+                assert_eq!(got.playlists[0].tracks, lib.liked);
+                assert!(note.unwrap().contains("spare copy"));
+            }
+        }
+        std::fs::remove_file(&spare).unwrap();
+        std::fs::write(&main, "").unwrap();
+        let (got, note) = load_from(None, Some(&main), &spare, &backups);
+        assert_eq!(got.liked, lib.liked, "the backup also works without a main storage key");
+        assert_eq!(got.playlists[0].tracks, lib.liked);
+        assert!(note.unwrap().contains("restored the backup"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn recovery_tries_an_older_backup_when_the_newest_cannot_be_read() {
+        let dir = std::env::temp_dir().join(format!("pulse-older-backup-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let good = dir.join("library-day-1.json");
+        let bad = dir.join("library-day-2.json");
+        let mut lib = Saved::default();
+        lib.liked.push(crate::deezer::Track { id: "dz:42".into(), title: "Kept song".into(), ..Default::default() });
+        lib.playlists.push(crate::app::LocalPlaylist { name: "Kept playlist".into(), tracks: lib.liked.clone(), ..Default::default() });
+        write_to(&lib, &good).unwrap();
+        // The list/counts reader recognizes this file, but its library is damaged.
+        std::fs::write(&bad, br#"{"liked":[],"playlists":[],"profile":false}"#).unwrap();
+        let now = std::time::SystemTime::now();
+        std::fs::File::options().write(true).open(&good).unwrap().set_modified(now - std::time::Duration::from_secs(60)).unwrap();
+        std::fs::File::options().write(true).open(&bad).unwrap().set_modified(now).unwrap();
+        assert!(info(&bad).is_some() && read(&bad).is_err());
+        let (got, note) = load_from(Some("damaged main save".into()), None, &dir.join("missing-spare.ron"), &dir);
+        assert_eq!(got.liked, lib.liked, "a damaged newest backup must not hide an older working one");
+        assert_eq!(got.playlists[0].tracks, lib.liked);
+        assert!(note.unwrap().contains("restored the backup"));
+        assert!(bad.exists(), "keep the damaged backup for inspection");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
