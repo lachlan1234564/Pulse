@@ -15,8 +15,9 @@ use crate::settings::Quality;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 // ---------------------------------------------------------------------------
@@ -124,6 +125,7 @@ fn install_ytdlp(tools: &Tools, progress: &dyn Fn(f64)) -> Result<(), String> {
     let expected = latest_ytdlp_sum()?;
     let bytes = crate::net::download(&format!("{YTDLP_RELEASE}/{}", YTDLP.name), |done, _| progress(done as f64 / 1e6))?;
     verify(&bytes, &expected, "yt-dlp")?;
+    let _installing = Installing::start();
     if YTDLP_IS_ZIP {
         let folder = tools.ytdlp.parent().unwrap_or(&tools.dir).to_path_buf();
         let fresh = folder.with_extension("new");
@@ -168,6 +170,7 @@ fn unzip_all(zip: &[u8], dest: &Path) -> Result<(), String> {
 /// Gets the newest yt-dlp if it changed (checked by its published checksum).
 fn update_ytdlp(tools: &Tools) {
     if !YTDLP_IS_ZIP {
+        let _installing = Installing::start();
         let _ = run(&tools.ytdlp, &["-U".into()], Duration::from_secs(120));
         return;
     }
@@ -255,15 +258,24 @@ fn update_now(tools: &Tools) {
 
 /// Runs a program and returns its output. Gives up after `timeout`.
 fn run(program: &Path, args: &[String], timeout: Duration) -> Result<String, String> {
+    finish(spawn(program, args, Stdio::null())?, timeout)
+}
+
+/// Starts a program with its output captured (and no console window).
+fn spawn(program: &Path, args: &[String], stdin: Stdio) -> Result<Child, String> {
     let mut cmd = Command::new(program);
-    cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.args(args).stdin(stdin).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000; // no black console window popping up
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let mut child = cmd.spawn().map_err(|e| format!("Couldn't start {} ({e})", program.display()))?;
+    cmd.spawn().map_err(|e| format!("Couldn't start {} ({e})", program.display()))
+}
+
+/// Waits for a started program and returns its output. Gives up after `timeout`.
+fn finish(mut child: Child, timeout: Duration) -> Result<String, String> {
     // Read output on threads so a chatty program can't fill the pipe and stall.
     let mut out_pipe = child.stdout.take().unwrap();
     let mut err_pipe = child.stderr.take().unwrap();
@@ -293,6 +305,141 @@ fn run(program: &Path, args: &[String], timeout: Duration) -> Result<String, Str
     let out = out_t.join().unwrap_or_default();
     let err = err_t.join().unwrap_or_default();
     if status.success() { Ok(out) } else { Err(explain_error(&err)) }
+}
+
+// ---------------------------------------------------------------------------
+// A yt-dlp started ahead of time
+// ---------------------------------------------------------------------------
+
+/// yt-dlp is a Python program: each copy takes about a second to start before it does
+/// anything. While someone is picking songs, one copy is kept started and waiting for a
+/// link on its input (`-a -`), so pressing a song skips that second. It's kept for a
+/// minute after the last song activity and never in Gaming or Ultra-low mode. Waiting,
+/// it uses no CPU and about 50 MB, and it quits by itself when Pulse closes (its input
+/// closes, so it has no link to look up).
+struct Spare {
+    child: Child,
+    /// What it was started with (everything but the link).
+    args: Vec<String>,
+    started: Instant,
+}
+
+static SPARE: Mutex<Option<Spare>> = Mutex::new(None);
+/// Keep a spare ready until then.
+static SPARE_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
+/// A thread is watching for the spare to go unused.
+static SPARE_KEEPER: AtomicBool = AtomicBool::new(false);
+/// yt-dlp is being replaced: no spare may hold its files open.
+static INSTALLING: AtomicBool = AtomicBool::new(false);
+/// How long a spare is kept after the last song activity.
+const SPARE_FOR: Duration = Duration::from_secs(60);
+/// An older spare is replaced, in case yt-dlp was updated since.
+const SPARE_MAX_AGE: Duration = Duration::from_secs(10 * 60);
+
+/// Someone is picking songs (pointing at one, opening a list, playing): have a yt-dlp
+/// started and waiting for the next song.
+pub fn get_ready(quality: Quality) {
+    if crate::perf::mode() != crate::perf::Mode::Normal || !tools_ready() {
+        discard_spare();
+        return;
+    }
+    *SPARE_UNTIL.lock().unwrap() = Some(Instant::now() + SPARE_FOR);
+    let tools = installed_tools();
+    let args = link_args(&tools, quality);
+    if SPARE.lock().unwrap().as_ref().is_some_and(|s| s.args == args && s.started.elapsed() < SPARE_MAX_AGE) {
+        return;
+    }
+    std::thread::spawn(move || start_spare(&tools, args));
+}
+
+fn spare_wanted() -> bool {
+    crate::perf::mode() == crate::perf::Mode::Normal && SPARE_UNTIL.lock().unwrap().is_some_and(|t| Instant::now() < t)
+}
+
+fn start_spare(tools: &Tools, args: Vec<String>) {
+    if INSTALLING.load(Ordering::SeqCst) {
+        return;
+    }
+    {
+        let mut spare = SPARE.lock().unwrap();
+        if spare.as_ref().is_some_and(|s| s.args == args && s.started.elapsed() < SPARE_MAX_AGE) {
+            return;
+        }
+        if let Some(mut old) = spare.take() {
+            let _ = old.child.kill();
+            let _ = old.child.wait();
+        }
+        let mut with_input = args.clone();
+        with_input.extend(["-a".into(), "-".into()]);
+        if let Ok(child) = spawn(&tools.ytdlp, &with_input, Stdio::piped()) {
+            *spare = Some(Spare { child, args, started: Instant::now() });
+        }
+    }
+    // Ends the spare once nobody has picked a song for a while.
+    if !SPARE_KEEPER.swap(true, Ordering::SeqCst) {
+        std::thread::spawn(|| {
+            loop {
+                std::thread::sleep(Duration::from_secs(5));
+                if !spare_wanted() {
+                    discard_spare();
+                }
+                if SPARE.lock().unwrap().is_none() {
+                    SPARE_KEEPER.store(false, Ordering::SeqCst);
+                    // A spare started just now: keep watching it (unless another thread is).
+                    if SPARE.lock().unwrap().is_none() || SPARE_KEEPER.swap(true, Ordering::SeqCst) {
+                        break;
+                    }
+                }
+            }
+        });
+    }
+}
+
+/// The waiting yt-dlp, if it was started with `args` and is still running.
+fn take_spare(args: &[String]) -> Option<Child> {
+    let mut s = SPARE.lock().unwrap().take()?;
+    if s.args == args && s.started.elapsed() < SPARE_MAX_AGE && matches!(s.child.try_wait(), Ok(None)) {
+        return Some(s.child);
+    }
+    let _ = s.child.kill();
+    let _ = s.child.wait();
+    None
+}
+
+fn discard_spare() {
+    let spare = SPARE.lock().unwrap().take();
+    if let Some(mut s) = spare {
+        let _ = s.child.kill();
+        let _ = s.child.wait();
+    }
+}
+
+/// Hands a waiting yt-dlp its link and waits for its answer.
+fn finish_spare(mut child: Child, url: &str, timeout: Duration) -> Result<String, String> {
+    use std::io::Write;
+    if let Some(mut input) = child.stdin.take() {
+        let _ = writeln!(input, "{url}");
+        // Dropping it closes the input: that's yt-dlp's cue to start.
+    }
+    finish(child, timeout)
+}
+
+/// Marks yt-dlp as being replaced until dropped, with any spare copy stopped first
+/// (on Windows a running copy keeps its folder from being swapped).
+struct Installing;
+
+impl Installing {
+    fn start() -> Self {
+        INSTALLING.store(true, Ordering::SeqCst);
+        discard_spare();
+        Installing
+    }
+}
+
+impl Drop for Installing {
+    fn drop(&mut self) {
+        INSTALLING.store(false, Ordering::SeqCst);
+    }
 }
 
 /// The installed yt-dlp and Deno versions, for Diagnostics.
@@ -636,6 +783,75 @@ fn music_entries(reply: &serde_json::Value) -> Vec<SearchEntry> {
         .collect()
 }
 
+/// Searches YouTube the way its own web page does: one request, the same results a
+/// `ytsearchN:` search through yt-dlp reads, but in a fraction of a second and without
+/// starting a yt-dlp (which takes about a second of CPU each time). If YouTube's reply
+/// ever changes shape, yt-dlp's search takes over.
+fn web_search(tools: Option<&Tools>, query: &str, limit: usize) -> Result<Vec<SearchEntry>, String> {
+    let direct = (|| {
+        let body = serde_json::json!({
+            "context": { "client": { "clientName": "WEB", "clientVersion": "2.20241106.01.00", "hl": "en", "gl": "US" } },
+            "query": query,
+        });
+        let mut resp = crate::net::api()
+            .post("https://www.youtube.com/youtubei/v1/search?prettyPrint=false")
+            .header("Origin", "https://www.youtube.com")
+            .send_json(&body)
+            .map_err(crate::net::friendly_error)?;
+        let reply: serde_json::Value =
+            resp.body_mut().with_config().limit(8 * 1024 * 1024).read_json().map_err(|e| format!("Unexpected YouTube reply ({e})"))?;
+        let entries = web_entries(&reply, limit);
+        if entries.is_empty() { Err("YouTube's search reply had no videos".to_string()) } else { Ok(entries) }
+    })();
+    match (direct, tools) {
+        (Ok(entries), _) => Ok(entries),
+        (Err(_), Some(tools)) => search(tools, format!("ytsearch{limit}:{query}"), limit as u32),
+        (Err(e), None) => Err(e),
+    }
+}
+
+/// Reads the videos out of a YouTube search reply, in order.
+fn web_entries(reply: &serde_json::Value, limit: usize) -> Vec<SearchEntry> {
+    fn walk<'a>(v: &'a serde_json::Value, out: &mut Vec<&'a serde_json::Value>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                // Ordinary videos only (Shorts, playlists and channels have other renderers).
+                if let Some(video) = m.get("videoRenderer") {
+                    out.push(video);
+                    return;
+                }
+                m.values().for_each(|x| walk(x, out));
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let text = |v: &serde_json::Value| -> Option<String> {
+        v["simpleText"].as_str().map(str::to_string).or_else(|| v["runs"].as_array().map(|runs| runs.iter().filter_map(|r| r["text"].as_str()).collect()))
+    };
+    let mut videos = Vec::new();
+    walk(reply, &mut videos);
+    videos
+        .into_iter()
+        .filter_map(|v| {
+            let id = v["videoId"].as_str()?.to_string();
+            let channel = text(&v["ownerText"]).or_else(|| text(&v["longBylineText"]));
+            // "1,234,567 views"; "No views"; a live stream says how many are watching instead.
+            let views = text(&v["viewCountText"]).filter(|t| t.contains("view")).map(|t| t.chars().filter(char::is_ascii_digit).collect::<String>().parse().unwrap_or(0));
+            Some(SearchEntry {
+                id,
+                title: text(&v["title"]).unwrap_or_default(),
+                duration: text(&v["lengthText"]).and_then(|d| parse_clock(&d)),
+                uploader: channel.clone(),
+                channel,
+                view_count: views,
+                explicit: None,
+            })
+        })
+        .take(limit)
+        .collect()
+}
+
 /// "2:36" or "1:02:03" in seconds.
 fn parse_clock(s: &str) -> Option<f64> {
     let mut total = 0.0;
@@ -671,10 +887,10 @@ pub fn find_videos(tools: &Tools, track: &Track) -> Result<Vec<String>, String> 
             let _ = tx.send((true, found));
         });
     }
-    for target in [format!("ytsearch8:{quoted}"), format!("ytsearch8:{plain}")] {
+    for query in [quoted, plain] {
         let (tx, tools) = (tx.clone(), tools.clone());
         std::thread::spawn(move || {
-            let _ = tx.send((false, search(&tools, target, 8)));
+            let _ = tx.send((false, web_search(Some(&tools), &query, 8)));
         });
     }
     drop(tx);
@@ -732,14 +948,16 @@ pub fn tools_ready() -> bool {
     dir.join(YTDLP.save_as).is_file() && dir.join(DENO.save_as).is_file()
 }
 
-/// The YouTube video Pulse would play for `track`, and its view count.
+/// The YouTube video Pulse would play for `track`, and its view count. A direct search, so
+/// a page full of songs no longer starts a yt-dlp for each one (they used to run three at
+/// a time for a minute or more, slowing the song you'd just pressed).
 pub fn views(track: &Track) -> Result<Option<(String, u64)>, String> {
     if !tools_ready() {
         return Ok(None);
     }
     let tools = installed_tools();
     let [_, plain] = queries(track);
-    let entries = search(&tools, format!("ytsearch6:{plain}"), 6)?;
+    let entries = web_search(Some(&tools), &plain, 6)?;
     Ok(rank(track, &entries).into_iter().find_map(|e| e.view_count.map(|v| (e.id.clone(), v))))
 }
 
@@ -821,20 +1039,43 @@ fn source_from_info(json: &str) -> Result<StreamSource, String> {
     })
 }
 
-/// Asks yt-dlp for the direct audio link of a YouTube video.
-pub fn audio_source(tools: &Tools, video_id: &str, quality: Quality) -> Result<StreamSource, String> {
+/// yt-dlp's arguments for a song's audio link, all but the link itself.
+fn link_args(tools: &Tools, quality: Quality) -> Vec<String> {
     let mut args = base_args(tools);
     args.extend([
         "--no-playlist".into(),
         "-J".into(),
         "-f".into(),
         quality.ytdlp_format().into(),
-        // Skip a YouTube client that often hands out broken links.
+        // Skip a YouTube client that often hands out broken links, and the HLS and DASH
+        // stream lists: Pulse plays the plain audio file, and fetching those lists made
+        // every song wait about 0.8 s longer.
         "--extractor-args".into(),
-        "youtube:player_client=default,-tv_samsung".into(),
-        format!("https://www.youtube.com/watch?v={video_id}"),
+        "youtube:player_client=default,-tv_samsung;skip=hls,dash".into(),
     ]);
-    let out = run(&tools.ytdlp, &args, Duration::from_secs(60))?;
+    args
+}
+
+/// Asks yt-dlp for the direct audio link of a YouTube video.
+pub fn audio_source(tools: &Tools, video_id: &str, quality: Quality) -> Result<StreamSource, String> {
+    let args = link_args(tools, quality);
+    let url = format!("https://www.youtube.com/watch?v={video_id}");
+    let out = match take_spare(&args) {
+        Some(spare) => {
+            let out = finish_spare(spare, &url, Duration::from_secs(60));
+            // Ready for the next song.
+            if spare_wanted() {
+                let tools = tools.clone();
+                std::thread::spawn(move || start_spare(&tools, args));
+            }
+            out
+        }
+        None => {
+            let mut args = args;
+            args.push(url);
+            run(&tools.ytdlp, &args, Duration::from_secs(60))
+        }
+    }?;
     source_from_info(&out)
 }
 
@@ -897,6 +1138,94 @@ mod tests {
         assert!(!clear_match(&t, &entry("b", "Meet Me Halfway", 284.0, "Pop Hits Orchestra - Topic")));
         assert!(!clear_match(&t, &entry("c", "Meet Me Halfway (Live)", 300.0, "Black Eyed Peas - Topic")));
         assert!(!clear_match(&t, &entry("d", "Black Eyed Peas - Meet Me Halfway", 284.0, "BlackEyedPeasVEVO")));
+    }
+
+    #[test]
+    fn reads_videos_from_a_youtube_search_reply() {
+        let reply: serde_json::Value = serde_json::from_str(
+            r#"{"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"sectionListRenderer":{"contents":[{"itemSectionRenderer":{"contents":[
+                {"channelRenderer":{"channelId":"UC1","title":{"simpleText":"Frank Ocean"}}},
+                {"videoRenderer":{"videoId":"abc","title":{"runs":[{"text":"Pink + White"}]},"ownerText":{"runs":[{"text":"Frank Ocean - Topic"}]},
+                    "lengthText":{"simpleText":"3:05"},"viewCountText":{"simpleText":"123,456,789 views"}}},
+                {"reelShelfRenderer":{"items":[{"reelItemRenderer":{"videoId":"short"}}]}},
+                {"videoRenderer":{"videoId":"live","title":{"runs":[{"text":"Live "},{"text":"radio"}]},"longBylineText":{"runs":[{"text":"Some channel"}]},
+                    "viewCountText":{"runs":[{"text":"1,234"},{"text":" watching"}]}}},
+                {"videoRenderer":{"videoId":"new","title":{"simpleText":"New upload"},"ownerText":{"runs":[{"text":"Me"}]},"lengthText":{"simpleText":"1:02:03"},"viewCountText":{"simpleText":"No views"}}}
+            ]}}]}}}}}"#,
+        )
+        .unwrap();
+        let found = web_entries(&reply, 8);
+        let ids: Vec<&str> = found.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["abc", "live", "new"], "videos only, in order");
+        assert_eq!(found[0].title, "Pink + White");
+        assert_eq!(found[0].channel.as_deref(), Some("Frank Ocean - Topic"));
+        assert_eq!(found[0].duration, Some(185.0));
+        assert_eq!(found[0].view_count, Some(123_456_789));
+        assert_eq!((found[1].title.as_str(), found[1].channel.as_deref(), found[1].duration, found[1].view_count), ("Live radio", Some("Some channel"), None, None));
+        assert_eq!((found[2].duration, found[2].view_count), (Some(3723.0), Some(0)));
+        assert_eq!(web_entries(&reply, 1).len(), 1);
+    }
+
+    #[test]
+    fn the_audio_link_skips_stream_lists_pulse_never_plays() {
+        let tools = Tools { ytdlp: "yt-dlp".into(), deno: "deno".into(), dir: "tools".into() };
+        let args = link_args(&tools, Quality::Auto);
+        assert!(args.iter().any(|a| a.contains("skip=hls,dash") && a.contains("-tv_samsung")), "{args:?}");
+        assert!(!args.iter().any(|a| a.contains("youtube.com/watch")), "the link is added per song");
+    }
+
+    /// How long pressing a song waits for its audio link, step by step. Needs the network
+    /// and yt-dlp: `PULSE_TOOLS_DIR=<tools> cargo test start_speed_live -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn start_speed_live() {
+        let songs = [
+            ("Frank Ocean", "Pink + White"),
+            ("SZA", "Kill Bill"),
+            ("Tame Impala", "The Less I Know The Better"),
+            ("Daft Punk", "Get Lucky"),
+            ("Metallica", "Enter Sandman"),
+            ("Billie Eilish", "BIRDS OF A FEATHER"),
+        ];
+        let tools = ensure_tools(&|_| {}).expect("yt-dlp");
+        let (mut first, mut search_only, mut views_t, mut known, mut ready) = (vec![], vec![], vec![], vec![], vec![]);
+        for (artist, title) in songs {
+            let Some(t) = crate::deezer::find_track(artist, title, 0).unwrap() else { continue };
+            discard_spare();
+            *SPARE_UNTIL.lock().unwrap() = None;
+            // A song never played before, with nothing found ahead of time.
+            let at = Instant::now();
+            let (_, video) = resolve(&t, None, Quality::Auto, &|_| {}).expect("a link");
+            first.push(at.elapsed().as_secs_f64());
+            let at = Instant::now();
+            find_videos(&tools, &t).expect("found");
+            search_only.push(at.elapsed().as_secs_f64());
+            let at = Instant::now();
+            let v = views(&t).unwrap();
+            views_t.push(at.elapsed().as_secs_f64());
+            // A song Pulse already knows the video of.
+            let at = Instant::now();
+            audio_source(&tools, &video, Quality::Auto).expect("a link");
+            known.push(at.elapsed().as_secs_f64());
+            // The same, a moment after pointing at songs (a yt-dlp is waiting).
+            get_ready(Quality::Auto);
+            std::thread::sleep(Duration::from_secs(3));
+            let at = Instant::now();
+            audio_source(&tools, &video, Quality::Auto).expect("a link");
+            ready.push(at.elapsed().as_secs_f64());
+            println!("{title} – {artist}: video {video}, views {v:?}");
+        }
+        discard_spare();
+        let median = |v: &mut Vec<f64>| {
+            v.sort_by(f64::total_cmp);
+            v[v.len() / 2]
+        };
+        println!("songs: {}", first.len());
+        println!("never played, nothing ready: median {:.2} s", median(&mut first));
+        println!("  finding the video:        median {:.2} s", median(&mut search_only));
+        println!("view count lookup:          median {:.2} s", median(&mut views_t));
+        println!("known video, cold yt-dlp:   median {:.2} s", median(&mut known));
+        println!("known video, yt-dlp ready:  median {:.2} s", median(&mut ready));
     }
 
     /// Live check (needs the network): the explicit version of a song whose clean version
